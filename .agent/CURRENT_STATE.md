@@ -21,6 +21,49 @@ ne kaže `{"status": "PASS"}`.
   (supersedes `AI_Campaign_Studio_Faza_1_v1_3_P0_Handoff_Agent_Ready_Tehnicki_Plan.md`)
 - Proces: `docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md`
 - GitNexus: `.agent/GITNEXUS_PROTOCOL.md`
+- Performance/Analytics arhitektonska dopuna: `AI_Campaign_Studio_Faza_0_7_Performance_Analytics_Architecture.md`
+  - dopunjuje Fazu 0.6 samo za Performance/Analytics odluke;
+  - sada zaključava anti-refactor seam-ove, ali NE pokreće Analytics runtime implementaciju u P0.
+- Analytics-ready Faza 1 dopuna: `AI_Campaign_Studio_Faza_1_v1_5_Analytics_Ready_Implementation_Plan.md`
+  - dopunjuje aktivni Faza 1 v1.4 plan;
+  - prije Slice 1.5 uvodi samo stable IDs, revision/target identity, export manifest i `analytics_match_key`;
+  - stvarni Performance modul počinje tek poslije potvrđenog `G10 Vertical Slice PASS`.
+
+## Performance / Analytics status
+
+```text
+ARCHITECTURE: LOCKED / PLANNED
+RUNTIME ANALYTICS IMPLEMENTATION: NOT STARTED
+```
+
+Tačan redoslijed:
+
+```text
+P0 Foundation
+→ Faza 1 Campaign Engine
+→ G10 Vertical Slice PASS
+→ Slice 1.5 Performance Foundation
+→ Slice 2 Brand / Website Ingestion
+```
+
+Analytics se **NE implementira sada u P0**.
+
+Prije Slice 1.5 Faza 1 mora samo sačuvati seam-ove koji sprečavaju kasniji veliki refaktor:
+
+```text
+campaign_id
+campaign_plan_id
+campaign_item_id
+content_piece_id
+content_revision_id
+channel_code / platform_code / format_code
+export manifest.json
+analytics_match_key
+```
+
+Kada `G10 = PASS`, koordinator mijenja ovaj status u `SLICE 1.5 ACTIVE`. Od tog trenutka svaki
+Performance/Analytics Task Contract mora slijediti `.agent/TASK_ROUTING.md` sekciju
+**Performance / Analytics task**.
 
 ## Trenutni P0 gate
 
@@ -32,7 +75,7 @@ bez `.git`).
 
 | Task | Status | Implementer | Reviewers | Napomena |
 |---|---|---|---|---|
-| ACS-P0-001 | IMPLEMENTED, Claude review PASS, čeka Codex review + Human Owner approval | Crush | Codex, Claude | Repo/tooling/bootstrap skeleton. Commit `949d18c` na branch `task/ACS-P0-001-repo-foundation`. Evidence: `agent_reports/2026-08-30-ACS-P0-001-crush.md`. Claude review: `agent_reports/2026-08-30-ACS-P0-001-review-claude.md` (PASS, no blocking findings). Codex brief spreman: `agent_reports/2026-08-30-ACS-P0-001-codex-review-request.md` — Human Owner ga prosljeđuje eksterno Codex-u. Merge čeka Codex verdikt + eksplicitno "odobreno/merge". |
+| ACS-P0-001 | REVIEWS COMPLETE (Claude PASS, Codex PASS_WITH_NOTES, no blocking findings) — čeka eksplicitno Human Owner odobrenje za merge | Crush | Codex, Claude | Repo/tooling/bootstrap skeleton. Commit `949d18c` na branch `task/ACS-P0-001-repo-foundation`. Evidence: `agent_reports/2026-08-30-ACS-P0-001-crush.md`. Claude review: `agent_reports/2026-08-30-ACS-P0-001-review-claude.md` (PASS). Codex review: `agent_reports/2026-08-30-ACS-P0-001-review-codex.md` (PASS_WITH_NOTES — jedina napomena je sandbox-specifičan mypy cache write izvan dozvoljenog root-a, bez nalaza u kodu; potvrđeno da testovi nisu placeholderi i da `main()` ne guta bootstrap grešku). Sljedeći korak: Human Owner "odobreno/merge" pa coordinator merge + post-merge gate + inicijalni GitNexus index. |
 | ACS-P0-002..008 | BLOCKED | — | — | Čekaju da ACS-P0-001 (pa redom 002) budu stvarno merged u main. Vidi DAG u `.agent/PROJECT_MAP.md` §5. |
 
 ## Paralelizacija — trenutna provjera
