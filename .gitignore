@@ -1,0 +1,29 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+.venv/
+
+# Test / coverage / tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Packaging / build
+dist/
+build/
+*.egg-info/
+
+# Runtime artifacts (keep the directory, ignore its contents)
+artifacts/*
+!artifacts/.gitkeep
+
+# Logs
+*.log
+
+# Local environment / secrets
+.env
+.env.*
