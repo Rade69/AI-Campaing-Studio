@@ -76,7 +76,7 @@ ne postoji (gate fajl nastaje tek u ACS-P0-008). Postoji sada: `src/`, `tests/`,
 | Task | Status | Implementer | Reviewers | Napomena |
 |---|---|---|---|---|
 | ACS-P0-001 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `def4ea1` (`--no-ff`, task branch `task/ACS-P0-001-repo-foundation` @ `949d18c`). Reviews: Claude PASS (`agent_reports/2026-08-30-ACS-P0-001-review-claude.md`), Codex PASS_WITH_NOTES (`agent_reports/2026-08-30-ACS-P0-001-review-codex.md`, no blocking findings). Human Owner approval: eksplicitno "Odobravam". Post-merge gate PASS na `main` (import/pytest 3-3/ruff/mypy, Python 3.14.1). Worktree uklonjen (`git worktree remove`), branch `task/ACS-P0-001-repo-foundation` ostavljen netaknut u historiji. |
-| ACS-P0-002 | **UNBLOCKED — sljedeći task, contract još nije napisan** | Pi (default) | Codex + Claude (elevated P0 standard, §4 — dira config/path contracts i architecture boundaries) | Scope: P0.06–P0.10 (config/logging/common + architecture boundaries). Risk: HIGH tokom foundation paketa. Prije pisanja kontrakta: GitNexus pre-impact (sada dostupan, vidi index status ispod). |
+| ACS-P0-002 | **OPEN — contract spreman, worktree+branch kreirani, čeka implementaciju (Pi)** | Pi | Codex, Claude (obavezno oba — elevated P0 standard §4) | Scope: P0.06–P0.10. Kontrakt: `agent_reports/ACS-P0-002-task-contract.md`. Worktree `../ai-campaign-studio-worktrees/ACS-P0-002-config-boundaries`, branch `task/ACS-P0-002-config-boundaries` od `main@1725aaa`. GitNexus pre-impact: `bootstrap.py`/`create_bootstrap`/`main` upstream risk LOW (2 impacted, samo `main.py` + testovi), `scope_fit: PASS`. `adversarial_required: true` (boundary test mora FAIL na sintetičkom forbidden importu prije nego PASS na realnom tree-u). |
 | ACS-P0-003..008 | BLOCKED | — | — | 003–006 čekaju da 002 bude merged (ne granati prije toga); 007 čeka 003+004+005+006; 008 čeka sve. DAG u `.agent/PROJECT_MAP.md` §5. |
 
 ## Paralelizacija — trenutna provjera
@@ -127,7 +127,6 @@ pa `npx gitnexus status` da se potvrdi `up-to-date` na trenutnom HEAD-u.
 
 ## Sljedeći task
 
-ACS-P0-002 — config/logging/common + architecture boundaries (P0.06–P0.10). Koordinator treba prvo
-GitNexus pre-impact (context/impact na planirane simbole), zatim napisati Task Contract, zatim
-worktree `../ai-campaign-studio-worktrees/ACS-P0-002-<short-name>` na branch-u
-`task/ACS-P0-002-<short-name>` od trenutnog `main`@`def4ea1`.
+ACS-P0-002 implementacija u worktree-u
+`../ai-campaign-studio-worktrees/ACS-P0-002-config-boundaries`, branch
+`task/ACS-P0-002-config-boundaries`. Kontrakt: `agent_reports/ACS-P0-002-task-contract.md`.
