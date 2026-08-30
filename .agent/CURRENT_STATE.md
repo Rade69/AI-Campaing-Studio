@@ -3,7 +3,7 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-08-30 (coordinator: claude)
+**Zadnje ažurirano:** 2026-08-30, poslije merge-a ACS-P0-001 (coordinator: claude)
 
 ---
 
@@ -67,52 +67,67 @@ Performance/Analytics Task Contract mora slijediti `.agent/TASK_ROUTING.md` sekc
 
 ## Trenutni P0 gate
 
-NOT STARTED. `artifacts/phase0_foundation_gate.json` ne postoji. Nema koda, nema `src/`, `tests/`,
-`pyproject.toml`. Repo je danas prvi put git-inicijalizovan (prije toga samo planning dokumenti,
-bez `.git`).
+NOT DONE — samo ACS-P0-001 od 8 P0 taskova je merged. `artifacts/phase0_foundation_gate.json` još
+ne postoji (gate fajl nastaje tek u ACS-P0-008). Postoji sada: `src/`, `tests/`, `pyproject.toml`,
+`.gitignore`, `.venv` (root, editable install), sve zeleno na `main`.
 
 ## Aktivni taskovi
 
 | Task | Status | Implementer | Reviewers | Napomena |
 |---|---|---|---|---|
-| ACS-P0-001 | REVIEWS COMPLETE (Claude PASS, Codex PASS_WITH_NOTES, no blocking findings) — čeka eksplicitno Human Owner odobrenje za merge | Crush | Codex, Claude | Repo/tooling/bootstrap skeleton. Commit `949d18c` na branch `task/ACS-P0-001-repo-foundation`. Evidence: `agent_reports/2026-08-30-ACS-P0-001-crush.md`. Claude review: `agent_reports/2026-08-30-ACS-P0-001-review-claude.md` (PASS). Codex review: `agent_reports/2026-08-30-ACS-P0-001-review-codex.md` (PASS_WITH_NOTES — jedina napomena je sandbox-specifičan mypy cache write izvan dozvoljenog root-a, bez nalaza u kodu; potvrđeno da testovi nisu placeholderi i da `main()` ne guta bootstrap grešku). Sljedeći korak: Human Owner "odobreno/merge" pa coordinator merge + post-merge gate + inicijalni GitNexus index. |
-| ACS-P0-002..008 | BLOCKED | — | — | Čekaju da ACS-P0-001 (pa redom 002) budu stvarno merged u main. Vidi DAG u `.agent/PROJECT_MAP.md` §5. |
+| ACS-P0-001 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `def4ea1` (`--no-ff`, task branch `task/ACS-P0-001-repo-foundation` @ `949d18c`). Reviews: Claude PASS (`agent_reports/2026-08-30-ACS-P0-001-review-claude.md`), Codex PASS_WITH_NOTES (`agent_reports/2026-08-30-ACS-P0-001-review-codex.md`, no blocking findings). Human Owner approval: eksplicitno "Odobravam". Post-merge gate PASS na `main` (import/pytest 3-3/ruff/mypy, Python 3.14.1). Worktree uklonjen (`git worktree remove`), branch `task/ACS-P0-001-repo-foundation` ostavljen netaknut u historiji. |
+| ACS-P0-002 | **UNBLOCKED — sljedeći task, contract još nije napisan** | Pi (default) | Codex + Claude (elevated P0 standard, §4 — dira config/path contracts i architecture boundaries) | Scope: P0.06–P0.10 (config/logging/common + architecture boundaries). Risk: HIGH tokom foundation paketa. Prije pisanja kontrakta: GitNexus pre-impact (sada dostupan, vidi index status ispod). |
+| ACS-P0-003..008 | BLOCKED | — | — | 003–006 čekaju da 002 bude merged (ne granati prije toga); 007 čeka 003+004+005+006; 008 čeka sve. DAG u `.agent/PROJECT_MAP.md` §5. |
 
 ## Paralelizacija — trenutna provjera
 
-Samo ACS-P0-001 je unblocked. Nema drugog taska sa disjoint `allowed_paths` spremnog za paralelan
-rad u ovom trenutku — 003/004 mogu paralelno tek pošto 002 bude merged, i tek nakon provjere
-`allowed_paths` preklapanja (`.agent/TASK_ROUTING.md`).
+Samo ACS-P0-002 je sljedeći unblocked task. Nema kandidata za paralelan rad dok 002 ne bude
+merged — 003 i 004 mogu tek tada, uz provjeru `allowed_paths` preklapanja (`.agent/TASK_ROUTING.md`).
 
 ## Poznati blokatori
 
-- GitNexus MCP je javio `CONNECT_TIMEOUT` u ovoj sesiji — nije required za ACS-P0-001
-  (`gitnexus_required: false` u kontraktu), ali mora raditi prije ACS-P0-002 (HIGH, boundary-dirajući).
-  Provjeriti/retry-ovati konekciju prije pripreme ACS-P0-002 kontrakta.
 - Ova (koordinator) sesija nema direktan CLI pristup pravim Codex/Crush/Pi alatima — koordinator
   priprema worktree, branch i eksplicitna uputstva (Task Contract); Human Owner pokreće
-  implementer/reviewer agente eksterno i javlja rezultat/diff nazad koordinatoru.
-- `scripts/coordination.py` (claim/status/release) još ne postoji — nastaje kao dio ACS-P0-001/002
-  tooling seta; do tada se coordination claim vodi ručno kroz ovaj fajl (jedan aktivan task odjednom,
-  pa ovo trenutno nije problem jer je samo 001 unblocked).
+  implementer/reviewer agente eksterno i javlja rezultat/diff nazad koordinatoru. Za ACS-P0-001 je
+  ovaj obrazac funkcionisao (Codex review dobijen i verifikovan).
+- `.agent/GITNEXUS_PROTOCOL.md` §9 i workflow §19 referenciraju `npx gitnexus check --cycles --repo .`
+  — ta komanda ne postoji u instaliranoj GitNexus CLI verziji (`unknown command 'check'`; stvarne
+  komande vidi `npx gitnexus --help`). Cycle-check korak je preskočen post-merge gate-u za ACS-P0-001
+  (nebitno za 3 fajla bez međuzavisnosti). Treba ažurirati protokol dokument na stvarne CLI komande
+  prije nego što cycle-check postane bitan (ACS-P0-002+, kad se uvode moduli sa međuzavisnostima).
+- `scripts/coordination.py` (claim/status/release) još ne postoji. Do sada nije bio problem (uvijek
+  samo jedan unblocked task). Postaje relevantno ako se 003–006 pokrenu paralelno.
+- Nekomitovane Performance/Analytics dopune (`AGENTS.md`, `CLAUDE.md`, `.agent/PROJECT_MAP.md`,
+  `.agent/TASK_ROUTING.md`, dva nova plan dokumenta) postoje u radnom stablu, dodane iz druge
+  sesije — nisu commit-ovane od strane koordinatora, ostavljene netaknute.
 
 ## Verification baseline
 
-Nema — nema koda za pokrenuti. Prvi baseline nastaje kad ACS-P0-001 prođe verification set iz svog
-Task Contracta (`ruff`, `mypy`, `pytest`, import check).
+Uspostavljen na `main` poslije merge-a ACS-P0-001 (2026-08-30, root `.venv`, Python 3.14.1):
+
+```text
+import ai_campaign_studio  → OK
+python -m pytest -q        → 3 passed
+python -m ruff check .     → All checks passed!
+python -m mypy src         → Success: no issues found in 3 source files
+```
 
 ## GitNexus index status
 
-Nije indeksirano (očekivano — nema još korisnog source graph-a). Odmah nakon merge-a ACS-P0-001:
+Indeksirano poslije merge-a ACS-P0-001:
 
-```bash
-npx gitnexus analyze --skip-agents-md
-npx gitnexus status
+```text
+Indexed commit: def4ea1 (= trenutni main HEAD)
+Status: up-to-date
+1678 nodes | 1669 edges | 1 clusters | 0 flows
 ```
 
-pa ažurirati ovu sekciju sa index datumom/statusom.
+Prije ACS-P0-002 pre-impact-a, ako main odmakne, ponovo pokrenuti `npx gitnexus analyze --skip-agents-md`
+pa `npx gitnexus status` da se potvrdi `up-to-date` na trenutnom HEAD-u.
 
 ## Sljedeći task
 
-ACS-P0-001 implementacija u worktree-u `../ai-campaign-studio-worktrees/ACS-P0-001-repo-foundation`,
-branch `task/ACS-P0-001-repo-foundation`. Kontrakt: `agent_reports/ACS-P0-001-task-contract.md`.
+ACS-P0-002 — config/logging/common + architecture boundaries (P0.06–P0.10). Koordinator treba prvo
+GitNexus pre-impact (context/impact na planirane simbole), zatim napisati Task Contract, zatim
+worktree `../ai-campaign-studio-worktrees/ACS-P0-002-<short-name>` na branch-u
+`task/ACS-P0-002-<short-name>` od trenutnog `main`@`def4ea1`.
