@@ -32,7 +32,7 @@ bez `.git`).
 
 | Task | Status | Implementer | Reviewers | Napomena |
 |---|---|---|---|---|
-| ACS-P0-001 | OPEN — contract written, worktree/branch u pripremi | Crush | Codex, Claude | Repo/tooling/bootstrap skeleton. Nema zavisnosti, prvi unblocked task. |
+| ACS-P0-001 | OPEN — contract spreman, worktree+branch kreirani, čeka implementaciju (Crush) | Crush | Codex, Claude | Repo/tooling/bootstrap skeleton. Nema zavisnosti, prvi unblocked task. Worktree: `../ai-campaign-studio-worktrees/ACS-P0-001-repo-foundation`, branch `task/ACS-P0-001-repo-foundation`, bazirano na `main`@`85c5f41`. |
 | ACS-P0-002..008 | BLOCKED | — | — | Čekaju da ACS-P0-001 (pa redom 002) budu stvarno merged u main. Vidi DAG u `.agent/PROJECT_MAP.md` §5. |
 
 ## Paralelizacija — trenutna provjera
