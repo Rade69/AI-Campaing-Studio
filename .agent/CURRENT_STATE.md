@@ -76,7 +76,7 @@ ne postoji (gate fajl nastaje tek u ACS-P0-008). Postoji sada: `src/`, `tests/`,
 | Task | Status | Implementer | Reviewers | Napomena |
 |---|---|---|---|---|
 | ACS-P0-001 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `def4ea1` (`--no-ff`, task branch `task/ACS-P0-001-repo-foundation` @ `949d18c`). Reviews: Claude PASS (`agent_reports/2026-08-30-ACS-P0-001-review-claude.md`), Codex PASS_WITH_NOTES (`agent_reports/2026-08-30-ACS-P0-001-review-codex.md`, no blocking findings). Human Owner approval: eksplicitno "Odobravam". Post-merge gate PASS na `main` (import/pytest 3-3/ruff/mypy, Python 3.14.1). Worktree uklonjen (`git worktree remove`), branch `task/ACS-P0-001-repo-foundation` ostavljen netaknut u historiji. |
-| ACS-P0-002 | **OPEN — contract spreman, worktree+branch kreirani, čeka implementaciju (Pi)** | Pi | Codex, Claude (obavezno oba — elevated P0 standard §4) | Scope: P0.06–P0.10. Kontrakt: `agent_reports/ACS-P0-002-task-contract.md`. Worktree `../ai-campaign-studio-worktrees/ACS-P0-002-config-boundaries`, branch `task/ACS-P0-002-config-boundaries` od `main@1725aaa`. GitNexus pre-impact: `bootstrap.py`/`create_bootstrap`/`main` upstream risk LOW (2 impacted, samo `main.py` + testovi), `scope_fit: PASS`. `adversarial_required: true` (boundary test mora FAIL na sintetičkom forbidden importu prije nego PASS na realnom tree-u). |
+| ACS-P0-002 | IMPLEMENTED, Claude review PASS, čeka Codex review + Human Owner approval | Pi | Codex, Claude (obavezno oba — elevated P0 standard §4) | Commit `c6fa0b8` na `task/ACS-P0-002-config-boundaries`. Evidence: `agent_reports/2026-08-31-ACS-P0-002-pi.md`. Claude review: `agent_reports/2026-08-31-ACS-P0-002-review-claude.md` (PASS, `gitnexus_impact: UNKNOWN` zbog worktree-binding limitacije, kompenzovano ručnim review-om). Codex brief spreman: `agent_reports/2026-08-31-ACS-P0-002-codex-review-request.md` — Human Owner prosljeđuje eksterno. Adversarial dokaz (boundary checker + redaction FAIL→PASS) potvrđen nezavisno od koordinatora. |
 | ACS-P0-003..008 | BLOCKED | — | — | 003–006 čekaju da 002 bude merged (ne granati prije toga); 007 čeka 003+004+005+006; 008 čeka sve. DAG u `.agent/PROJECT_MAP.md` §5. |
 
 ## Paralelizacija — trenutna provjera
@@ -97,6 +97,12 @@ merged — 003 i 004 mogu tek tada, uz provjeru `allowed_paths` preklapanja (`.a
   prije nego što cycle-check postane bitan (ACS-P0-002+, kad se uvode moduli sa međuzavisnostima).
 - `scripts/coordination.py` (claim/status/release) još ne postoji. Do sada nije bio problem (uvijek
   samo jedan unblocked task). Postaje relevantno ako se 003–006 pokrenu paralelno.
+- GitNexus `detect-changes`/`context`/`impact` binduju se na registrovani glavni checkout, ne na
+  linked worktree (`--repo .` iz worktree-a vraća "Repository not found"; iz glavnog checkout-a
+  vraća diff glavnog radnog stabla, ne task branch-a). Potvrđeno i od implementera (Pi, ACS-P0-002)
+  i od koordinatora — nije izolovan slučaj. `gitnexus_impact` se za MEDIUM/HIGH taskove trenutno
+  mora tretirati kao `UNKNOWN` i kompenzovati ručnim diff/file review-om (kao za ACS-P0-002), ne kao
+  "nema impacta". Riješiti prije nego što broj paralelnih worktree-ova poraste (ACS-P0-003..006).
 - Nekomitovane Performance/Analytics dopune (`AGENTS.md`, `CLAUDE.md`, `.agent/PROJECT_MAP.md`,
   `.agent/TASK_ROUTING.md`, dva nova plan dokumenta) postoje u radnom stablu, dodane iz druge
   sesije — nisu commit-ovane od strane koordinatora, ostavljene netaknute.
