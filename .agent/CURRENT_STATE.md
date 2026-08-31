@@ -3,7 +3,7 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-08-30, poslije merge-a ACS-P0-001 (coordinator: claude)
+**Zadnje ažurirano:** 2026-08-31, poslije merge-a ACS-P0-002 (coordinator: claude)
 
 ---
 
@@ -67,22 +67,29 @@ Performance/Analytics Task Contract mora slijediti `.agent/TASK_ROUTING.md` sekc
 
 ## Trenutni P0 gate
 
-NOT DONE — samo ACS-P0-001 od 8 P0 taskova je merged. `artifacts/phase0_foundation_gate.json` još
-ne postoji (gate fajl nastaje tek u ACS-P0-008). Postoji sada: `src/`, `tests/`, `pyproject.toml`,
-`.gitignore`, `.venv` (root, editable install), sve zeleno na `main`.
+NOT DONE — ACS-P0-001 i ACS-P0-002 od 8 P0 taskova su merged. `artifacts/phase0_foundation_gate.json`
+još ne postoji (gate fajl nastaje tek u ACS-P0-008). `src/ai_campaign_studio/` sada ima
+`config/`, `logging/`, `domain/common/`, prazne `application/`/`ports/`/`presentation/` seam-ove, i
+`tests/architecture/test_import_boundaries.py` (prvi automatski architecture-boundary invariant).
 
 ## Aktivni taskovi
 
 | Task | Status | Implementer | Reviewers | Napomena |
 |---|---|---|---|---|
-| ACS-P0-001 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `def4ea1` (`--no-ff`, task branch `task/ACS-P0-001-repo-foundation` @ `949d18c`). Reviews: Claude PASS (`agent_reports/2026-08-30-ACS-P0-001-review-claude.md`), Codex PASS_WITH_NOTES (`agent_reports/2026-08-30-ACS-P0-001-review-codex.md`, no blocking findings). Human Owner approval: eksplicitno "Odobravam". Post-merge gate PASS na `main` (import/pytest 3-3/ruff/mypy, Python 3.14.1). Worktree uklonjen (`git worktree remove`), branch `task/ACS-P0-001-repo-foundation` ostavljen netaknut u historiji. |
-| ACS-P0-002 | BF-1 FIX ROUND 4 DONE (coordinator-confirmed), čeka Codex round 5 + Human Owner approval | Pi | Codex, Claude | Novi HEAD `d6dc783` (prošli round 4 REJECT bio na `f30c5b3`). Fix round 4 dodao `_ScopeFrame(kind=...)` tagging — `_resolve_name` preskače `class` frame-ove pri rešavanju iz function/method scope-a (Python LEGB semantika). Koordinator dirao samo 1 fajl (diff potvrđen), nezavisno reprodukovao Codex-ov `Evil`/`method()` scenario ZAJEDNO sa svih 10 ranijih oblika kombinovano — svih 11 uhvaćeno, čisto stablo 15/15, pun set 43 testa zelen. Evidence: `agent_reports/2026-08-31-ACS-P0-002-fix-round4-pi.md`. GitNexus MCP isproban ovog ciklusa (`mcp__gitnexus__detect_changes`) — potvrđena ista worktree-binding limitacija kao CLI, ne rješava problem. Codex round 5 brief: `agent_reports/2026-08-31-ACS-P0-002-codex-round5-request.md` — testira nested-class-in-function i function-in-method kombinacije; peta runda, opet traži proporcionalnost od Codexa. |
-| ACS-P0-003..008 | BLOCKED | — | — | 003–006 čekaju da 002 bude merged (ne granati prije toga); 007 čeka 003+004+005+006; 008 čeka sve. DAG u `.agent/PROJECT_MAP.md` §5. |
+| ACS-P0-001 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `def4ea1` (`--no-ff`, task branch `task/ACS-P0-001-repo-foundation` @ `949d18c`). Reviews: Claude PASS, Codex PASS_WITH_NOTES (no blocking findings). Human Owner approval: "Odobravam". Post-merge gate PASS. Worktree uklonjen. |
+| ACS-P0-002 | **DONE — merged u main** | Pi | Codex, Claude | Merge commit `e187a56` (`--no-ff`, task branch `task/ACS-P0-002-config-boundaries` @ `d6dc783`). 5 review rundi: Codex REJECT×4 (BF-1: boundary-checker bypassi pa lexical/class-scope resolution bugovi), svaki fix nezavisno re-verifikovan od koordinatora (kombinovana adversarial reprodukcija do 11 bypass/scope oblika u finalnoj rundi), round 5 `PASS_WITH_NOTES` bez blocking findings. Finalni decision packet: `agent_reports/2026-08-31-ACS-P0-002-final-decision-packet.md` (READY FOR HUMAN APPROVAL, R1–R6 reziduelni rizici). Human Owner approval: "Slažem se". Post-merge gate PASS na `main` (43 testa, ruff, mypy, health-check, Python 3.14.1). Worktree uklonjen (`--force`, samo Pi-jevi već-inkorporirani raw report fajlovi izgubljeni, bez sadržajnog gubitka). |
+| ACS-P0-003 | **UNBLOCKED** | Pi (default) | — (LOW/MEDIUM dok se ne pokaže drugačije) | Scope: P0.11–P0.12 (localization + regional resources). Contract još nije napisan. Može paralelno sa 004 ako `allowed_paths` ne presijecaju (provjeriti prije branch-a). |
+| ACS-P0-004 | **UNBLOCKED** | Crush (default) | — | Scope: P0.13 (Channel/Platform/Format registry). Contract još nije napisan. Može paralelno sa 003. |
+| ACS-P0-005 | **UNBLOCKED** | Pi (default) | Codex, Claude (HIGH — SecretStore) | Scope: P0.14–P0.15 (AI Provider/Model Registry + SecretStore). Contract još nije napisan. |
+| ACS-P0-006 | **UNBLOCKED** | Crush (default) | Codex, Claude (HIGH — SQLite/migrations) | Scope: P0.16–P0.19. Contract još nije napisan. |
+| ACS-P0-007..008 | BLOCKED | — | — | 007 čeka 003+004+005+006; 008 čeka sve. DAG u `.agent/PROJECT_MAP.md` §5. |
 
 ## Paralelizacija — trenutna provjera
 
-Samo ACS-P0-002 je sljedeći unblocked task. Nema kandidata za paralelan rad dok 002 ne bude
-merged — 003 i 004 mogu tek tada, uz provjeru `allowed_paths` preklapanja (`.agent/TASK_ROUTING.md`).
+ACS-P0-003/004/005/006 su sada SVI unblocked (002 je merged). Prije bilo kakvog paralelnog
+pokretanja: provjeriti `allowed_paths` disjoint po `.agent/TASK_ROUTING.md` §"Napomena o
+paralelizaciji" za svaki par koji bi trebalo da radi istovremeno — ovo još nije urađeno za
+003–006 par-po-par, obavezno prije brancovanja više od jednog odjednom.
 
 ## Poznati blokatori
 
@@ -115,30 +122,34 @@ merged — 003 i 004 mogu tek tada, uz provjeru `allowed_paths` preklapanja (`.a
 
 ## Verification baseline
 
-Uspostavljen na `main` poslije merge-a ACS-P0-001 (2026-08-30, root `.venv`, Python 3.14.1):
+Uspostavljen na `main` poslije merge-a ACS-P0-002 (2026-08-31, root `.venv`, Python 3.14.1):
 
 ```text
-import ai_campaign_studio  → OK
-python -m pytest -q        → 3 passed
+import ai_campaign_studio  → OK (0.1.0)
+python -m pytest -q        → 43 passed
 python -m ruff check .     → All checks passed!
-python -m mypy src         → Success: no issues found in 3 source files
+python -m mypy src         → Success: no issues found in 18 source files
+python -m ai_campaign_studio.main --health-check → exit 0
 ```
 
 ## GitNexus index status
 
-Indeksirano poslije merge-a ACS-P0-001:
+Indeksirano poslije merge-a ACS-P0-002:
 
 ```text
-Indexed commit: def4ea1 (= trenutni main HEAD)
+Indexed commit: e187a56 (= trenutni main HEAD)
 Status: up-to-date
-1678 nodes | 1669 edges | 1 clusters | 0 flows
+2106 nodes | 2215 edges | 11 clusters | 1 flows
 ```
 
-Prije ACS-P0-002 pre-impact-a, ako main odmakne, ponovo pokrenuti `npx gitnexus analyze --skip-agents-md`
-pa `npx gitnexus status` da se potvrdi `up-to-date` na trenutnom HEAD-u.
+`mcp__gitnexus__*` MCP alati su sada dostupni u koordinator sesiji (pored CLI), ali dijele istu
+worktree-binding limitaciju — vidi blokatore. Prije ACS-P0-003+ pre-impact-a, ako main odmakne,
+ponovo pokrenuti `npx gitnexus analyze --skip-agents-md` pa `npx gitnexus status`.
 
 ## Sljedeći task
 
-ACS-P0-002 implementacija u worktree-u
-`../ai-campaign-studio-worktrees/ACS-P0-002-config-boundaries`, branch
-`task/ACS-P0-002-config-boundaries`. Kontrakt: `agent_reports/ACS-P0-002-task-contract.md`.
+Nema jednog "sljedećeg" — ACS-P0-003, 004, 005 i 006 su svi unblocked (vidi tabelu iznad). Koordinator
+treba: (1) odlučiti redoslijed/paralelizam sa Human Ownerom, (2) provjeriti `allowed_paths` disjoint
+za bilo koji par pokrenut paralelno, (3) GitNexus pre-impact prije svakog Task Contracta (HIGH taskovi
+005/006 to zahtijevaju eksplicitno), (4) pripremiti worktree/branch/contract po istom obrascu kao
+001/002.
