@@ -51,8 +51,10 @@ class PlatformRegistry(PlatformRegistryPort):
             platforms[platform.code] = platform
 
             by_code: dict[str, FormatDefinition] = {}
-            raw_formats = raw.get("formats") or []
-            if not isinstance(raw_formats, list):
+            raw_formats = raw.get("formats")
+            if raw_formats is None:
+                raw_formats = []
+            elif not isinstance(raw_formats, list):
                 raise RegistryError(f"formats must be a list in {path.name}")
             for raw_format in raw_formats:
                 fmt = self._build_format(raw_format, path)

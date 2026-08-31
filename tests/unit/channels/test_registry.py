@@ -260,3 +260,24 @@ formats:
 
     with pytest.raises(RegistryError):
         registry.list_platforms()
+
+
+@pytest.mark.parametrize("formats_value", ["false", '""', "0"])
+def test_falsy_non_list_formats_rejected(tmp_path: Path, formats_value: str) -> None:
+    _write(
+        tmp_path,
+        "test.yaml",
+        f"""\
+code: TEST_PLATFORM
+display_name: Test Platform
+channel: SOCIAL
+supported_formats: []
+content_rules: []
+enabled: true
+formats: {formats_value}
+""",
+    )
+    registry = PlatformRegistry(tmp_path)
+
+    with pytest.raises(RegistryError):
+        registry.list_platforms()
