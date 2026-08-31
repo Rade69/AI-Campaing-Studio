@@ -29,6 +29,7 @@ Redoslijed autoriteta:
 
 1. najnovija eksplicitna odluka Human Ownera;
 2. `AI_Campaign_Studio_Faza_0_6_Channel_Model_LLM_Registry.md`;
+   - za Performance/Analytics odluke obavezna dopuna je `AI_Campaign_Studio_Faza_0_7_Performance_Analytics_Architecture.md`;
 3. aktivni Implementation Phase 0 / Faza 1 plan označen u `.agent/CURRENT_STATE.md`;
 4. `docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md` za proces rada;
 5. konkretan Task Contract;
@@ -53,6 +54,7 @@ Ako postoji konflikt, NE nagađaj. Prijavi ga koordinatoru.
 - UI framework nije izabran dok UI-GATE ne prođe.
 - Social media je prvi output, ali Campaign Engine ostaje channel-agnostic.
 - Provider/model izbor ne smije procuriti u Campaign Engine.
+- Performance/Analytics se ne implementira prerano: agent mora koristiti `.agent/TASK_ROUTING.md` sekciju `Performance / Analytics task`; runtime Slice 1.5 počinje tek poslije potvrđenog `G10 Vertical Slice PASS`.
 
 ## GitNexus — obavezno
 

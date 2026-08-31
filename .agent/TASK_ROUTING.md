@@ -23,6 +23,133 @@ Za taskove iz Faze 1 (tek nakon `P0-GATE = PASS`): dodatno čitati
 `AI_Campaign_Studio_Faza_1_v1_4_Agent_Workflow_Integrated.md`, relevantnu vertical-slice sekciju,
 i ovaj fajl ažurirati novim redovima kada Faza 1 taskovi budu paketovani.
 
+Ako Faza 1 task dira analytics-ready identitete, revisions, export manifest ili `analytics_match_key`,
+obavezno primijeniti i sekciju **Performance / Analytics task** ispod, zajedno sa:
+`AI_Campaign_Studio_Faza_0_7_Performance_Analytics_Architecture.md` i
+`AI_Campaign_Studio_Faza_1_v1_5_Analytics_Ready_Implementation_Plan.md`.
+
+## Performance / Analytics task
+
+Ova sekcija je obavezna za svaki task koji dira ili uvodi:
+
+```text
+analytics-ready stable IDs
+content revision identity za export/performance
+analytics_match_key
+export manifest identitete
+DistributionInstance
+PerformanceSnapshot
+PerformanceImportBatch
+metric calculator
+CSV/manual performance import
+performance matching
+Campaign/Content Performance read modele ili UI
+PerformanceSourcePort / buduće platform API adaptere
+Campaign Learning / AI performance interpretation
+```
+
+### A. Faza 1 PRIJE `G10 Vertical Slice PASS`
+
+Analytics runtime modul se NE implementira.
+
+Obavezno čitati:
+
+1. `AI_Campaign_Studio_Faza_0_7_Performance_Analytics_Architecture.md`
+   - posebno `DistributionInstance`, revision identity, export manifest i anti-refactor pravila;
+2. `AI_Campaign_Studio_Faza_1_v1_5_Analytics_Ready_Implementation_Plan.md`
+   - samo sekcije koje pripadaju trenutnom A-tasku;
+3. aktivni `AI_Campaign_Studio_Faza_1_v1_4_Agent_Workflow_Integrated.md`
+   - relevantni business/vertical-slice blok;
+4. relevantne domain/export/renderer modele i njihove testove;
+5. `.agent/GITNEXUS_PROTOCOL.md`.
+
+Dozvoljeno prije G10:
+
+```text
+stable IDs
+content_revision_id
+channel/platform/format identity
+manifest.json
+analytics_match_key
+artifact metadata link
+```
+
+Zabranjeno prije G10:
+
+```text
+PerformanceSnapshot persistence
+DistributionInstance runtime tabela
+Analytics dashboard
+CSV performance import
+Meta/TikTok/LinkedIn/Google performance API integracije
+AI performance recommendations
+```
+
+### B. Poslije potvrđenog `G10 Vertical Slice PASS` — Slice 1.5
+
+Koordinator prvo ažurira `.agent/CURRENT_STATE.md`:
+
+```text
+Performance / Analytics status: SLICE 1.5 ACTIVE
+```
+
+Svaki Slice 1.5 Task Contract mora dodatno čitati:
+
+1. `AI_Campaign_Studio_Faza_0_7_Performance_Analytics_Architecture.md`;
+2. odgovarajući `P1.5-G*` gate iz `AI_Campaign_Studio_Faza_1_v1_5_Analytics_Ready_Implementation_Plan.md`;
+3. postojeće `Campaign`, `CampaignItem`, `ContentPiece`, `Revision` i export manifest contracte;
+4. Channel/Platform/Format registry;
+5. SQLite migration/UoW/repository foundation;
+6. relevantne testove;
+7. `.agent/GITNEXUS_PROTOCOL.md`.
+
+GitNexus je **obavezan za svaki Slice 1.5 task**:
+
+```text
+pre-change context
+upstream impact
+downstream impact kada je relevantno
+detect-changes prije reviewa
+post-merge re-index
+```
+
+### C. Prvi Performance input
+
+Prvo implementirati:
+
+```text
+CSV / Excel import
++
+manual mapping / correction
+```
+
+Ne počinjati direktnim platformskim API integracijama.
+
+### D. Authoritative matching
+
+Prioritet:
+
+```text
+1. external_content_id
+2. analytics_match_key
+3. stable content/distribution IDs
+4. manual user confirmation
+```
+
+LLM semantic guess nije dozvoljen kao primarni authoritative matcher.
+
+### E. Izvedene metrike
+
+CTR, CPC, CPM, CPA, ROAS i Conversion Rate računaju se deterministički iz raw vrijednosti.
+
+AI nije source of truth za numerički rezultat.
+
+### F. Direktne platform API integracije
+
+Tek poslije uspješnog Slice 1.5 i dokazane potrebe kroz realnu upotrebu CSV/manual importa.
+
+Svaki novi adapter ide iza `PerformanceSourcePort`; Campaign Engine ne smije znati concrete adapter.
+
 ## Napomena o paralelizaciji
 
 Prije nego što se dva taska pokrenu paralelno, provjeriti (workflow §10):

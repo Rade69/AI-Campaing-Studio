@@ -67,10 +67,23 @@ UI framework se ne zaključava prije UI spike gate-a.
 - Human-in-loop odobravanje plana/sadržaja.
 - Website ingestion dolazi tek poslije Campaign Engine proof-a.
 - Renderer i UI framework su odvojene tehničke odluke.
+- Performance/Analytics je arhitektonski planiran, ali runtime modul nije dio P0 niti ranog Campaign Engine MVP-a.
+- Faza 1 mora sačuvati stable campaign/content/revision/target identitete, `manifest.json` i `analytics_match_key` da Slice 1.5 ne zahtijeva veliki refaktor.
+- Stvarni Performance modul (`DistributionInstance`, `PerformanceSnapshot`, CSV/manual import, metric calculator) počinje tek poslije `G10 Vertical Slice PASS`, prije Website Ingestion Slice 2.
 
 ## Aktivni projektni dokumenti
 
 Aktuelne verzije se navode u `.agent/CURRENT_STATE.md`.
+
+Za Performance/Analytics zadatke dodatni obavezni source of truth su:
+
+```text
+AI_Campaign_Studio_Faza_0_7_Performance_Analytics_Architecture.md
+AI_Campaign_Studio_Faza_1_v1_5_Analytics_Ready_Implementation_Plan.md
+```
+
+Tačan read-set i trenutak korištenja određuje `.agent/TASK_ROUTING.md` sekcija
+`Performance / Analytics task`.
 
 Ne oslanjaj se na starije Faza 0/Faza 1 verzije ako CURRENT_STATE kaže da su superseded.
 
