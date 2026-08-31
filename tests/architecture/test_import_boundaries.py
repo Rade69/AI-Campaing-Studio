@@ -18,6 +18,7 @@ literal dynamic imports (``importlib.import_module(...)``,
 
 import ast
 from collections.abc import Iterable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "ai_campaign_studio"
@@ -78,34 +79,44 @@ def _literal_arg(call: ast.Call) -> str | None:
     return None
 
 
+@dataclass
+class _ScopeFrame:
+    """One lexical scope with its kind and import bindings."""
+
+    kind: str  # "module" | "function" | "class"
+    bindings: dict[str, str] = field(default_factory=dict)
+
+
 class _ImportScanner(ast.NodeVisitor):
     """Collect imports and literal dynamic imports with lexical scope.
 
     Import bindings are tracked as a scope stack (module level + one scope per
     function/class), so a local import inside one function cannot shadow the
-    module-level alias used by an unrelated function.
+    module-level alias used by an unrelated function. Class frames are marked
+    separately because a class namespace is not part of the enclosing scope
+    chain for code inside a function/method (Python LEGB semantics).
     """
 
     def __init__(self, package: str) -> None:
         self.package = package
-        self.scopes: list[dict[str, str]] = [{}]
+        self.scopes: list[_ScopeFrame] = [_ScopeFrame("module")]
         self.results: list[tuple[str, str]] = []
 
     def _current_scope(self) -> dict[str, str]:
-        return self.scopes[-1]
+        return self.scopes[-1].bindings
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        self.scopes.append({})
+        self.scopes.append(_ScopeFrame("function"))
         self.generic_visit(node)
         self.scopes.pop()
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        self.scopes.append({})
+        self.scopes.append(_ScopeFrame("function"))
         self.generic_visit(node)
         self.scopes.pop()
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        self.scopes.append({})
+        self.scopes.append(_ScopeFrame("class"))
         self.generic_visit(node)
         self.scopes.pop()
 
@@ -147,9 +158,15 @@ class _ImportScanner(ast.NodeVisitor):
         self.generic_visit(node)
 
     def _resolve_name(self, name: str) -> str:
-        for scope in reversed(self.scopes):
-            if name in scope:
-                return scope[name]
+        # Python LEGB: a class namespace is NOT part of the enclosing scope
+        # chain for code inside a function/method. When resolving a name from
+        # a function scope, skip class frames while walking up the stack.
+        resolving_from_function = self.scopes[-1].kind == "function"
+        for frame in reversed(self.scopes):
+            if resolving_from_function and frame.kind == "class":
+                continue
+            if name in frame.bindings:
+                return frame.bindings[name]
         return name
 
     def _resolve_expr(self, expr: ast.expr) -> str | None:
@@ -409,6 +426,33 @@ def test_checker_resolves_module_alias_across_function_scopes(
         "def innocent():\n"
         "    import types as loader\n"
         "    return loader\n",
+        encoding="utf-8",
+    )
+    violations = find_violations(tmp_path)
+    assert any(
+        "domain/evil.py" in v and "ai_campaign_studio.infrastructure" in v
+        for v in violations
+    )
+
+
+def test_checker_method_resolution_skips_class_scope(tmp_path: Path) -> None:
+    # A class-level import must NOT shadow the module-level alias for the
+    # class's methods: Python resolves method-local names via
+    # local/enclosing-function/global/builtins, never through the class
+    # namespace. The checker must find the real module-level ``loader``
+    # (importlib) and flag the forbidden dynamic import.
+    (tmp_path / "domain").mkdir()
+    (tmp_path / "domain" / "evil.py").write_text(
+        "import importlib as loader\n"
+        "\n"
+        "\n"
+        "class Evil:\n"
+        "    import types as loader\n"
+        "\n"
+        "    def method(self):\n"
+        "        return loader.import_module(\n"
+        "            'ai_campaign_studio.infrastructure'\n"
+        "        )\n",
         encoding="utf-8",
     )
     violations = find_violations(tmp_path)
