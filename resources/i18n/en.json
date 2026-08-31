@@ -1,0 +1,19 @@
+{
+  "app.title": "AI Campaign Studio",
+  "app.starting": "Starting…",
+  "app.ready": "Ready",
+  "settings.title": "Settings",
+  "settings.language": "Language",
+  "settings.ai_providers": "AI Providers",
+  "settings.api_key": "API Key",
+  "settings.test_connection": "Test Connection",
+  "settings.connected": "Connected",
+  "settings.not_configured": "Not configured",
+  "common.save": "Save",
+  "common.cancel": "Cancel",
+  "common.close": "Close",
+  "common.retry": "Retry",
+  "error.generic": "Something went wrong.",
+  "error.configuration": "Configuration error.",
+  "error.database": "Database error."
+}
