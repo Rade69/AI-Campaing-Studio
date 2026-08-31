@@ -95,3 +95,35 @@ def test_fallback_logs_warning(
         result = translator.t("en.only")
     assert result == "English only"
     assert any("en.only" in record.message for record in caplog.records)
+
+
+def test_malformed_format_template_is_graceful(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    catalog = {"broken": "Broken {", "plain": "ok"}
+    (tmp_path / "en.json").write_text(json.dumps(catalog), encoding="utf-8")
+    (tmp_path / "bhs.json").write_text(json.dumps(catalog), encoding="utf-8")
+    translator = Translator(tmp_path)
+
+    with caplog.at_level(logging.WARNING):
+        result = translator.t("broken")
+
+    assert result == "Broken {"
+    assert any(
+        "Interpolation failed" in record.message for record in caplog.records
+    )
+
+
+def test_non_string_value_is_treated_as_missing(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    catalog = {"app.title": {"nested": "bad"}}
+    (tmp_path / "en.json").write_text(json.dumps(catalog), encoding="utf-8")
+    (tmp_path / "bhs.json").write_text(json.dumps(catalog), encoding="utf-8")
+    translator = Translator(tmp_path)
+
+    with caplog.at_level(logging.WARNING):
+        result = translator.t("app.title")
+
+    assert result == "[missing:app.title]"
+    assert any("Non-string" in record.message for record in caplog.records)

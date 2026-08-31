@@ -20,14 +20,14 @@ class Translator:
     """Concrete, stdlib-only implementation of the translation contract."""
 
     def __init__(self, translations_dir: Path) -> None:
-        self._catalogs: dict[AppLocale, dict[str, str]] = {
+        self._catalogs: dict[AppLocale, dict[str, Any]] = {
             AppLocale.EN: self._load(translations_dir / "en.json"),
             AppLocale.BHS_LATIN: self._load(translations_dir / "bhs.json"),
         }
         self._locale: AppLocale = AppLocale.EN
 
     @staticmethod
-    def _load(path: Path) -> dict[str, str]:
+    def _load(path: Path) -> dict[str, Any]:
         with path.open("r", encoding="utf-8") as handle:
             data = json.load(handle)
         if not isinstance(data, dict):
@@ -57,8 +57,14 @@ class Translator:
             logger.warning("Missing key %r in all catalogs", key)
             return f"[missing:{key}]"
 
+        if not isinstance(template, str):
+            logger.warning(
+                "Non-string value for key %r in %s catalog", key, self._locale.value
+            )
+            return f"[missing:{key}]"
+
         try:
             return template.format(**params)
-        except (KeyError, IndexError) as exc:
+        except (KeyError, IndexError, ValueError) as exc:
             logger.warning("Interpolation failed for key %r: %s", key, exc)
             return template

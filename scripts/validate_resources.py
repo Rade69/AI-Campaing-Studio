@@ -62,7 +62,12 @@ def _read_utf8(path: Path) -> str | None:
         return None
 
 
-def _duplicate_keys(raw: str) -> list[str]:
+def _parse_json(raw: str) -> tuple[Any, list[str]]:
+    """Parse JSON, returning ``(data, duplicate_keys)``.
+
+    Raises ``json.JSONDecodeError`` for syntactically invalid JSON so callers
+    can report a readable error instead of a traceback.
+    """
     duplicates: list[str] = []
 
     def hook(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -73,8 +78,8 @@ def _duplicate_keys(raw: str) -> list[str]:
             seen.add(key)
         return dict(pairs)
 
-    json.loads(raw, object_pairs_hook=hook)
-    return duplicates
+    data = json.loads(raw, object_pairs_hook=hook)
+    return data, duplicates
 
 
 def _expected_variant(path: Path) -> str | None:
@@ -97,20 +102,22 @@ def validate_i18n(en_path: Path, bhs_path: Path) -> list[str]:
     if en_raw is None or bhs_raw is None:
         return errors
 
+    catalogs: dict[Path, Any] = {}
     for path, raw in ((en_path, en_raw), (bhs_path, bhs_raw)):
-        duplicates = _duplicate_keys(raw)
-        if duplicates:
-            errors.append(f"{path}: duplicate JSON keys: {sorted(set(duplicates))}")
         try:
-            json.loads(raw)
+            data, duplicates = _parse_json(raw)
         except json.JSONDecodeError as exc:
             errors.append(f"{path}: invalid JSON: {exc}")
+            continue
+        if duplicates:
+            errors.append(f"{path}: duplicate JSON keys: {sorted(set(duplicates))}")
+        catalogs[path] = data
 
-    try:
-        en = json.loads(en_raw)
-        bhs = json.loads(bhs_raw)
-    except json.JSONDecodeError:
+    if en_path not in catalogs or bhs_path not in catalogs:
         return errors
+
+    en = catalogs[en_path]
+    bhs = catalogs[bhs_path]
 
     if not isinstance(en, dict) or not isinstance(bhs, dict):
         errors.append("i18n catalogs must be JSON objects")
@@ -124,6 +131,16 @@ def validate_i18n(en_path: Path, bhs_path: Path) -> list[str]:
         errors.append(f"{bhs_path}: missing required keys: {sorted(missing_bhs)}")
     if set(en) != set(bhs):
         errors.append("i18n catalogs must have the same key set")
+
+    # Values must be plain strings: the translator interpolates them with
+    # ``str.format``, so any non-string value would break at runtime.
+    for path, catalog in ((en_path, en), (bhs_path, bhs)):
+        for key, value in catalog.items():
+            if not isinstance(value, str):
+                errors.append(
+                    f"{path}: value for {key!r} must be a string, "
+                    f"got {type(value).__name__}"
+                )
 
     # Latin-script MVP: BHS diacritics must survive UTF-8 loading intact.
     bhs_text = json.dumps(bhs, ensure_ascii=False)
