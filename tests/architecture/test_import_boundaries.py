@@ -63,32 +63,80 @@ def _package_for(relative_path: Path) -> str:
     return ".".join((_PACKAGE_PREFIX, *relative_path.parts[:-1]))
 
 
-def _dynamic_import_target(call: ast.Call) -> str | None:
-    """Return the literal module name of a dynamic import call, if any."""
-    if (
-        isinstance(call.func, ast.Attribute)
-        and call.func.attr == "import_module"
-        and isinstance(call.func.value, ast.Name)
-        and call.func.value.id == "importlib"
-    ):
-        arg = call.args[0] if call.args else None
-        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-            return arg.value
-        return None
+_DYNAMIC_IMPORT_CALLABLES = {
+    "importlib.import_module",
+    "importlib.__import__",
+    "builtins.__import__",
+    "__import__",
+}
 
-    if isinstance(call.func, ast.Name) and call.func.id == "import_module":
-        arg = call.args[0] if call.args else None
-        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-            return arg.value
-        return None
 
-    if isinstance(call.func, ast.Name) and call.func.id == "__import__":
-        arg = call.args[0] if call.args else None
-        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-            return arg.value
-        return None
+def _collect_import_aliases(tree: ast.Module) -> dict[str, str]:
+    """Map local names to their canonical import targets.
 
+    ``import importlib as loader`` → ``{"loader": "importlib"}``;
+    ``from importlib import import_module as load`` →
+    ``{"load": "importlib.import_module"}``.
+    """
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                local = alias.asname or alias.name.split(".")[0]
+                aliases[local] = alias.name
+        elif isinstance(node, ast.ImportFrom):
+            if node.level != 0 or node.module is None:
+                continue
+            for alias in node.names:
+                local = alias.asname or alias.name
+                aliases[local] = f"{node.module}.{alias.name}"
+    return aliases
+
+
+def _resolve_expr(expr: ast.expr, aliases: dict[str, str]) -> str | None:
+    """Resolve a name/attribute expression through the alias map."""
+    if isinstance(expr, ast.Name):
+        return aliases.get(expr.id, expr.id)
+    if isinstance(expr, ast.Attribute):
+        base = _resolve_expr(expr.value, aliases)
+        if base is None:
+            return None
+        return f"{base}.{expr.attr}"
     return None
+
+
+def _literal_arg(call: ast.Call) -> str | None:
+    first = call.args[0] if call.args else None
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        return first.value
+    return None
+
+
+def _dynamic_import_target(call: ast.Call, aliases: dict[str, str]) -> str | None:
+    """Return the literal module name of a dynamic import call, if any."""
+    # getattr(importlib, "import_module")("<target>")
+    if isinstance(call.func, ast.Call):
+        inner = call.func
+        if (
+            isinstance(inner.func, ast.Name)
+            and inner.func.id == "getattr"
+            and len(inner.args) == 2
+        ):
+            obj = _resolve_expr(inner.args[0], aliases)
+            attr_arg = inner.args[1]
+            if (
+                obj == "importlib"
+                and isinstance(attr_arg, ast.Constant)
+                and isinstance(attr_arg.value, str)
+                and attr_arg.value == "import_module"
+            ):
+                return _literal_arg(call)
+        return None
+
+    callable_name = _resolve_expr(call.func, aliases)
+    if callable_name not in _DYNAMIC_IMPORT_CALLABLES:
+        return None
+    return _literal_arg(call)
 
 
 def _iter_imports(path: Path, package: str) -> Iterable[tuple[str, str]]:
@@ -104,6 +152,7 @@ def _iter_imports(path: Path, package: str) -> Iterable[tuple[str, str]]:
     caught as an infrastructure import.
     """
     tree = ast.parse(path.read_text(encoding="utf-8"))
+    aliases = _collect_import_aliases(tree)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -132,7 +181,7 @@ def _iter_imports(path: Path, package: str) -> Iterable[tuple[str, str]]:
                         full = ".".join([*target_parts, alias.name])
                     yield full, full.split(".")[0]
         elif isinstance(node, ast.Call):
-            target = _dynamic_import_target(node)
+            target = _dynamic_import_target(node, aliases)
             if target is not None:
                 yield target, target.split(".")[0]
 
@@ -234,3 +283,88 @@ def test_checker_flags_lowercase_web_modules(tmp_path: Path) -> None:
     violations = find_violations(tmp_path)
     assert any("flask" in v for v in violations)
     assert any("fastapi" in v for v in violations)
+
+
+def test_checker_flags_importlib_dunder_import(tmp_path: Path) -> None:
+    (tmp_path / "domain").mkdir()
+    (tmp_path / "domain" / "evil.py").write_text(
+        "import importlib\n"
+        "importlib.__import__('ai_campaign_studio.infrastructure')\n",
+        encoding="utf-8",
+    )
+    violations = find_violations(tmp_path)
+    assert any(
+        "domain/evil.py" in v and "ai_campaign_studio.infrastructure" in v
+        for v in violations
+    )
+
+
+def test_checker_flags_getattr_import_module(tmp_path: Path) -> None:
+    (tmp_path / "domain").mkdir()
+    (tmp_path / "domain" / "evil.py").write_text(
+        "import importlib\n"
+        "getattr(importlib, 'import_module')('ai_campaign_studio.infrastructure')\n",
+        encoding="utf-8",
+    )
+    violations = find_violations(tmp_path)
+    assert any(
+        "domain/evil.py" in v and "ai_campaign_studio.infrastructure" in v
+        for v in violations
+    )
+
+
+def test_checker_flags_import_alias_module(tmp_path: Path) -> None:
+    (tmp_path / "domain").mkdir()
+    (tmp_path / "domain" / "evil.py").write_text(
+        "import importlib as loader\n"
+        "loader.import_module('ai_campaign_studio.infrastructure')\n",
+        encoding="utf-8",
+    )
+    violations = find_violations(tmp_path)
+    assert any(
+        "domain/evil.py" in v and "ai_campaign_studio.infrastructure" in v
+        for v in violations
+    )
+
+
+def test_checker_flags_from_import_alias(tmp_path: Path) -> None:
+    (tmp_path / "domain").mkdir()
+    (tmp_path / "domain" / "evil.py").write_text(
+        "from importlib import import_module as load\n"
+        "load('ai_campaign_studio.infrastructure')\n",
+        encoding="utf-8",
+    )
+    violations = find_violations(tmp_path)
+    assert any(
+        "domain/evil.py" in v and "ai_campaign_studio.infrastructure" in v
+        for v in violations
+    )
+
+
+def test_checker_flags_builtins_dunder_import(tmp_path: Path) -> None:
+    (tmp_path / "domain").mkdir()
+    (tmp_path / "domain" / "evil.py").write_text(
+        "import builtins\nbuiltins.__import__('PySide6')\n", encoding="utf-8"
+    )
+    violations = find_violations(tmp_path)
+    assert any("domain/evil.py" in v and "PySide6" in v for v in violations)
+
+
+def test_checker_allows_safe_relative_imports(tmp_path: Path) -> None:
+    (tmp_path / "domain").mkdir()
+    (tmp_path / "domain" / "ok.py").write_text(
+        "from . import helper\nfrom .. import helper2\n", encoding="utf-8"
+    )
+    assert find_violations(tmp_path) == []
+
+
+def test_checker_does_not_crash_on_nonliteral_dynamic_import(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "domain").mkdir()
+    (tmp_path / "domain" / "ok.py").write_text(
+        "import importlib\n"
+        "importlib.import_module('ai_campaign_studio' + '.infrastructure')\n",
+        encoding="utf-8",
+    )
+    assert find_violations(tmp_path) == []
