@@ -78,18 +78,19 @@ još ne postoji (gate fajl nastaje tek u ACS-P0-008). `src/ai_campaign_studio/` 
 |---|---|---|---|---|
 | ACS-P0-001 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `def4ea1` (`--no-ff`, task branch `task/ACS-P0-001-repo-foundation` @ `949d18c`). Reviews: Claude PASS, Codex PASS_WITH_NOTES (no blocking findings). Human Owner approval: "Odobravam". Post-merge gate PASS. Worktree uklonjen. |
 | ACS-P0-002 | **DONE — merged u main** | Pi | Codex, Claude | Merge commit `e187a56` (`--no-ff`, task branch `task/ACS-P0-002-config-boundaries` @ `d6dc783`). 5 review rundi: Codex REJECT×4 (BF-1: boundary-checker bypassi pa lexical/class-scope resolution bugovi), svaki fix nezavisno re-verifikovan od koordinatora (kombinovana adversarial reprodukcija do 11 bypass/scope oblika u finalnoj rundi), round 5 `PASS_WITH_NOTES` bez blocking findings. Finalni decision packet: `agent_reports/2026-08-31-ACS-P0-002-final-decision-packet.md` (READY FOR HUMAN APPROVAL, R1–R6 reziduelni rizici). Human Owner approval: "Slažem se". Post-merge gate PASS na `main` (43 testa, ruff, mypy, health-check, Python 3.14.1). Worktree uklonjen (`--force`, samo Pi-jevi već-inkorporirani raw report fajlovi izgubljeni, bez sadržajnog gubitka). |
-| ACS-P0-003 | **UNBLOCKED** | Pi (default) | — (LOW/MEDIUM dok se ne pokaže drugačije) | Scope: P0.11–P0.12 (localization + regional resources). Contract još nije napisan. Može paralelno sa 004 ako `allowed_paths` ne presijecaju (provjeriti prije branch-a). |
-| ACS-P0-004 | **UNBLOCKED** | Crush (default) | — | Scope: P0.13 (Channel/Platform/Format registry). Contract još nije napisan. Može paralelno sa 003. |
-| ACS-P0-005 | **UNBLOCKED** | Pi (default) | Codex, Claude (HIGH — SecretStore) | Scope: P0.14–P0.15 (AI Provider/Model Registry + SecretStore). Contract još nije napisan. |
-| ACS-P0-006 | **UNBLOCKED** | Crush (default) | Codex, Claude (HIGH — SQLite/migrations) | Scope: P0.16–P0.19. Contract još nije napisan. |
+| ACS-P0-003 | **OPEN — contract spreman, worktree+branch kreirani, čeka implementaciju (Pi)** | Pi | Codex, Claude (elevated §4 — localization contract) | Scope: P0.11–P0.12. Kontrakt: `agent_reports/ACS-P0-003-task-contract.md`. Worktree `../ai-campaign-studio-worktrees/ACS-P0-003-localization`, branch `task/ACS-P0-003-localization` od `main@a712ce3`. Paralelno sa 004, `allowed_paths` disjoint potvrđeno. `adversarial_required: true` (translator BHS→EN fallback + i18n key-set parity). |
+| ACS-P0-004 | **OPEN — contract spreman, worktree+branch kreirani, čeka implementaciju (Crush)** | Crush | Codex, Claude (elevated §4 — registry contract) | Scope: P0.13. Kontrakt: `agent_reports/ACS-P0-004-task-contract.md`. Worktree `../ai-campaign-studio-worktrees/ACS-P0-004-channel-registry`, branch `task/ACS-P0-004-channel-registry` od `main@a712ce3`. Paralelno sa 003. `scripts/validate_resources.py` namjerno SAMO u 003 da se allowed_paths ne preklope. `adversarial_required: true` (duplicate-code rejection + unknown-format-reference rejection). |
+| ACS-P0-005 | **UNBLOCKED, contract nije napisan** | Pi (default) | Codex, Claude (HIGH — SecretStore) | Scope: P0.14–P0.15 (AI Provider/Model Registry + SecretStore). Čeka na Human Owner odluku da li kreće odmah (treći paralelni task) ili poslije 003/004. |
+| ACS-P0-006 | **UNBLOCKED, contract nije napisan** | Crush (default) | Codex, Claude (HIGH — SQLite/migrations) | Scope: P0.16–P0.19. Isto pitanje kao 005. |
 | ACS-P0-007..008 | BLOCKED | — | — | 007 čeka 003+004+005+006; 008 čeka sve. DAG u `.agent/PROJECT_MAP.md` §5. |
 
 ## Paralelizacija — trenutna provjera
 
-ACS-P0-003/004/005/006 su sada SVI unblocked (002 je merged). Prije bilo kakvog paralelnog
-pokretanja: provjeriti `allowed_paths` disjoint po `.agent/TASK_ROUTING.md` §"Napomena o
-paralelizaciji" za svaki par koji bi trebalo da radi istovremeno — ovo još nije urađeno za
-003–006 par-po-par, obavezno prije brancovanja više od jednog odjednom.
+ACS-P0-003 i ACS-P0-004 pokrenuti paralelno (2026-08-31) — `allowed_paths` provjereno disjoint
+(vidi njihove kontrakte); jedina inicijalna kolizija (`scripts/validate_resources.py` u oba) je
+riješena prije kreiranja worktree-ova dodjelom fajla isključivo ACS-P0-003. ACS-P0-005/006 su
+tehnički unblocked ali contract nije napisan — čekaju Human Owner odluku o redoslijedu (treći/četvrti
+paralelni task ili sekvencijalno poslije 003/004).
 
 ## Poznati blokatori
 
