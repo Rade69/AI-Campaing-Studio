@@ -1,0 +1,24 @@
+code: PINTEREST
+display_name: Pinterest
+channel: SOCIAL
+supported_formats:
+  - PIN
+content_rules: []
+enabled: true
+formats:
+  - code: PIN
+    display_name: Pin
+    required_fields: []
+    optional_fields: []
+    text_constraints:
+      max_chars: null
+      max_caption_chars: null
+      max_title_chars: null
+      supports_hashtags: false
+      supports_links: true
+    visual_constraints:
+      supported_aspect_ratios: []
+      supports_static_image: true
+      supports_video: false
+      supports_carousel: false
+    enabled: true

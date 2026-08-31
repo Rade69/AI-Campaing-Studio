@@ -1,0 +1,24 @@
+code: SNAPCHAT
+display_name: Snapchat
+channel: SOCIAL
+supported_formats:
+  - STORY
+content_rules: []
+enabled: true
+formats:
+  - code: STORY
+    display_name: Story
+    required_fields: []
+    optional_fields: []
+    text_constraints:
+      max_chars: null
+      max_caption_chars: null
+      max_title_chars: null
+      supports_hashtags: false
+      supports_links: true
+    visual_constraints:
+      supported_aspect_ratios: []
+      supports_static_image: true
+      supports_video: true
+      supports_carousel: false
+    enabled: true

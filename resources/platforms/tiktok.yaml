@@ -1,0 +1,24 @@
+code: TIKTOK
+display_name: TikTok
+channel: SOCIAL
+supported_formats:
+  - SHORT_VIDEO
+content_rules: []
+enabled: true
+formats:
+  - code: SHORT_VIDEO
+    display_name: Short Video
+    required_fields: []
+    optional_fields: []
+    text_constraints:
+      max_chars: null
+      max_caption_chars: null
+      max_title_chars: null
+      supports_hashtags: true
+      supports_links: true
+    visual_constraints:
+      supported_aspect_ratios: []
+      supports_static_image: false
+      supports_video: true
+      supports_carousel: false
+    enabled: true

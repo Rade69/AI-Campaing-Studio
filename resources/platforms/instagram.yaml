@@ -1,0 +1,75 @@
+code: INSTAGRAM
+display_name: Instagram
+channel: SOCIAL
+supported_formats:
+  - FEED_POST
+  - STORY
+  - REEL
+  - CAROUSEL
+content_rules: []
+enabled: true
+formats:
+  - code: FEED_POST
+    display_name: Feed Post
+    required_fields: []
+    optional_fields: []
+    text_constraints:
+      max_chars: null
+      max_caption_chars: null
+      max_title_chars: null
+      supports_hashtags: true
+      supports_links: true
+    visual_constraints:
+      supported_aspect_ratios: []
+      supports_static_image: true
+      supports_video: false
+      supports_carousel: false
+    enabled: true
+  - code: STORY
+    display_name: Story
+    required_fields: []
+    optional_fields: []
+    text_constraints:
+      max_chars: null
+      max_caption_chars: null
+      max_title_chars: null
+      supports_hashtags: true
+      supports_links: true
+    visual_constraints:
+      supported_aspect_ratios: []
+      supports_static_image: true
+      supports_video: true
+      supports_carousel: false
+    enabled: true
+  - code: REEL
+    display_name: Reel
+    required_fields: []
+    optional_fields: []
+    text_constraints:
+      max_chars: null
+      max_caption_chars: null
+      max_title_chars: null
+      supports_hashtags: true
+      supports_links: true
+    visual_constraints:
+      supported_aspect_ratios: []
+      supports_static_image: false
+      supports_video: true
+      supports_carousel: false
+    enabled: true
+  - code: CAROUSEL
+    display_name: Carousel
+    required_fields: []
+    optional_fields: []
+    text_constraints:
+      max_chars: null
+      max_caption_chars: null
+      max_title_chars: null
+      supports_hashtags: true
+      supports_links: true
+    visual_constraints:
+      supported_aspect_ratios: []
+      supports_static_image: true
+      supports_video: false
+      supports_carousel: true
+    enabled: true

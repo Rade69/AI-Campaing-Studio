@@ -1,0 +1,41 @@
+code: LINKEDIN
+display_name: LinkedIn
+channel: SOCIAL
+supported_formats:
+  - PROFESSIONAL_POST
+  - ARTICLE_LINK_POST
+content_rules: []
+enabled: true
+formats:
+  - code: PROFESSIONAL_POST
+    display_name: Professional Post
+    required_fields: []
+    optional_fields: []
+    text_constraints:
+      max_chars: null
+      max_caption_chars: null
+      max_title_chars: null
+      supports_hashtags: true
+      supports_links: true
+    visual_constraints:
+      supported_aspect_ratios: []
+      supports_static_image: true
+      supports_video: false
+      supports_carousel: false
+    enabled: true
+  - code: ARTICLE_LINK_POST
+    display_name: Article Link Post
+    required_fields: []
+    optional_fields: []
+    text_constraints:
+      max_chars: null
+      max_caption_chars: null
+      max_title_chars: null
+      supports_hashtags: true
+      supports_links: true
+    visual_constraints:
+      supported_aspect_ratios: []
+      supports_static_image: true
+      supports_video: false
+      supports_carousel: false
+    enabled: true
