@@ -133,6 +133,22 @@ python -m mypy src         → Success: no issues found in 18 source files
 python -m ai_campaign_studio.main --health-check → exit 0
 ```
 
+## CI
+
+`.github/workflows/ci.yml` postoji od 2026-08-31 (dodano ranije nego što plan predviđa za
+ACS-P0-008, na osnovu eksterne analize repoa koja je flag-ovala nedostatak CI gate-a).
+Pokreće `ruff check .` → `mypy src` → `pytest -q` na `push`/`pull_request` ka `main`, GitHub-ov
+Python 3.12 runner (donja granica iz `requires-python`). Prvi run zelen: https://github.com/Rade69/AI-Campaing-Studio/actions
+(run `33413783089`, 30s). Ovo NE zamjenjuje ručnu post-merge gate provjeru koordinatora — i dalje
+ručno pokretati pun set prije/poslije merge-a, CI je dodatna, ne jedina zaštita (npr. ne pokriva
+`--health-check` niti GitNexus korake).
+
+## Repo na GitHub-u
+
+`origin` = `https://github.com/Rade69/AI-Campaing-Studio` (javan repo). `main` i svi task branch-evi
+(`task/ACS-P0-001..004`) se guraju poslije svake značajnije izmjene. Historija provjerena na
+secrete prije prvog push-a (2026-08-31) — čisto.
+
 ## GitNexus index status
 
 Indeksirano poslije merge-a ACS-P0-002:
