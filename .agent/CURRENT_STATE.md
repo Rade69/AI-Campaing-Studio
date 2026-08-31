@@ -76,7 +76,7 @@ ne postoji (gate fajl nastaje tek u ACS-P0-008). Postoji sada: `src/`, `tests/`,
 | Task | Status | Implementer | Reviewers | Napomena |
 |---|---|---|---|---|
 | ACS-P0-001 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `def4ea1` (`--no-ff`, task branch `task/ACS-P0-001-repo-foundation` @ `949d18c`). Reviews: Claude PASS (`agent_reports/2026-08-30-ACS-P0-001-review-claude.md`), Codex PASS_WITH_NOTES (`agent_reports/2026-08-30-ACS-P0-001-review-codex.md`, no blocking findings). Human Owner approval: eksplicitno "Odobravam". Post-merge gate PASS na `main` (import/pytest 3-3/ruff/mypy, Python 3.14.1). Worktree uklonjen (`git worktree remove`), branch `task/ACS-P0-001-repo-foundation` ostavljen netaknut u historiji. |
-| ACS-P0-002 | IMPLEMENTED, Claude review PASS, čeka Codex review + Human Owner approval | Pi | Codex, Claude (obavezno oba — elevated P0 standard §4) | Commit `c6fa0b8` na `task/ACS-P0-002-config-boundaries`. Evidence: `agent_reports/2026-08-31-ACS-P0-002-pi.md`. Claude review: `agent_reports/2026-08-31-ACS-P0-002-review-claude.md` (PASS, `gitnexus_impact: UNKNOWN` zbog worktree-binding limitacije, kompenzovano ručnim review-om). Codex brief spreman: `agent_reports/2026-08-31-ACS-P0-002-codex-review-request.md` — Human Owner prosljeđuje eksterno. Adversarial dokaz (boundary checker + redaction FAIL→PASS) potvrđen nezavisno od koordinatora. |
+| ACS-P0-002 | **REJECTED (Codex) — fix runda u toku, NE MERGE** | Pi | Codex, Claude | Commit `c6fa0b8` na `task/ACS-P0-002-config-boundaries` i dalje HEAD (fix još nije commit-ovan). Codex review: `agent_reports/2026-08-31-ACS-P0-002-review-codex.md` — `BF-1`: boundary checker propušta relative import (`from .. import infrastructure`), `importlib.import_module(...)`/`__import__(...)` sa literal stringom, i case-bug (`Flask` vs stvarni `flask` modul). Koordinator je BF-1 nezavisno reprodukovao (sva 4 bypassa prolaze kroz `test_real_tree_has_no_boundary_violations` bez FAIL-a). Claude-ov raniji PASS (`agent_reports/2026-08-31-ACS-P0-002-review-claude.md`) NE važi — adversarial pokrivenost je bila nedovoljna, nije testirao relative/dynamic import ni case-sensitivity. Fix brief za Pi: `agent_reports/2026-08-31-ACS-P0-002-fix-round-brief.md` — uska fix runda, samo boundary checker + njegovi testovi, ostatak koda se ne dira. Poslije fixa: fresh Codex re-review na novom HEAD-u prije bilo kakvog merge razmatranja. |
 | ACS-P0-003..008 | BLOCKED | — | — | 003–006 čekaju da 002 bude merged (ne granati prije toga); 007 čeka 003+004+005+006; 008 čeka sve. DAG u `.agent/PROJECT_MAP.md` §5. |
 
 ## Paralelizacija — trenutna provjera
@@ -86,6 +86,12 @@ merged — 003 i 004 mogu tek tada, uz provjeru `allowed_paths` preklapanja (`.a
 
 ## Poznati blokatori
 
+- Proces-learning iz ACS-P0-002: Claude-ov arhitekturni review dao je PASS na
+  `test_import_boundaries.py` provjeravajući samo direktne/alias/uslovne import oblike; Codex je
+  istim testom otkrio da relative import, dynamic `importlib`/`__import__` sa literal stringom, i
+  case-sensitivity bug (`Flask` vs `flask`) prolaze neopaženo. Za buduće boundary/invariant reviewe
+  (ACS-P0-003+): Claude mora eksplicitno probati relative importe, dynamic import pozive, i
+  case/naming varijante stvarnih modula, ne samo "direct import + alias + conditional" obrazac.
 - Ova (koordinator) sesija nema direktan CLI pristup pravim Codex/Crush/Pi alatima — koordinator
   priprema worktree, branch i eksplicitna uputstva (Task Contract); Human Owner pokreće
   implementer/reviewer agente eksterno i javlja rezultat/diff nazad koordinatoru. Za ACS-P0-001 je
