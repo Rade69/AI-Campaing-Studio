@@ -71,40 +71,6 @@ _DYNAMIC_IMPORT_CALLABLES = {
 }
 
 
-def _collect_import_aliases(tree: ast.Module) -> dict[str, str]:
-    """Map local names to their canonical import targets.
-
-    ``import importlib as loader`` → ``{"loader": "importlib"}``;
-    ``from importlib import import_module as load`` →
-    ``{"load": "importlib.import_module"}``.
-    """
-    aliases: dict[str, str] = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                local = alias.asname or alias.name.split(".")[0]
-                aliases[local] = alias.name
-        elif isinstance(node, ast.ImportFrom):
-            if node.level != 0 or node.module is None:
-                continue
-            for alias in node.names:
-                local = alias.asname or alias.name
-                aliases[local] = f"{node.module}.{alias.name}"
-    return aliases
-
-
-def _resolve_expr(expr: ast.expr, aliases: dict[str, str]) -> str | None:
-    """Resolve a name/attribute expression through the alias map."""
-    if isinstance(expr, ast.Name):
-        return aliases.get(expr.id, expr.id)
-    if isinstance(expr, ast.Attribute):
-        base = _resolve_expr(expr.value, aliases)
-        if base is None:
-            return None
-        return f"{base}.{expr.attr}"
-    return None
-
-
 def _literal_arg(call: ast.Call) -> str | None:
     first = call.args[0] if call.args else None
     if isinstance(first, ast.Constant) and isinstance(first.value, str):
@@ -112,31 +78,115 @@ def _literal_arg(call: ast.Call) -> str | None:
     return None
 
 
-def _dynamic_import_target(call: ast.Call, aliases: dict[str, str]) -> str | None:
-    """Return the literal module name of a dynamic import call, if any."""
-    # getattr(importlib, "import_module")("<target>")
-    if isinstance(call.func, ast.Call):
-        inner = call.func
-        if (
-            isinstance(inner.func, ast.Name)
-            and inner.func.id == "getattr"
-            and len(inner.args) == 2
-        ):
-            obj = _resolve_expr(inner.args[0], aliases)
-            attr_arg = inner.args[1]
-            if (
-                obj == "importlib"
-                and isinstance(attr_arg, ast.Constant)
-                and isinstance(attr_arg.value, str)
-                and attr_arg.value == "import_module"
-            ):
-                return _literal_arg(call)
+class _ImportScanner(ast.NodeVisitor):
+    """Collect imports and literal dynamic imports with lexical scope.
+
+    Import bindings are tracked as a scope stack (module level + one scope per
+    function/class), so a local import inside one function cannot shadow the
+    module-level alias used by an unrelated function.
+    """
+
+    def __init__(self, package: str) -> None:
+        self.package = package
+        self.scopes: list[dict[str, str]] = [{}]
+        self.results: list[tuple[str, str]] = []
+
+    def _current_scope(self) -> dict[str, str]:
+        return self.scopes[-1]
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self.scopes.append({})
+        self.generic_visit(node)
+        self.scopes.pop()
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self.scopes.append({})
+        self.generic_visit(node)
+        self.scopes.pop()
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.scopes.append({})
+        self.generic_visit(node)
+        self.scopes.pop()
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            local = alias.asname or alias.name.split(".")[0]
+            self._current_scope()[local] = alias.name
+            self.results.append((alias.name, alias.name.split(".")[0]))
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        if node.level == 0:
+            module = node.module or ""
+            for alias in node.names:
+                full = module if alias.name == "*" else f"{module}.{alias.name}"
+                local = alias.asname or alias.name
+                self._current_scope()[local] = full
+                self.results.append((full, full.split(".")[0]))
+        else:
+            base_parts = self.package.split(".")
+            up = node.level - 1
+            if up >= len(base_parts):
+                return
+            target_parts = base_parts[: len(base_parts) - up]
+            if node.module:
+                target_parts = [*target_parts, *node.module.split(".")]
+            for alias in node.names:
+                if alias.name == "*":
+                    full = ".".join(target_parts)
+                else:
+                    full = ".".join([*target_parts, alias.name])
+                local = alias.asname or alias.name
+                self._current_scope()[local] = full
+                self.results.append((full, full.split(".")[0]))
+
+    def visit_Call(self, node: ast.Call) -> None:
+        target = self._dynamic_import_target(node)
+        if target is not None:
+            self.results.append((target, target.split(".")[0]))
+        self.generic_visit(node)
+
+    def _resolve_name(self, name: str) -> str:
+        for scope in reversed(self.scopes):
+            if name in scope:
+                return scope[name]
+        return name
+
+    def _resolve_expr(self, expr: ast.expr) -> str | None:
+        if isinstance(expr, ast.Name):
+            return self._resolve_name(expr.id)
+        if isinstance(expr, ast.Attribute):
+            base = self._resolve_expr(expr.value)
+            if base is None:
+                return None
+            return f"{base}.{expr.attr}"
         return None
 
-    callable_name = _resolve_expr(call.func, aliases)
-    if callable_name not in _DYNAMIC_IMPORT_CALLABLES:
-        return None
-    return _literal_arg(call)
+    def _dynamic_import_target(self, call: ast.Call) -> str | None:
+        """Return the literal module name of a dynamic import call, if any."""
+        # getattr(importlib, "import_module")("<target>")
+        if isinstance(call.func, ast.Call):
+            inner = call.func
+            if (
+                isinstance(inner.func, ast.Name)
+                and inner.func.id == "getattr"
+                and len(inner.args) == 2
+            ):
+                obj = self._resolve_expr(inner.args[0])
+                attr_arg = inner.args[1]
+                if (
+                    obj == "importlib"
+                    and isinstance(attr_arg, ast.Constant)
+                    and isinstance(attr_arg.value, str)
+                    and attr_arg.value == "import_module"
+                ):
+                    return _literal_arg(call)
+            return None
+
+        callable_name = self._resolve_expr(call.func)
+        if callable_name not in _DYNAMIC_IMPORT_CALLABLES:
+            return None
+        return _literal_arg(call)
 
 
 def _iter_imports(path: Path, package: str) -> Iterable[tuple[str, str]]:
@@ -145,45 +195,17 @@ def _iter_imports(path: Path, package: str) -> Iterable[tuple[str, str]]:
     Handles ``import``, absolute and relative ``from`` imports, and literal
     dynamic imports via ``importlib.import_module``/``import_module``/
     ``__import__``. Relative imports are resolved against *package* (the full
-    ``ai_campaign_studio...`` package path of the scanned file).
+    ``ai_campaign_studio...`` package path of the scanned file), and alias
+    resolution is lexical-scope aware.
 
     For ``from x.y import z`` the imported module is ``x.y.z`` (not just
     ``x.y``), so ``from ai_campaign_studio import infrastructure`` is still
     caught as an infrastructure import.
     """
     tree = ast.parse(path.read_text(encoding="utf-8"))
-    aliases = _collect_import_aliases(tree)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                yield alias.name, alias.name.split(".")[0]
-        elif isinstance(node, ast.ImportFrom):
-            if node.level == 0:
-                module = node.module or ""
-                for alias in node.names:
-                    if alias.name == "*":
-                        full = module
-                    else:
-                        full = f"{module}.{alias.name}" if module else alias.name
-                    yield full, full.split(".")[0]
-            else:
-                base_parts = package.split(".")
-                up = node.level - 1
-                if up >= len(base_parts):
-                    continue
-                target_parts = base_parts[: len(base_parts) - up]
-                if node.module:
-                    target_parts = [*target_parts, *node.module.split(".")]
-                for alias in node.names:
-                    if alias.name == "*":
-                        full = ".".join(target_parts)
-                    else:
-                        full = ".".join([*target_parts, alias.name])
-                    yield full, full.split(".")[0]
-        elif isinstance(node, ast.Call):
-            target = _dynamic_import_target(node, aliases)
-            if target is not None:
-                yield target, target.split(".")[0]
+    scanner = _ImportScanner(package)
+    scanner.visit(tree)
+    yield from scanner.results
 
 
 def _is_forbidden(layer: str, module: str, top: str) -> bool:
@@ -368,3 +390,29 @@ def test_checker_does_not_crash_on_nonliteral_dynamic_import(
         encoding="utf-8",
     )
     assert find_violations(tmp_path) == []
+
+
+def test_checker_resolves_module_alias_across_function_scopes(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "domain").mkdir()
+    (tmp_path / "domain" / "evil.py").write_text(
+        "import importlib as loader\n"
+        "\n"
+        "\n"
+        "def evil():\n"
+        "    return loader.import_module(\n"
+        "        'ai_campaign_studio.infrastructure'\n"
+        "    )\n"
+        "\n"
+        "\n"
+        "def innocent():\n"
+        "    import types as loader\n"
+        "    return loader\n",
+        encoding="utf-8",
+    )
+    violations = find_violations(tmp_path)
+    assert any(
+        "domain/evil.py" in v and "ai_campaign_studio.infrastructure" in v
+        for v in violations
+    )
