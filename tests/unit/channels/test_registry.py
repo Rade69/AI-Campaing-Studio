@@ -202,3 +202,61 @@ def test_list_and_get_format(tmp_path: Path) -> None:
     assert [f.code for f in formats] == ["TEST_FORMAT"]
     fmt = registry.get_format("TEST_PLATFORM", "TEST_FORMAT")
     assert fmt.display_name == "Test Format"
+
+
+def test_blank_formats_key_raises_registry_error(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "test.yaml",
+        """\
+code: TEST_PLATFORM
+display_name: Test Platform
+channel: SOCIAL
+supported_formats:
+  - TEST_FORMAT
+content_rules: []
+enabled: true
+formats:
+""",
+    )
+    registry = PlatformRegistry(tmp_path)
+
+    with pytest.raises(RegistryError):
+        registry.list_platforms()
+
+
+def test_returned_collections_are_immutable(tmp_path: Path) -> None:
+    _write(tmp_path, "test.yaml", VALID_PLATFORM)
+    registry = PlatformRegistry(tmp_path)
+
+    platform = registry.get_platform("TEST_PLATFORM")
+    assert isinstance(platform.supported_formats, tuple)
+
+    with pytest.raises(AttributeError):
+        platform.supported_formats.clear()  # type: ignore[attr-defined]
+
+    assert [f.code for f in registry.list_formats("TEST_PLATFORM")] == ["TEST_FORMAT"]
+
+
+def test_duplicate_supported_format_reference_rejected(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "test.yaml",
+        """\
+code: TEST_PLATFORM
+display_name: Test Platform
+channel: SOCIAL
+supported_formats:
+  - STORY
+  - story
+content_rules: []
+enabled: true
+formats:
+  - code: STORY
+    display_name: Story
+""",
+    )
+    registry = PlatformRegistry(tmp_path)
+
+    with pytest.raises(RegistryError):
+        registry.list_platforms()

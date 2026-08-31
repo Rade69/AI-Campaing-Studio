@@ -26,7 +26,7 @@ class VisualConstraints(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    supported_aspect_ratios: list[str] = Field(default_factory=list)
+    supported_aspect_ratios: tuple[str, ...] = Field(default_factory=tuple)
     supports_static_image: bool = False
     supports_video: bool = False
     supports_carousel: bool = False
@@ -39,8 +39,8 @@ class FormatDefinition(BaseModel):
 
     code: str
     display_name: str
-    required_fields: list[str] = Field(default_factory=list)
-    optional_fields: list[str] = Field(default_factory=list)
+    required_fields: tuple[str, ...] = Field(default_factory=tuple)
+    optional_fields: tuple[str, ...] = Field(default_factory=tuple)
     text_constraints: TextConstraints = Field(default_factory=TextConstraints)
     visual_constraints: VisualConstraints = Field(default_factory=VisualConstraints)
     enabled: bool = True
@@ -59,8 +59,8 @@ class PlatformDefinition(BaseModel):
     code: str
     display_name: str
     channel: Channel
-    supported_formats: list[str] = Field(default_factory=list)
-    content_rules: list[str] = Field(default_factory=list)
+    supported_formats: tuple[str, ...] = Field(default_factory=tuple)
+    content_rules: tuple[str, ...] = Field(default_factory=tuple)
     enabled: bool = True
 
     @field_validator("code")
@@ -68,7 +68,12 @@ class PlatformDefinition(BaseModel):
     def _normalize_code(cls, value: str) -> str:
         return _normalize_code(value)
 
-    @field_validator("supported_formats")
+    @field_validator("supported_formats", mode="before")
     @classmethod
-    def _normalize_supported_formats(cls, value: list[str]) -> list[str]:
-        return [_normalize_code(item) for item in value]
+    def _normalize_supported_formats(cls, value: object) -> tuple[str, ...]:
+        if not isinstance(value, (list, tuple)):
+            raise ValueError("supported_formats must be a list of codes")
+        normalized = tuple(_normalize_code(str(item)) for item in value)
+        if len(normalized) != len(set(normalized)):
+            raise ValueError(f"duplicate supported format reference: {value}")
+        return normalized
