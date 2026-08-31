@@ -1,15 +1,32 @@
-"""Application entry point skeleton for AI Campaign Studio."""
+"""Application entry point for AI Campaign Studio."""
+
+import argparse
 
 from ai_campaign_studio.bootstrap import create_bootstrap
 
 
-def main() -> int:
-    """Create the composition root and return a successful exit code.
+def main(argv: list[str] | None = None) -> int:
+    """Parse startup options and build the composition root.
 
-    GUI, AI, and campaign logic are intentionally absent from the Phase 0
-    foundation skeleton and are introduced in later phases.
+    Returns the process exit code (0 on success, 1 on failure). No GUI is
+    started in the Phase 0 foundation; ``--health-check`` builds the same
+    foundation bootstrap.
     """
-    create_bootstrap()
+    parser = argparse.ArgumentParser(
+        prog="ai_campaign_studio",
+        description="AI Campaign Studio application entry point.",
+    )
+    parser.add_argument(
+        "--health-check",
+        action="store_true",
+        help="Build the foundation bootstrap and exit (no GUI).",
+    )
+    _args = parser.parse_args(argv)
+
+    try:
+        create_bootstrap()
+    except Exception:
+        return 1
     return 0
 
 

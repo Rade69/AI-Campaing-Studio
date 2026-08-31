@@ -1,15 +1,14 @@
-# AI Campaign Studio - example configuration.
+# AI Campaign Studio — example configuration.
 #
-# Copy this file to a local config file (e.g. `config.toml`) and adjust
-# values for your environment. The concrete schema and validation live in
-# `src/ai_campaign_studio/config/settings.py` and are introduced in a later
-# phase (P0.07); this file is the tracked example skeleton.
+# Schema lives in `src/ai_campaign_studio/config/settings.py` (AppSettings).
+# This file is a tracked example, not read at runtime in this phase.
 
-[app]
-name = "ai-campaign-studio"
-environment = "development"
-log_level = "INFO"
-locale = "BHS_LATIN"
-
-[data]
+app_name = "AI Campaign Studio"
+environment = "development"          # development | test | production
+log_level = "INFO"                   # DEBUG | INFO | WARNING | ERROR | CRITICAL
+app_locale = "BHS_LATIN"             # EN | BHS_LATIN
 database_filename = "ai_campaign_studio.db"
+
+# Optional directory overrides (uncomment to use):
+# data_dir_override = "/path/to/data"
+# resource_dir_override = "/path/to/resources"
