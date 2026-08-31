@@ -1,0 +1,58 @@
+code: YOUTUBE
+display_name: YouTube
+channel: SOCIAL
+supported_formats:
+  - SHORT
+  - COMMUNITY_POST
+  - VIDEO_METADATA
+content_rules: []
+enabled: true
+formats:
+  - code: SHORT
+    display_name: Short
+    required_fields: []
+    optional_fields: []
+    text_constraints:
+      max_chars: null
+      max_caption_chars: null
+      max_title_chars: null
+      supports_hashtags: false
+      supports_links: true
+    visual_constraints:
+      supported_aspect_ratios: []
+      supports_static_image: false
+      supports_video: true
+      supports_carousel: false
+    enabled: true
+  - code: COMMUNITY_POST
+    display_name: Community Post
+    required_fields: []
+    optional_fields: []
+    text_constraints:
+      max_chars: null
+      max_caption_chars: null
+      max_title_chars: null
+      supports_hashtags: false
+      supports_links: true
+    visual_constraints:
+      supported_aspect_ratios: []
+      supports_static_image: true
+      supports_video: false
+      supports_carousel: false
+    enabled: true
+  - code: VIDEO_METADATA
+    display_name: Video Metadata
+    required_fields: []
+    optional_fields: []
+    text_constraints:
+      max_chars: null
+      max_caption_chars: null
+      max_title_chars: null
+      supports_hashtags: false
+      supports_links: true
+    visual_constraints:
+      supported_aspect_ratios: []
+      supports_static_image: false
+      supports_video: true
+      supports_carousel: false
+    enabled: true

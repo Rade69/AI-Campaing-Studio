@@ -1,0 +1,41 @@
+code: THREADS
+display_name: Threads
+channel: SOCIAL
+supported_formats:
+  - TEXT_POST
+  - IMAGE_POST
+content_rules: []
+enabled: true
+formats:
+  - code: TEXT_POST
+    display_name: Text Post
+    required_fields: []
+    optional_fields: []
+    text_constraints:
+      max_chars: null
+      max_caption_chars: null
+      max_title_chars: null
+      supports_hashtags: true
+      supports_links: true
+    visual_constraints:
+      supported_aspect_ratios: []
+      supports_static_image: false
+      supports_video: false
+      supports_carousel: false
+    enabled: true
+  - code: IMAGE_POST
+    display_name: Image Post
+    required_fields: []
+    optional_fields: []
+    text_constraints:
+      max_chars: null
+      max_caption_chars: null
+      max_title_chars: null
+      supports_hashtags: true
+      supports_links: true
+    visual_constraints:
+      supported_aspect_ratios: []
+      supports_static_image: true
+      supports_video: false
+      supports_carousel: false
+    enabled: true
