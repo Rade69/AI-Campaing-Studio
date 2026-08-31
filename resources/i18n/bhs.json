@@ -1,0 +1,19 @@
+{
+  "app.title": "AI Campaign Studio",
+  "app.starting": "Pokretanje…",
+  "app.ready": "Spremno",
+  "settings.title": "Postavke",
+  "settings.language": "Jezik",
+  "settings.ai_providers": "AI provajderi",
+  "settings.api_key": "API ključ",
+  "settings.test_connection": "Testiraj vezu",
+  "settings.connected": "Povezano",
+  "settings.not_configured": "Nije konfigurisano",
+  "common.save": "Sačuvaj",
+  "common.cancel": "Otkaži",
+  "common.close": "Zatvori",
+  "common.retry": "Pokušaj ponovo",
+  "error.generic": "Došlo je do greške.",
+  "error.configuration": "Greška u konfiguraciji.",
+  "error.database": "Greška u bazi podataka."
+}
