@@ -10,9 +10,11 @@ Za trenutno aktivan task/gate stanje vidi `.agent/CURRENT_STATE.md`.
 | Dokument | Uloga | Autoritet |
 |---|---|---|
 | `AI_Campaign_Studio_Faza_0_6_Channel_Model_LLM_Registry.md` | arhitektonska/proizvodna osnova cijelog projekta | najviši (poslije Human Owner odluke) |
+| `AI_Campaign_Studio_Faza_0_7_Performance_Analytics_Architecture.md` | Performance/Analytics arhitektonska dopuna Faze 0.6; zaključava seam-ove sada, runtime modul kasnije | Analytics architecture SoT |
 | `AI_Campaign_Studio_Implementation_Phase_0_v1_1_Agent_Workflow_Integrated.md` | aktivni P0 izvršni plan (supersedes ne-v1.1 varijantu) | P0 execution SoT |
 | `AI_Campaign_Studio_Implementation_Phase_0_Project_Foundation_Agent_Plan.md` | superseded — istorijski, ne koristiti kao SoT | referenca samo |
 | `AI_Campaign_Studio_Faza_1_v1_4_Agent_Workflow_Integrated.md` | aktivni Faza 1 plan (supersedes v1.3), blokiran dok P0-GATE != PASS | Faza 1 execution SoT |
+| `AI_Campaign_Studio_Faza_1_v1_5_Analytics_Ready_Implementation_Plan.md` | analytics-ready dopuna v1.4: stable IDs + revision/target identity + export manifest; Slice 1.5 poslije G10 | Analytics implementation SoT |
 | `AI_Campaign_Studio_Faza_1_v1_3_P0_Handoff_Agent_Ready_Tehnicki_Plan.md` | superseded — istorijski, ne koristiti kao SoT | referenca samo |
 | `docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md` | kanonski agentski proces (risk tier, review, GitNexus, merge) | proces SoT |
 | `.agent/GITNEXUS_PROTOCOL.md` | GitNexus hard-gate protokol | proces SoT (GitNexus dio) |
@@ -93,3 +95,91 @@ Presentation → Application/Use Cases → Domain ← Ports ← Infrastructure a
 | ACS-P0-008 | P0.24–P0.30 Validators + CI + security + P0 gate | Crush | HIGH | sve prethodne |
 
 DAG: `001 → 002 → {003,004,005,006} → 007 → 008 → P0-GATE PASS`. 003–006 se ne granaju dok 002 nije stvarno merged u main.
+
+## 6. Performance / Analytics — planirana granica i trenutak implementacije
+
+Analytics je arhitektonski planiran sada, ali **nije P0 runtime scope**.
+
+Source of truth:
+
+```text
+AI_Campaign_Studio_Faza_0_7_Performance_Analytics_Architecture.md
+AI_Campaign_Studio_Faza_1_v1_5_Analytics_Ready_Implementation_Plan.md
+```
+
+Redoslijed:
+
+```text
+P0 Foundation
+→ Faza 1 Campaign Engine
+→ G10 Vertical Slice PASS
+→ Slice 1.5 Performance Foundation
+→ Slice 2 Brand / Website Ingestion
+```
+
+### Faza 1 mora pripremiti prije Slice 1.5
+
+Bez Performance tabela/UI/API-ja:
+
+```text
+Campaign.id
+CampaignPlan.id
+CampaignItem.id
+ContentPiece.id
+Revision.id / content revision identity
+Channel / Platform / Format target identity
+manifest.json u exportu
+analytics_match_key
+```
+
+### Slice 1.5 uvodi
+
+```text
+DistributionInstance
+PerformanceSnapshot
+PerformanceImportBatch
+canonical metric calculator
+CSV/manual performance import
+deterministički matching
+Campaign Performance read model/UI
+Content Performance read model/UI
+```
+
+Direktne Meta/TikTok/LinkedIn/Google Ads integracije i AI performance learning dolaze tek kasnije,
+nakon dokazane upotrebe osnovnog Performance modula.
+
+Za svaki Performance/Analytics task koristiti `.agent/TASK_ROUTING.md` sekciju
+**Performance / Analytics task**.
+
+## 7. A/B evaluation harness — gdje živi (ne pisati novi dokument)
+
+Krajnji dokaz Faze 1 ("Campaign Engine B mora biti mjerljivo i ljudski ocijenjeno bolji od
+single-prompt kontrole A") je već detaljno operacionalizovan u
+`AI_Campaign_Studio_Faza_1_v1_4_Agent_Workflow_Integrated.md` — ne treba novi dokument niti
+ponovo izmišljati kriterijume kad G10 postane aktuelan. Tačna mjesta:
+
+```text
+§47 A/B kontrola          — run_control_a.py (jedan AI poziv, bez CampaignRole/fact-selection/
+                             plan-review) vs System B (puni pipeline)
+§48 Determinističke metrike — deterministic_metrics.py: unique_role_count, duplicate_topic_count,
+                             exact_duplicate_caption_count, unsupported_fact_claim_count,
+                             forbidden_phrase_hits, numeric_claim_violations, missing_fact_ids,
+                             schema_failure_count, layout_failure_count, headline_overflow_count,
+                             cta_unique_count
+§49 Human evaluation       — human_eval.py, blind A/B (evaluator ne zna koje je koje), rubrika 1–5:
+                             Brand fit, Language naturalness, Campaign coherence, Post diversity,
+                             Usefulness, Visual consistency
+§50 Kill/Pivot gate        — System B mora pokazati: manje unsupported claims, veću coherence,
+                             bolju post diversity, barem jednaku naturalness, prihvatljiv
+                             latency/stability — inače se NE ide na Slice 2, prvo se revidira
+                             core (CampaignRole rules, prompt design, fact selection, brief
+                             schema, post generation contract), ne dodaje RAG/više agenata
+A16–A20 (task lista)       — acceptance kriterijumi za harness/UI spike/production adapter/
+                             full slice integration/exit evaluation (PASS→Slice 2, FAIL→iteracija)
+G10                        — Vertical Slice Integration Gate: fixture → brief → plan → review →
+                             posts → validation → render → export, uz A/B poređenje
+```
+
+Ako neko (agent ili Human Owner) razmatra pisanje novog "evaluation criteria" dokumenta za R1
+(da li je Campaign Engine stvarno bolji od plain LLM prompta) — prvo pročitati ova mjesta. Novi
+dokument bi kršio AR4 ("Jedan source of truth po konceptu") iz Faze 1 v1.4 §4.

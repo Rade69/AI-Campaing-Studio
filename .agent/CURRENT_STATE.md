@@ -28,6 +28,11 @@ ne kaže `{"status": "PASS"}`.
   - dopunjuje aktivni Faza 1 v1.4 plan;
   - prije Slice 1.5 uvodi samo stable IDs, revision/target identity, export manifest i `analytics_match_key`;
   - stvarni Performance modul počinje tek poslije potvrđenog `G10 Vertical Slice PASS`.
+- **A/B evaluation harness (R1 — "je li Campaign Engine stvarno bolji od plain LLM prompta")**
+  je već detaljno specificiran u `AI_Campaign_Studio_Faza_1_v1_4_Agent_Workflow_Integrated.md`
+  §47–50 i A16–A20 (Control A/System B skripte, 11 determinističkih metrika, blind human-eval
+  rubrika, Kill/Pivot gate). NE pisati novi "evaluation criteria" dokument kad G10 postane
+  aktuelan — vidi `.agent/PROJECT_MAP.md` §7 za tačan pointer po sekciji.
 
 ## Performance / Analytics status
 
