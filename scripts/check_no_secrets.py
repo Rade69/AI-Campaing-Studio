@@ -38,10 +38,14 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-# A key-shaped value: at least 16 alphanumerics (and the allowed token
-# characters ``._-`` for the Bearer form). 16 is the OpenAI project key
-# length and comfortably excludes 4-6 char test tokens.
-_KEY_VALUE = r"[A-Za-z0-9._\-]{16,}"
+# A key-shaped value: at least 16 alphanumerics plus the token
+# characters ``.`` and ``-`` (the Bearer and OpenAI-shaped-key
+# separators). 16 is the OpenAI project key length and comfortably
+# excludes 4-6 char test tokens. Underscore is deliberately
+# excluded — it would let the scanner match Python identifiers
+# like ``leak_probe_value`` (16 alfanumerika + underscore) and
+# false-positive on its own source, see BF-3 fix-round 1.
+_KEY_VALUE = r"[A-Za-z0-9.-]{16,}"
 _VALUE_OR_QUOTED = r'(?:\"[^\"\s]{8,}\"|\"[A-Za-z0-9._\-]{8,}\"|[A-Za-z0-9._\-]{8,})'
 
 # Placeholder substrings (lowercased). A value is a placeholder if the
@@ -92,6 +96,22 @@ PATTERNS: tuple[tuple[str, str], ...] = (
     (
         "anthropic_key",
         r"\bANTHROPIC_API_KEY\b[^A-Za-z0-9_]{0,8}[\"']?(" + _KEY_VALUE + r")[\"']?",
+    ),
+    # Codex review BF-3 (round 1 extension): the canonical env-var
+    # convention is ``AI_CAMPAIGN_STUDIO_<PROVIDER_CODE>_API_KEY`` for
+    # *every* provider (see ``EnvironmentSecretStore.secret_to_env_var``),
+    # not just OpenAI and Anthropic. Hard-coding one pattern per
+    # provider leaves every new provider uncovered until someone
+    # remembers to extend the list. This single pattern follows the
+    # convention directly, so adding a new provider to the registry
+    # automatically extends scanner coverage with no further edits.
+    # The two legacy patterns above remain in place for the
+    # non-prefixed ``OPENAI_API_KEY`` / ``ANTHROPIC_API_KEY`` shapes
+    # (belt-and-suspenders, no coverage loss).
+    (
+        "ai_campaign_studio_env",
+        r"\bAI_CAMPAIGN_STUDIO_[A-Z0-9_]+_API_KEY\b[^A-Za-z0-9_]{0,8}"
+        r"[\"']?(" + _KEY_VALUE + r")[\"']?",
     ),
     (
         "bearer_token",

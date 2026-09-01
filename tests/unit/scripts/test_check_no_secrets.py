@@ -2,8 +2,16 @@
 
 Test fixtures build key-shaped values at *runtime* via the
 ``_real_*`` helpers below so the source contains no key-shaped literal
-in the tracked test scope. This keeps the scanner's baseline
-``git ls-files`` scan clean (Codex review BF-1).
+in the tracked test scope (Codex review BF-1).
+
+Round 1 extension (BF-3): the ``ai_campaign_studio_env`` pattern
+matches the canonical ``AI_CAMPAIGN_STUDIO_<PROVIDER>_API_KEY``
+convention and is exercised for every current provider plus a
+hypothetical future one.
+
+Round 1 extension (BF-2): ``Finding.render()`` no longer echoes the
+raw value; per-test assertions check that the rendered output
+contains the ``<redacted>`` marker instead.
 """
 
 from __future__ import annotations
@@ -35,18 +43,14 @@ _FILLER = "abcdefghijklmnop"  # 16 chars, no prefix on its own
 
 
 def _real_openai_key() -> str:
-    """Return an OpenAI-shaped key; built at runtime to avoid a
-    source-literal that the scanner would flag."""
     return "sk-" + _FILLER * 2  # 32 alphanumerics after "sk-"
 
 
 def _real_bearer_token() -> str:
-    """Return a Bearer-shaped value (no prefix in the body)."""
     return _FILLER * 2  # 32 alphanumerics
 
 
 def _real_api_key_value() -> str:
-    """Return a generic ``api_key``-style value (no prefix)."""
     return _FILLER * 2  # 32 alphanumerics; scanner requires 8+
 
 
@@ -75,7 +79,6 @@ def test_is_placeholder_true(value: str) -> None:
 @pytest.mark.parametrize(
     "value",
     [
-        # Built at runtime so the source itself has no key-shaped literal.
         _real_openai_key(),
         _real_bearer_token(),
     ],
@@ -205,6 +208,54 @@ def test_scan_file_does_not_self_match() -> None:
     repo_root = Path(__file__).resolve().parents[3]
     findings = list(cns._scan_file(repo_root, "scripts/check_no_secrets.py"))
     assert findings == [], f"unexpected self-match: {[f.render() for f in findings]}"
+
+
+def test_scan_file_detects_ai_campaign_studio_env_per_provider(tmp_path: Path) -> None:
+    """The canonical env-var convention is
+    ``AI_CAMPAIGN_STUDIO_<PROVIDER_CODE>_API_KEY=...`` for every
+    provider. The scanner must catch this for every provider
+    registered today *and* any future one (Codex review BF-3,
+    round 1 extension)."""
+    # Built at runtime so the source itself has no key-shaped literal
+    # in the tracked test scope.
+    def _studio_env_line(provider: str, with_quote: bool = False) -> str:
+        value = "abcdefghijklmnop" * 2  # 32 alphanumerics
+        if with_quote:
+            return f'AI_CAMPAIGN_STUDIO_{provider}_API_KEY="{value}"'
+        return f"AI_CAMPAIGN_STUDIO_{provider}_API_KEY={value}"
+
+    # Every current provider in the registry, plus a hypothetical
+    # future one. All must be caught by ``ai_campaign_studio_env``.
+    providers = [
+        "OPENAI",
+        "ANTHROPIC",
+        "GOOGLE",
+        "DEEPSEEK",
+        "OPENROUTER",
+        "OPENAI_COMPATIBLE",
+        # Future provider that does not exist yet — proves the
+        # pattern is structural, not per-provider.
+        "MISTRAL",
+    ]
+    for provider in providers:
+        for with_quote in (False, True):
+            p = tmp_path / "leak.py"
+            p.write_text(
+                _studio_env_line(provider, with_quote) + "\n",
+                encoding="utf-8",
+            )
+            findings = list(cns._scan_file(tmp_path, "leak.py"))
+            assert any(f.pattern_id == "ai_campaign_studio_env" for f in findings), (
+                f"scanner missed {provider!r} via ai_campaign_studio_env "
+                f"(quote={with_quote}); findings="
+                f"{[f.pattern_id for f in findings]}"
+            )
+            # BF-2 still in force: rendered output must not echo the value.
+            for f in findings:
+                if f.pattern_id == "ai_campaign_studio_env":
+                    assert "<redacted>" in f.render(), (
+                        f"rendered finding did not redact value: {f.render()!r}"
+                    )
 
 
 # --- scan() / main() end-to-end ----------------------------------------
