@@ -41,6 +41,7 @@ class JobManager:
         self._tokens: dict[str, CancellationToken] = {}
         self._callbacks: list[JobCallback] = []
         self._lock = threading.Lock()
+        self._shutdown = False
 
     def submit(self, job_type: str, func: Callable[..., Any]) -> str:
         """Schedule ``func`` and return its job id.
@@ -49,13 +50,27 @@ class JobManager:
         parameter (or ``**kwargs``), in which case the job's
         ``CancellationToken`` is passed as the ``token`` keyword argument so it
         can cooperate with ``cancel`` via ``token.raise_if_cancelled()``.
+
+        Raises ``RuntimeError`` if the manager has been shut down. In that case
+        no ``CREATED`` event is emitted and no job state is recorded.
         """
         job_id = new_id()
         token = CancellationToken()
         state = JobState(id=job_id, job_type=job_type, status=JobStatus.PENDING)
         with self._lock:
+            if self._shutdown:
+                raise RuntimeError(
+                    "cannot submit new jobs: JobManager is shut down"
+                )
             self._jobs[job_id] = state
             self._tokens[job_id] = token
+            try:
+                self._executor.submit(self._run, job_id, func, token)
+            except RuntimeError:
+                # Roll back so no orphan PENDING job or CREATED event leaks.
+                self._jobs.pop(job_id, None)
+                self._tokens.pop(job_id, None)
+                raise
         self._emit(
             JobEvent(
                 job_id=job_id,
@@ -63,7 +78,6 @@ class JobManager:
                 timestamp=utc_now(),
             )
         )
-        self._executor.submit(self._run, job_id, func, token)
         return job_id
 
     def get_state(self, job_id: str) -> JobState:
@@ -135,7 +149,13 @@ class JobManager:
         return unsubscribe
 
     def shutdown(self, wait: bool = True) -> None:
-        """Stop accepting work; wait for running jobs when ``wait`` is True."""
+        """Stop accepting work; wait for running jobs when ``wait`` is True.
+
+        Idempotent. After shutdown, ``submit`` raises ``RuntimeError`` without
+        emitting ``CREATED`` or recording job state.
+        """
+        with self._lock:
+            self._shutdown = True
         self._executor.shutdown(wait=wait, cancel_futures=True)
 
     # --- internals ---

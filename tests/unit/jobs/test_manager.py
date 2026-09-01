@@ -237,3 +237,24 @@ def test_bounded_work_completes_when_not_cancelled() -> None:
         assert final.status is JobStatus.SUCCEEDED
     finally:
         manager.shutdown()
+
+
+def test_submit_after_shutdown_raises_and_leaves_no_orphan() -> None:
+    manager = JobManager()
+    events, unsubscribe = _collect_events(manager)
+    manager.shutdown()
+
+    with pytest.raises(RuntimeError):
+        manager.submit("work", _slow_work)
+
+    unsubscribe()
+    # No CREATED event emitted and no orphan PENDING job/token recorded.
+    assert events == []
+    assert manager._jobs == {}
+    assert manager._tokens == {}
+
+
+def test_shutdown_is_idempotent() -> None:
+    manager = JobManager()
+    manager.shutdown()
+    manager.shutdown()  # must not raise
