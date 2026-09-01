@@ -3,7 +3,7 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-01 (coordinator: claude) — ACS-P0-007 Codex round 3 PASS_WITH_NOTES, READY FOR HUMAN APPROVAL
+**Zadnje ažurirano:** 2026-09-01 (coordinator: claude) — ACS-P0-007 DONE, merged u main, ACS-P0-008 unblocked
 
 ---
 
@@ -99,13 +99,15 @@ Performance/Analytics Task Contract mora slijediti `.agent/TASK_ROUTING.md` sekc
 
 ## Trenutni P0 gate
 
-NOT DONE — ACS-P0-001 do ACS-P0-006 (6 od 8 P0 taskova) su merged.
+NOT DONE — ACS-P0-001 do ACS-P0-007 (7 od 8 P0 taskova) su merged.
 `artifacts/phase0_foundation_gate.json` još ne postoji (gate fajl nastaje tek u ACS-P0-008).
 `src/ai_campaign_studio/` sada ima punu foundation površinu: `config/`, `logging/`, `domain/common/`,
 `localization/`, `channels/`, `ai_registry/`, `infrastructure/{secrets,database}/`, svih 5 `ports/`
-contracta, prazne `application/`/`presentation/` seam-ove, i `tests/architecture/test_import_boundaries.py`.
-ACS-P0-007 (Jobs + Presentation contracts + Bootstrap) je sada punopravno unblocked (003+004+005+006
-svi merged), contract i worktree su spremni — jedini preostali unblocked P0 task prije ACS-P0-008.
+contracta, `jobs/` (JobManager), `presentation/` (framework-neutral state/contracts), pun
+`bootstrap.py` composition root, `--health-check` entrypoint, i
+`tests/architecture/test_import_boundaries.py`. ACS-P0-008 (Validators + CI + security + P0 gate)
+je sada jedini preostali P0 task — posljednji prije `artifacts/phase0_foundation_gate.json` i
+prelaska na Faza 1.
 
 ## Aktivni taskovi
 
@@ -117,8 +119,8 @@ svi merged), contract i worktree su spremni — jedini preostali unblocked P0 ta
 | ACS-P0-004 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `5ecf43f` (`--no-ff`, task branch `task/ACS-P0-004-channel-registry` @ `be3767a`). 3 review runde: Codex REJECT×2 (BF-1..3 pa BF-4, 4 stvarna nalaza — TypeError umjesto RegistryError, mutable "frozen" model, duplicate reference, `or []` falsy-scalar zamka), svaki fix nezavisno re-verifikovan od koordinatora, round 3 `PASS_WITH_NOTES` bez blocking findings. Crush nije predao nijedan self-report kroz cio task — sva evidence rekonstruisana od koordinatora. Finalni decision packet: `agent_reports/2026-08-31-ACS-P0-004-final-decision-packet.md`. Human Owner approval: "odobravam". Post-merge gate PASS na `main` (65 testova, ruff, mypy, health-check). Worktree uklonjen (clean, bez force-a). |
 | ACS-P0-005 | **DONE — merged u main** | Pi | Codex, Claude | Merge commit `c76eb9b` (`--no-ff`, task branch `task/ACS-P0-005-ai-registry-secrets` @ `2ff5f4e`). 2 review runde: Codex REJECT×1 (BF-1..3: secret leak kroz exception `__cause__`, env-var collision za nekanonska imena, modeli za nepoznatog providera), fix nezavisno re-verifikovan od koordinatora, round 2 `PASS_WITH_NOTES` bez blocking findings. Finalni decision packet: `agent_reports/2026-09-01-ACS-P0-005-final-decision-packet.md`. Human Owner approval: "Odobravam". Trivijalan add/add merge konflikt na `infrastructure/__init__.py` (obje 005 i 006 kontrakte su nezavisno listale isti fajl — moja greška u allowed_paths disjoint provjeri za taj par) — riješen ručno, samo docstring razlika. Post-merge gate PASS na `main`. Worktree uklonjen (`--force`, samo Pi-jevi već-inkorporirani raw report fajlovi izgubljeni). |
 | ACS-P0-006 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `298bbd3` (`--no-ff`, task branch `task/ACS-P0-006-sqlite-foundation` @ `8d45167`). 2 review runde: Codex REJECT×1 (BF-1/2: UoW re-use nakon commit-a onemogući rollback, migration runner rollback-uje caller-owned transakciju kad BEGIN padne), fix nezavisno re-verifikovan od koordinatora, round 2 `PASS_WITH_NOTES` bez blocking findings. Finalni decision packet: `agent_reports/2026-09-01-ACS-P0-006-final-decision-packet.md`. Human Owner approval: "odobravam". Post-merge gate PASS na `main` (104 testa, ruff, mypy, health-check). Worktree uklonjen (clean, bez force-a). Usput: `.codex_tmp/` scratch fajl Codex-a je nakratko interferisao sa `ruff check .` (nije gitignored) — nestao je sam prije nego što je trebalo trajno rješenje, nije naš kod. |
-| ACS-P0-007 | **READY FOR HUMAN APPROVAL** | Pi | Codex, Claude (HIGH) | Scope: P0.20–P0.23 (Jobs + Presentation contracts + Bootstrap wiring). Contract: `agent_reports/ACS-P0-007-task-contract.md`. Grana `task/ACS-P0-007-jobs-presentation-bootstrap` @ `c553379` (nije još merged). Tri Codex REJECT/REJECT/PASS_WITH_NOTES runde: BF-1 (submit-after-shutdown orphan job), BF-2 (dynamic-import guard bypass), R2-BF-1 (queued job trajno PENDING nakon shutdown-cancellation) — sva tri nalaza nezavisno reprodukovana od koordinatora PRIJE svake fix-runde I nezavisno reverifikovana POSLIJE (uključujući reprodukciju Codex-ovog 100-job concurrent submit/shutdown stress probe-a). Codex round 3 (`agent_reports/2026-09-01-ACS-P0-007-review-codex-round3.md`): PASS_WITH_NOTES, bez blocking findings. 170 testova, ruff/mypy/health-check čisto. Finalni decision packet: `agent_reports/2026-09-01-ACS-P0-007-final-decision-packet.md` — READY FOR HUMAN APPROVAL, jedan non-blocking rezidual (double-indirection dynamic-import bypass u presentation guardu, eksplicitno van scope-a po Codex-ovoj preporuci). Čeka Human Owner merge odobrenje. |
-| ACS-P0-008 | BLOCKED — čeka ACS-P0-007 | — | — | DAG u `.agent/PROJECT_MAP.md` §5. |
+| ACS-P0-007 | **DONE — merged u main** | Pi | Codex, Claude | Merge commit `1071eff` (`--no-ff`, task branch `task/ACS-P0-007-jobs-presentation-bootstrap` @ `c553379`). Scope: P0.20–P0.23 (Jobs + Presentation contracts + Bootstrap wiring). Tri Codex REJECT/REJECT/PASS_WITH_NOTES runde: BF-1 (submit-after-shutdown orphan job), BF-2 (dynamic-import guard bypass), R2-BF-1 (queued job trajno PENDING nakon shutdown-cancellation) — sva tri nalaza nezavisno reprodukovana od koordinatora PRIJE svake fix-runde I nezavisno reverifikovana POSLIJE (uključujući reprodukciju Codex-ovog 100-job concurrent submit/shutdown stress probe-a). Codex round 3: PASS_WITH_NOTES, bez blocking findings. Finalni decision packet: `agent_reports/2026-09-01-ACS-P0-007-final-decision-packet.md`. Human Owner approval: "Odobravam". Post-merge gate PASS na `main` (170 testova, ruff, mypy, oba health-check entrypointa, Python 3.14.1). Čist merge, bez konflikta. Jedan prihvaćen non-blocking rezidual (double-indirection dynamic-import bypass u presentation guardu, eksplicitno van scope-a po Codex-ovoj preporuci). Worktree uklonjen (clean, bez force-a). |
+| ACS-P0-008 | **UNBLOCKED — contract nije napisan** | — | Codex, Claude (HIGH) | Scope: P0.24–P0.30 (Validators + CI + security + P0 gate). Zavisi od svih prethodnih — svi merged, punopravno unblocked. Posljednji P0 task prije `artifacts/phase0_foundation_gate.json`. DAG u `.agent/PROJECT_MAP.md` §5. |
 
 ## Paralelizacija — trenutna provjera
 
@@ -160,15 +162,15 @@ ACS-P0-007 je sada jedini kandidat — nema drugog unblocked P0 taska za paralel
 
 ## Verification baseline
 
-Uspostavljen na `main` poslije merge-a ACS-P0-005 + file-header Faze 1 (2026-09-01, root `.venv`,
-Python 3.14.1):
+Uspostavljen na `main` poslije merge-a ACS-P0-007 (2026-09-01, root `.venv`, Python 3.14.1):
 
 ```text
 import ai_campaign_studio          → OK (0.1.0)
-python -m pytest -q                → 134 passed
+python -m pytest -q                → 170 passed
 python -m ruff check .             → All checks passed!
-python -m mypy src                 → Success: no issues found in 43 source files
+python -m mypy src                 → Success: no issues found in 51 source files
 python -m ai_campaign_studio.main --health-check → exit 0
+python scripts/health_check.py     → exit 0
 ```
 
 ## CI
@@ -203,7 +205,6 @@ ponovo pokrenuti `npx gitnexus analyze --skip-agents-md` pa `npx gitnexus status
 
 ## Sljedeći task
 
-ACS-P0-001–006 su svi DONE. ACS-P0-007 (Jobs + Presentation contracts + Bootstrap wiring,
-P0.20–P0.23, HIGH) ima gotov contract i otvoren worktree/branch — čeka da implementer (Pi) preuzme
-i javi rezultat. Poslije 007, ACS-P0-008 (Validators + CI + security + P0 gate) je posljednji P0
-task prije `artifacts/phase0_foundation_gate.json` i prelaska na Faza 1.
+ACS-P0-001–007 su svi DONE. ACS-P0-008 (Validators + CI + security + P0 gate, P0.24–P0.30) je
+jedini preostali P0 task — posljednji prije `artifacts/phase0_foundation_gate.json` i prelaska na
+Faza 1. Contract nije napisan.
