@@ -16,9 +16,11 @@ Za trenutno aktivan task/gate stanje vidi `.agent/CURRENT_STATE.md`.
 | `AI_Campaign_Studio_Faza_1_v1_4_Agent_Workflow_Integrated.md` | aktivni Faza 1 plan (supersedes v1.3), blokiran dok P0-GATE != PASS | Faza 1 execution SoT |
 | `AI_Campaign_Studio_Faza_1_v1_5_Analytics_Ready_Implementation_Plan.md` | analytics-ready dopuna v1.4: stable IDs + revision/target identity + export manifest; Slice 1.5 poslije G10 | Analytics implementation SoT |
 | `AI_Campaign_Studio_Faza_1_v1_3_P0_Handoff_Agent_Ready_Tehnicki_Plan.md` | superseded — istorijski, ne koristiti kao SoT | referenca samo |
-| `docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md` | kanonski agentski proces (risk tier, review, GitNexus, merge) | proces SoT |
+| `docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md` | kanonski agentski proces (risk tier, review, GitNexus, merge, §29 review politika) | proces SoT |
 | `.agent/GITNEXUS_PROTOCOL.md` | GitNexus hard-gate protokol | proces SoT (GitNexus dio) |
 | `AGENTS.md` / `CLAUDE.md` | thin router-i, prvi ulaz za agente | routing only, ne duplirati sadržaj ovdje |
+| `docs/AI_Campaign_Studio_Istrazivanje_Konkretnih_Rjesenja_Uska_Grla_2026-09-01.md` | eksterno istraživanje (krug 1) kandidata biblioteka/obrazaca za G10/Website/Document/Renderer/Analytics/agent-workflow uska grla | referenca za buduće faze, NE trenutni P0 scope, ne implementirati bez zasebne odluke |
+| `docs/AI_Campaign_Studio_Drugi_Krug_Istrazivanja_2026-09-01.md` | eksterno istraživanje (krug 2) — dublja provjera kruga 1 (stvarni GitHub issue-i, Windows/packaging rizici); revidira dio preporuka na strože (SPIKE/HOLD umjesto ADOPT) | referenca za buduće faze, NE trenutni P0 scope |
 
 ## 2. Fizička struktura repoa (trenutno stanje)
 
