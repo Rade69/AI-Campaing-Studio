@@ -4,7 +4,7 @@ phase: P0-hotfix
 title: "JobManager: CREATED/STARTED event ordering race (regression from ACS-P0-007 fix round 2)"
 risk: HIGH
 coordinator: claude
-implementer: pi
+implementer: minimax
 reviewers: [codex, claude]
 status: "OPEN — contract written before code"
 created_at: 2026-09-01
