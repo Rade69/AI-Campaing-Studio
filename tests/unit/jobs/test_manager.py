@@ -336,3 +336,77 @@ def test_shutdown_wait_true_cancels_queued_job_without_leaving_pending_state() -
     assert events.count(JobEventType.CREATED) == 2
     assert JobEventType.CANCELLED in events
     assert events[-1] is not JobEventType.CREATED
+
+
+def test_event_ordering_under_slow_created_callback_deterministic() -> None:
+    """Deterministic adversarial test for the CREATED-then-STARTED invariant.
+
+    On submission, the JobManager publishes a ``CREATED`` event; the worker
+    thread that runs the callable publishes a ``STARTED`` event after
+    transitioning the job state to ``RUNNING``. The contract requires
+    ``CREATED`` to reach subscribers **before** ``STARTED`` for any given
+    job, every time.
+
+    A non-reentrant ``Lock`` plus a ``CREATED`` emit that runs *after*
+    ``with self._lock:`` releases the lock lets the worker thread win the
+    race: the submitter is sitting inside ``_emit`` waiting on a slow
+    callback, the worker is unblocked and can transition to RUNNING and
+    emit ``STARTED`` first. This race was caught by GitHub Actions CI
+    (Linux) but not by three rounds of Windows-local review.
+
+    This test forces the race by:
+      1. subscribing a callback that sleeps for a full 0.2 s when it
+         receives ``CREATED`` (so the submitter is parked for the entire
+         window in which the worker can take the lock);
+      2. submitting a job whose callable completes near-instantly
+         (so the worker is unblocked the moment the lock is free);
+      3. asserting the event order is exactly ``[CREATED, STARTED,
+         SUCCEEDED]`` — which can only hold if the submitter kept the
+         lock through the entire ``_emit(CREATED)`` call.
+
+    On the buggy code (Lock + emit outside the lock; or RLock + emit
+    inside ``with self._lock:`` but ``_emit`` only holds the lock
+    during the callback snapshot and releases before the slow callback
+    runs) the worker reaches ``_emit(STARTED)`` during the 0.2 s sleep
+    and the test fails with a clear event-order assertion message. On
+    the fixed code (RLock + emit inside the lock + ``_emit`` holds
+    the lock through callback dispatch) the worker cannot take the
+    lock until the submitter's slow callback returns, so the order is
+    guaranteed.
+    """
+    manager = JobManager()
+    events: list[JobEventType] = []
+    events_lock = threading.Lock()
+    slow_callback_started = threading.Event()
+    SLOW_CALLBACK_SECONDS = 0.2
+
+    def on_event(event: JobEvent) -> None:
+        if event.event_type is JobEventType.CREATED:
+            slow_callback_started.set()
+            time.sleep(SLOW_CALLBACK_SECONDS)
+        with events_lock:
+            events.append(event.event_type)
+
+    unsubscribe = manager.subscribe(on_event)
+    try:
+        job_id = manager.submit("work", _slow_work)
+        # Sanity: the slow callback must actually fire (otherwise the
+        # test silently proves nothing). If this never sets, fail loud.
+        assert slow_callback_started.wait(_WAIT_TIMEOUT), (
+            "CREATED callback was never invoked; the test is not "
+            "exercising the race window"
+        )
+        _wait_for_status(manager, job_id, {JobStatus.SUCCEEDED})
+    finally:
+        manager.shutdown()
+        unsubscribe()
+
+    assert events == [
+        JobEventType.CREATED,
+        JobEventType.STARTED,
+        JobEventType.SUCCEEDED,
+    ], (
+        f"event ordering broken under slow CREATED callback: {events!r}. "
+        "A worker thread acquired the manager lock and emitted STARTED "
+        "before the submitter finished emitting CREATED."
+    )
