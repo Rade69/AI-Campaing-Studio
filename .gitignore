@@ -20,6 +20,8 @@ build/
 # Runtime artifacts (keep the directory, ignore its contents)
 artifacts/*
 !artifacts/.gitkeep
+# P0 gate report (ACS-P0-008) is committed when status == PASS.
+!artifacts/phase0_foundation_gate.json
 
 # Logs
 *.log
