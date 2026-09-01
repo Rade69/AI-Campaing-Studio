@@ -258,3 +258,81 @@ def test_shutdown_is_idempotent() -> None:
     manager = JobManager()
     manager.shutdown()
     manager.shutdown()  # must not raise
+
+
+def test_shutdown_cancels_queued_job_without_leaving_pending_state() -> None:
+    manager = JobManager(max_workers=1)
+    events, unsubscribe = _collect_events(manager)
+    blocker_started = threading.Event()
+    release_blocker = threading.Event()
+
+    def blocker() -> None:
+        blocker_started.set()
+        release_blocker.wait(_WAIT_TIMEOUT)
+
+    def queued_work() -> None:
+        raise AssertionError("queued job should be cancelled before it starts")
+
+    first_id = manager.submit("blocker", blocker)
+    assert blocker_started.wait(_WAIT_TIMEOUT)
+    second_id = manager.submit("queued", queued_work)
+    assert manager.get_state(second_id).status is JobStatus.PENDING
+
+    try:
+        manager.shutdown(wait=False)
+        final = manager.get_state(second_id)
+        assert final.status is JobStatus.CANCELLED
+        assert final.finished_at is not None
+    finally:
+        release_blocker.set()
+        unsubscribe()
+
+    _wait_for_status(manager, first_id, {JobStatus.SUCCEEDED})
+    assert events.count(JobEventType.CREATED) == 2
+    assert JobEventType.CANCELLED in events
+    assert events[-1] is not JobEventType.CREATED
+
+
+def test_shutdown_wait_true_cancels_queued_job_without_leaving_pending_state() -> None:
+    manager = JobManager(max_workers=1)
+    events, unsubscribe = _collect_events(manager)
+    blocker_started = threading.Event()
+    release_blocker = threading.Event()
+
+    def blocker() -> None:
+        blocker_started.set()
+        release_blocker.wait(_WAIT_TIMEOUT)
+
+    def queued_work() -> None:
+        raise AssertionError("queued job should be cancelled before it starts")
+
+    first_id = manager.submit("blocker", blocker)
+    assert blocker_started.wait(_WAIT_TIMEOUT)
+    second_id = manager.submit("queued", queued_work)
+    assert manager.get_state(second_id).status is JobStatus.PENDING
+
+    shutdown_thread = threading.Thread(
+        target=manager.shutdown,
+        kwargs={"wait": True},
+    )
+    shutdown_thread.start()
+    try:
+        deadline = time.monotonic() + _WAIT_TIMEOUT
+        while time.monotonic() < deadline:
+            if manager._futures[second_id].cancelled():
+                break
+            time.sleep(0.005)
+        assert manager._futures[second_id].cancelled()
+    finally:
+        release_blocker.set()
+        shutdown_thread.join(_WAIT_TIMEOUT)
+        unsubscribe()
+
+    assert not shutdown_thread.is_alive()
+    assert manager.get_state(first_id).status is JobStatus.SUCCEEDED
+    final = manager.get_state(second_id)
+    assert final.status is JobStatus.CANCELLED
+    assert final.finished_at is not None
+    assert events.count(JobEventType.CREATED) == 2
+    assert JobEventType.CANCELLED in events
+    assert events[-1] is not JobEventType.CREATED

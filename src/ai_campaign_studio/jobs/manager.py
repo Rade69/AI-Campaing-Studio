@@ -12,7 +12,7 @@ import inspect
 import logging
 import threading
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import replace
 from typing import Any
 
@@ -39,6 +39,7 @@ class JobManager:
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self._jobs: dict[str, JobState] = {}
         self._tokens: dict[str, CancellationToken] = {}
+        self._futures: dict[str, Future[None]] = {}
         self._callbacks: list[JobCallback] = []
         self._lock = threading.Lock()
         self._shutdown = False
@@ -65,12 +66,13 @@ class JobManager:
             self._jobs[job_id] = state
             self._tokens[job_id] = token
             try:
-                self._executor.submit(self._run, job_id, func, token)
+                future = self._executor.submit(self._run, job_id, func, token)
             except RuntimeError:
                 # Roll back so no orphan PENDING job or CREATED event leaks.
                 self._jobs.pop(job_id, None)
                 self._tokens.pop(job_id, None)
                 raise
+            self._futures[job_id] = future
         self._emit(
             JobEvent(
                 job_id=job_id,
@@ -157,6 +159,7 @@ class JobManager:
         with self._lock:
             self._shutdown = True
         self._executor.shutdown(wait=wait, cancel_futures=True)
+        self._finish_cancelled_futures()
 
     # --- internals ---
 
@@ -215,6 +218,29 @@ class JobManager:
         self._emit(
             JobEvent(job_id=job_id, event_type=event_type, timestamp=utc_now())
         )
+
+    def _finish_cancelled_futures(self) -> None:
+        """Mark executor-cancelled queued jobs as terminally cancelled."""
+        cancelled_events: list[JobEvent] = []
+        with self._lock:
+            for job_id, future in self._futures.items():
+                if not future.cancelled():
+                    continue
+                state = self._jobs.get(job_id)
+                if state is None or state.status in _TERMINAL_STATUSES:
+                    continue
+                self._jobs[job_id] = replace(
+                    state, status=JobStatus.CANCELLED, finished_at=utc_now()
+                )
+                cancelled_events.append(
+                    JobEvent(
+                        job_id=job_id,
+                        event_type=JobEventType.CANCELLED,
+                        timestamp=utc_now(),
+                    )
+                )
+        for event in cancelled_events:
+            self._emit(event)
 
     def _emit(self, event: JobEvent) -> None:
         with self._lock:
