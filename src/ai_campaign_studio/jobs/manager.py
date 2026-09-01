@@ -41,7 +41,16 @@ class JobManager:
         self._tokens: dict[str, CancellationToken] = {}
         self._futures: dict[str, Future[None]] = {}
         self._callbacks: list[JobCallback] = []
-        self._lock = threading.Lock()
+        # ``RLock`` (not ``Lock``) is required so that ``submit()`` can
+        # call ``self._emit()`` from inside the same thread that holds
+        # the lock — ``_emit`` itself takes the lock to snapshot
+        # ``self._callbacks``. A non-reentrant ``Lock`` would deadlock
+        # here. The reentrant property is thread-local: the worker
+        # thread (``_run``) still has to wait for the submitter to
+        # release the lock before it can transition the state to
+        # ``RUNNING``, so the ``CREATED`` event is guaranteed to reach
+        # subscribers before ``STARTED`` for the same job.
+        self._lock = threading.RLock()
         self._shutdown = False
 
     def submit(self, job_type: str, func: Callable[..., Any]) -> str:
@@ -54,6 +63,13 @@ class JobManager:
 
         Raises ``RuntimeError`` if the manager has been shut down. In that case
         no ``CREATED`` event is emitted and no job state is recorded.
+
+        Ordering invariant: the ``CREATED`` event is published **inside**
+        the ``with self._lock:`` block (after the future is successfully
+        registered), so any worker thread waiting on the lock to perform
+        its PENDING → RUNNING transition cannot run until the submitter
+        has finished emitting ``CREATED``. Subscribers therefore always
+        observe ``CREATED`` before ``STARTED`` for the same job.
         """
         job_id = new_id()
         token = CancellationToken()
@@ -73,13 +89,18 @@ class JobManager:
                 self._tokens.pop(job_id, None)
                 raise
             self._futures[job_id] = future
-        self._emit(
-            JobEvent(
-                job_id=job_id,
-                event_type=JobEventType.CREATED,
-                timestamp=utc_now(),
+            # Publish ``CREATED`` while still holding the lock so the
+            # worker thread cannot race ahead and emit ``STARTED`` first.
+            # ``_emit`` acquires the (reentrant) lock internally to
+            # snapshot ``self._callbacks``; the same-thread re-acquire
+            # is safe with ``RLock``.
+            self._emit(
+                JobEvent(
+                    job_id=job_id,
+                    event_type=JobEventType.CREATED,
+                    timestamp=utc_now(),
+                )
             )
-        )
         return job_id
 
     def get_state(self, job_id: str) -> JobState:
@@ -243,15 +264,33 @@ class JobManager:
             self._emit(event)
 
     def _emit(self, event: JobEvent) -> None:
+        # Hold ``self._lock`` across the entire callback dispatch, not
+        # just the callback-snapshot step. The reason is the event
+        # ordering invariant: a ``CREATED`` event must reach subscribers
+        # before any worker thread can perform the PENDING → RUNNING
+        # transition and emit ``STARTED``. The worker thread needs
+        # ``self._lock`` for that transition; if the lock were released
+        # between snapshot and callback execution, a slow CREATED
+        # subscriber would let the worker race ahead and emit
+        # ``STARTED`` first (regression observed on Linux CI; see
+        # ACS-HOTFIX-001 task contract).
+        #
+        # Trade-off: callbacks now run with the lock held, so a slow
+        # subscriber briefly serialises other manager operations
+        # (cancel, get_state, submit, _run, _finish). This is the
+        # correct trade-off for the ordering invariant; the lock
+        # reentrancy (``RLock``) keeps ``_emit``-from-inside-itself
+        # cases (currently none) safe.
         with self._lock:
             callbacks = list(self._callbacks)
-        for callback in callbacks:
-            try:
-                callback(event)
-            except Exception:  # noqa: BLE001
-                logger.exception(
-                    "job event callback failed for %s", event.event_type.value
-                )
+            for callback in callbacks:
+                try:
+                    callback(event)
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "job event callback failed for %s",
+                        event.event_type.value,
+                    )
 
 
 def _accepts_token(func: Callable[..., Any]) -> bool:
