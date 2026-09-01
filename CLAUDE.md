@@ -96,10 +96,16 @@ Ne oslanjaj se na starije Faza 0/Faza 1 verzije ako CURRENT_STATE kaže da su su
 - Execution evidence prije reviewa.
 - GitNexus je obavezan za MEDIUM/HIGH i shared-contract/refactor izmjene.
 - Review prije Human Owner approval-a.
-- Merge tek nakon eksplicitnog odobrenja.
+- Merge tek nakon eksplicitnog odobrenja — **osim** LOW/MEDIUM taskova pod
+  smanjenim review troškom (workflow §29, od 2026-09-01): tamo je Claude
+  PASS dovoljan da koordinator odmah commit-uje/push-uje/merguje, bez
+  posebnog per-task odobrenja. HIGH/bezbjednosno-kritični taskovi ostaju na
+  punom ciklusu bez izuzetka.
 - Post-merge test/lint/type/integration gate.
 - Ne uvoditi framework/abstrakciju "za svaki slučaj".
 - Ne tvrditi da nešto radi bez stvarnog testa/outputa.
+- Relevantni source fajlovi imaju kratak "owns / does not own" header na
+  vrhu (workflow §30) — navigaciona pomoć za agente, ne source of truth.
 
 ## GitNexus
 

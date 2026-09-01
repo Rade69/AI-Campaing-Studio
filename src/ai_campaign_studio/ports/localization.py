@@ -1,4 +1,8 @@
-"""Localization ports (interfaces implemented by adapters)."""
+"""Localization ports (interfaces implemented by adapters).
+
+Owns the ``TranslatorPort`` contract only. Does not implement translation
+logic — the concrete adapter is ``localization/translator.py``.
+"""
 
 from typing import Any, Protocol
 

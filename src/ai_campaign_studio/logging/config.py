@@ -1,4 +1,9 @@
-"""Central logging configuration (stdlib only)."""
+"""Central logging configuration (stdlib only).
+
+Owns building the application's console + rotating-file logger from
+``AppSettings``/``AppPaths``. Does not redact sensitive values itself —
+callers must run payloads through ``logging.redaction.redact`` first.
+"""
 
 import logging
 from logging.handlers import RotatingFileHandler

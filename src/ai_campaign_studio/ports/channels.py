@@ -1,4 +1,8 @@
-"""Channel / Platform / Format registry port."""
+"""Channel / Platform / Format registry port.
+
+Owns the ``PlatformRegistryPort`` contract only. Does not load YAML or
+implement registry logic — the concrete adapter is ``channels/registry.py``.
+"""
 
 from typing import Protocol
 

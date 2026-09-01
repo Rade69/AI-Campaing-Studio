@@ -1,4 +1,10 @@
-"""Application entry point for AI Campaign Studio."""
+"""Application entry point for AI Campaign Studio.
+
+Owns CLI argument parsing and process exit-code handling for
+``python -m ai_campaign_studio.main``. Does not start a GUI in Phase 0 —
+``--health-check`` builds the same foundation bootstrap the future UI
+entry point will use.
+"""
 
 import argparse
 

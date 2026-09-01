@@ -1,4 +1,10 @@
-"""AI provider/model registry ports."""
+"""AI provider/model registry ports.
+
+Owns three contracts: ``AIProviderRegistryPort``/``ModelRegistryPort`` (P0-ready,
+implemented by ``ai_registry/registry.py``) and ``AIProviderConnectionPort``
+(future-only — no P0 component implements or calls it). Does not implement
+registry logic or provider connectivity itself.
+"""
 
 from typing import Any, Protocol
 

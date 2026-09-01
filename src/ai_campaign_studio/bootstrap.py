@@ -1,4 +1,10 @@
-"""Composition root for the AI Campaign Studio application."""
+"""Composition root for the AI Campaign Studio application.
+
+Owns wiring foundation objects (Settings, Paths, logger) into a single
+``Bootstrap`` for ``main.py``. Does not build GUI, database, provider
+adapters, or Campaign/Brand/Content logic — later P0/Faza 1 tasks extend
+``create_bootstrap`` as those pieces are introduced.
+"""
 
 import logging
 

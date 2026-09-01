@@ -1,4 +1,11 @@
-"""Application error taxonomy."""
+"""Application error taxonomy.
+
+Owns the single ``AppError`` hierarchy and machine-readable ``ErrorCode``
+shared across domain/application/infrastructure (``RegistryError``,
+``SecretStoreError``, ``DatabaseError``, ``MigrationError``, etc.). Does not
+define feature-specific error types outside this file — new error classes
+are added here, not duplicated per-module.
+"""
 
 from enum import StrEnum
 

@@ -1,4 +1,9 @@
-"""Application settings."""
+"""Application settings.
+
+Owns the validated ``AppSettings`` model consumed by ``bootstrap.py`` and
+``config/paths.py``. Does not hold secrets, provider credentials, campaign
+defaults or hardcoded model lists — those belong to their own features.
+"""
 
 from pathlib import Path
 from typing import Literal

@@ -1,4 +1,10 @@
-"""Migration runner (P0.17)."""
+"""Migration runner (P0.17).
+
+Owns discovering ``NNNN_name.sql`` files, tracking applied versions in
+``schema_migrations``, and applying pending migrations transactionally (no
+partial apply, no rollback of a transaction it did not open itself). Does
+not define Brand/Campaign/Content schema — only P0 foundation tables.
+"""
 
 from __future__ import annotations
 

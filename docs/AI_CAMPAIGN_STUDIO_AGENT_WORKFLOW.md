@@ -1090,3 +1090,136 @@ puni Codex+Claude+Human Owner ciklus, ne tiho nastaviti olakšanim putem.
 `.agent/CURRENT_STATE.md` mora imati kratku napomenu koja kategorija
 review-a je trenutno na snazi, da naredna sesija/task ne posegne nazad za
 starim punim ciklusom bez razloga.
+
+---
+
+# 30. Agent-friendly file headers (Human Owner odluka, 2026-09-01)
+
+## Cilj
+
+Svaki relevantni source fajl na vrhu ima kratak, precizan opis svoje
+odgovornosti, tako da Claude, Codex i drugi agenti mogu:
+
+1. pročitati samo prvih nekoliko linija fajla;
+2. brzo procijeniti da li je fajl relevantan za trenutni task;
+3. ne otvarati nepotrebno cijele fajlove;
+4. smanjiti potrošnju context-a i broj tool poziva;
+5. lakše razumjeti granice između modula.
+
+Osnovni princip: **progressive disclosure** — prvo mapa i header-i, pun
+sadržaj samo kada postoji razlog.
+
+## Format
+
+Ne koristiti YAML front matter unutar Python/JS/TS i sličnih source fajlova
+— to ostaje rezervisano za Task Contracts, Agent Reports, planove i druge
+strukturisane Markdown artefakte. Koristiti prirodni dokumentacioni format
+jezika (Python `"""..."""` na vrhu fajla, JS/TS `/** ... */`, shell `#`
+komentari na vrhu).
+
+Header ima 2–5 kratkih linija i odgovara na:
+
+```text
+1. Šta ovaj fajl radi?
+2. Šta je njegova glavna odgovornost (owns)?
+3. Šta namjerno NE radi, ako je granica važna (does not own)?
+4. (po potrebi) Gdje je povezani canonical contract/dokument?
+```
+
+Primjer (već primijenjeno u ovom repou,
+`src/ai_campaign_studio/infrastructure/database/migrations.py`):
+
+```python
+"""Migration runner (P0.17).
+
+Owns discovering ``NNNN_name.sql`` files, tracking applied versions in
+``schema_migrations``, and applying pending migrations transactionally (no
+partial apply, no rollback of a transaction it did not open itself). Does
+not define Brand/Campaign/Content schema — only P0 foundation tables.
+"""
+```
+
+Ne stavljati u header: detaljnu implementaciju, istoriju izmjena, listu svih
+funkcija/klasa, trenutne bugove, TODO listu, brojeve linija, imena
+agenata/reviewera koji su radili na fajlu, review-round/datum narativ. Ta
+istorija živi u `agent_reports/` i git istoriji, ne u source komentaru —
+inače header trune kako se kod mijenja. Header opisuje STABILNU
+odgovornost fajla, ne trenutno interno stanje.
+
+Header mora biti precizan, ne generički — "Utility functions" ili "Handles
+tasks" nisu prihvatljivi. Agent iz header-a mora moći zaključiti "ovaj fajl
+mi vjerovatno treba" ili "ovaj fajl nije dio problema koji istražujem".
+
+## Kada je obavezan
+
+Obavezno za: services/use-cases, registries, adapters/infrastructure,
+ports/contracts, domain modules, modele (Pydantic/dataclass), composition
+roots (bootstrap), verification/CI logiku, Git/worktree logiku, CLI, veće
+utility module, važnije test helper module.
+
+Nije potrebno za: prazan `__init__.py` bez javnog API-ja, generated/vendor
+kod, alat-generisane migracije, lock fajlove, JSON/YAML fixture, male
+statične data fajlove. Ako `__init__.py` definiše javni API paketa (više
+fajlova u paketu), treba imati kratak opis paketa (vidi primjer ispod).
+
+## Package-level `__init__.py`
+
+Gdje paket ima više fajlova, `__init__.py` treba kratko objasniti paket
+(već primijenjeno u ovom repou, npr.
+`src/ai_campaign_studio/channels/__init__.py`):
+
+```python
+"""Channel / Platform / Format registry (P0.13).
+
+Data-driven ``Channel -> Platform -> Format`` model. Platforms are defined in
+``resources/platforms/*.yaml``, not as Python enums, so the registry stays
+extensible without touching the Campaign Engine.
+"""
+```
+
+## Header nije source of truth za ponašanje
+
+Header je navigaciona pomoć, ne autoritet. Ako postoji razlika između
+header-a i stvarnog koda, **stvaran kod je autoritet**. Agent koji primijeti
+zastarjeo header ga prijavljuje/ispravlja ako je unutar scope-a taska. Ne
+donositi arhitektonske zaključke samo iz header-a bez čitanja relevantnog
+koda kada je taj kod stvarno bitan za task.
+
+## Pravilo čitanja (progressive disclosure)
+
+Pri istraživanju codebase-a, ne otvarati odmah pune sadržaje velikog broja
+fajlova. Preferirani postupak:
+
+```text
+1. pronađi relevantne direktorije/fajlove (PROJECT_MAP/CURRENT_STATE/imena)
+2. pročitaj ime fajla
+3. pročitaj prvih ~10–20 linija kandidata (header)
+4. koristi header da odbaciš nerelevantne fajlove
+5. tek tada otvori puni sadržaj relevantnih fajlova
+```
+
+## Održavanje (touched-file rule)
+
+Header mora ostati sinhronizovan sa kodom. Kada se odgovornost fajla
+materijalno promijeni, agent koji mijenja fajl provjerava i header prije
+kraja taska: "Da li postojeći header još uvijek tačno opisuje odgovornost
+fajla?" Ako ne — ažurirati u istom tasku. Ne mijenjati header samo zato što
+je unutrašnja implementacija refaktorisana ako je odgovornost fajla ostala
+ista.
+
+## Migracija postojećeg repoa
+
+Ne mijenjati sve fajlove odjednom. Postupno:
+
+- **Faza 1** (urađeno 2026-09-01 za P0.00–P0.19 foundation): ključni fajlovi
+  — composition root (`bootstrap.py`), entry point (`main.py`), settings,
+  logging config, domain error taxonomy, migration runner, tanki `ports/*`
+  contracts koji su imali samo jednu liniju. Fajlovi koji su već imali
+  owns/does-not-own detalj u prvih ~20 linija (registries, secret store
+  adapteri, translator, database connection/UoW) nisu dirani — proporcionalno,
+  ne header za svaki fajl "slijepo".
+- **Faza 2 — touched-file rule**: kad task već materijalno mijenja postojeći
+  source fajl, provjeriti ima li kvalitetan header; ako nema, dodati ga u
+  istom tasku.
+- **Faza 3 — zaseban cleanup**: samo ako se pokaže da agenti i dalje
+  previše lutaju kroz određeni subsystem.

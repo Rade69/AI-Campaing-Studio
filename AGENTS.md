@@ -56,6 +56,15 @@ Ako postoji konflikt, NE nagađaj. Prijavi ga koordinatoru.
 - Provider/model izbor ne smije procuriti u Campaign Engine.
 - Performance/Analytics se ne implementira prerano: agent mora koristiti `.agent/TASK_ROUTING.md` sekciju `Performance / Analytics task`; runtime Slice 1.5 počinje tek poslije potvrđenog `G10 Vertical Slice PASS`.
 
+## Agent-friendly file headers
+
+Relevantni source fajlovi (services/registries/adapters/ports/domain/models/
+composition roots — vidi puno pravilo) treba da počinju kratkim header-om
+(2–5 linija) koji kaže šta fajl posjeduje i šta namjerno NE radi. Header je
+navigaciona pomoć (progressive disclosure), ne source of truth — stvaran kod
+je autoritet. Puno pravilo, format po jeziku i touched-file politika:
+`docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md` §30.
+
 ## GitNexus — obavezno
 
 Ako repo još nije indeksiran, nakon početnog foundation skeletona:

@@ -22,6 +22,15 @@ ODMAH commit-uje i push-uje/merguje, bez Codex runde i bez posebnog
 per-task Human Owner odobrenja.
 ```
 
+## Agent-friendly file headers (Human Owner odluka, 2026-09-01)
+
+Puni detalj: `docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md` §30. Faza 1
+(ključni P0.00–P0.19 foundation fajlovi sa pretankim header-om) je urađena
+2026-09-01 kao LOW-risk docstring-only izmjena, direktno commit-ovana/
+push-ovana po review politici iznad (bez Codex runde). Od sada važi
+touched-file rule: kad task materijalno mijenja postojeći source fajl,
+provjeriti/dodati kvalitetan owns/does-not-own header u istom tasku.
+
 Ako se tokom review-a pokaže da task ipak dira HIGH listu — STOP, vratiti na
 puni ciklus, ne nastaviti olakšanim putem tiho.
 
