@@ -1,0 +1,7 @@
+provider_code: OPENAI_COMPATIBLE
+display_name: OpenAI-compatible
+adapter_type: openai_compatible
+requires_api_key: true
+supports_model_discovery: false
+base_url_mode: USER_CONFIGURABLE
+enabled: true

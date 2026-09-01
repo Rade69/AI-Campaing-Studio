@@ -1,0 +1,7 @@
+provider_code: DEEPSEEK
+display_name: DeepSeek
+adapter_type: deepseek
+requires_api_key: true
+supports_model_discovery: false
+base_url_mode: FIXED
+enabled: true

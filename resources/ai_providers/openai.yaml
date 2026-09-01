@@ -1,0 +1,7 @@
+provider_code: OPENAI
+display_name: OpenAI
+adapter_type: openai
+requires_api_key: true
+supports_model_discovery: true
+base_url_mode: FIXED
+enabled: true

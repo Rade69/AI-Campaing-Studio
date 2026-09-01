@@ -1,0 +1,7 @@
+provider_code: ANTHROPIC
+display_name: Anthropic
+adapter_type: anthropic
+requires_api_key: true
+supports_model_discovery: true
+base_url_mode: FIXED
+enabled: true
