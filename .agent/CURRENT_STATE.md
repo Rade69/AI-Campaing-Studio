@@ -3,7 +3,7 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-01 (coordinator: claude) — ACS-HOTFIX-001 Codex PASS_WITH_NOTES, READY FOR HUMAN APPROVAL; ACS-P0-008 čeka MiniMax-ov fix round
+**Zadnje ažurirano:** 2026-09-01 (coordinator: claude) — ACS-HOTFIX-001 DONE, merged u main; ACS-P0-008 fix round i dalje čeka MiniMax-a
 
 ---
 
@@ -109,30 +109,34 @@ contracta, `jobs/` (JobManager), `presentation/` (framework-neutral state/contra
 je sada jedini preostali P0 task — posljednji prije `artifacts/phase0_foundation_gate.json` i
 prelaska na Faza 1.
 
-## HITNO — ACS-HOTFIX-001 (2026-09-01)
+## ACS-HOTFIX-001 — RIJEŠENO (2026-09-01)
 
-CI regresija otkrivena na `main`-u poslije ACS-P0-007 merge-a: GitHub
-Actions run `33502313009` (push `f329ab9`) — 3 testa u
-`tests/unit/jobs/test_manager.py` FAILED (`STARTED` prije `CREATED` u event
-streamu). Uzrok: ACS-P0-007 fix round 2 (BF-1) je pomjerio
-`executor.submit()` unutar lock-a, ali `_emit(CREATED)` je ostao izvan —
-race sa worker thread-om. Nije uhvaćeno kroz 3 Codex runde ni koordinatorovu
-adversarial reprodukciju jer je race probabilistička i Windows lokalno
-okruženje je ne izlaže pouzdano (0/300 pokušaja lokalno; Linux CI je udario
-3x u istom run-u). Task contract: `agent_reports/ACS-HOTFIX-001-task-contract.md`.
-Worktree: `../ai-campaign-studio-worktrees/ACS-HOTFIX-001-job-event-ordering`,
-branch `hotfix/ACS-HOTFIX-001-job-event-ordering`, base `main@638a479`.
-Implementer: MiniMax (reassigned sa Pi, Human Owner odluka 2026-09-01).
-HIGH risk, puni Codex ciklus. **Blokira legitiman ACS-P0-008 gate report**
-(pytest mora biti deterministički zeleno). ACS-P0-008 implementacija je već
-gotova (Claude review PASS, čeka Codex) — finalni gate report ne može
-tvrditi `pytest: true` dok ovo nije zatvoreno.
+CI regresija otkrivena na `main`-u poslije ACS-P0-007 merge-a (GitHub
+Actions run `33502313009`) — `JobManager` `CREATED`/`STARTED` event-ordering
+race, popravljena i merged (`bcec979`). Vidi red u tabeli ispod za pun
+istorijat. **Ostaje aktivna posljedica**: ACS-P0-008 (grana
+`task/ACS-P0-008-validators-ci-security-gate`, još nije merged) je granata
+sa main-a PRIJE ovog hotfix-a — kad MiniMax-ov fix round za BF-1/BF-2 stigne,
+prije finalizacije treba merge-ovati ažurirani `main` (sa hotfix-om) u tu
+granu, pa tek onda ponovo generisati `artifacts/phase0_foundation_gate.json`
+tako da `pytest` check stvarno pokriva i JobManager fix.
+
+**Environment napomena (relevantna za sve buduće taskove)**: dijeljeni
+`.venv`-ov editable-install `.pth` fajl
+(`H:\AI Campaing Studio\.venv\Lib\site-packages\__editable__.ai_campaign_studio-0.1.0.pth`)
+može tiho pokazivati na PROŠLI worktree umjesto na fajl koji se trenutno
+verifikuje — otkriveno i potvrđeno od implementera (MiniMax), koordinatora
+i Codex-a tokom ACS-HOTFIX-001. Nakon svakog merge-a, `.pth` treba ručno
+provjeriti/vratiti na `main` checkout
+(`H:\AI Campaing Studio\src`) prije post-merge gate-a — inače se gate testira
+protiv pogrešnog koda. Za verifikaciju u worktree-u, eksplicitan
+`PYTHONPATH` override je pouzdaniji od oslanjanja na `.pth` stanje.
 
 ## Aktivni taskovi
 
 | Task | Status | Implementer | Reviewers | Napomena |
 |---|---|---|---|---|
-| ACS-HOTFIX-001 | **READY FOR HUMAN APPROVAL** | MiniMax | Codex, Claude (HIGH) | Grana `hotfix/ACS-HOTFIX-001-job-event-ordering` @ `56a67d2`. Fix: `threading.Lock()` → `RLock()`, `CREATED` emit pomjeren unutar `submit()`-ovog lock bloka, `_emit()` sad drži lock kroz cio callback dispatch. Novi deterministički test (slow-callback adversarial probe) — dokazano da je probabilistički pristup propustio bug tri runde zaredom. Koordinator i Codex NEZAVISNO otkrili isti nalaz: fix ima redundantnu zaštitu (bilo koja dva od tri elementa su samostalno dovoljna) — ne defekt, ispravlja evidence report-ovu "sve tri neophodne" tvrdnju. Codex dodatno flagovao teoretski (non-blocking) deadlock oblik za budući loš subscriber pattern — trenutno ne postoji u projektu. Codex `PASS_WITH_NOTES`, bez blocking findings — nezavisno reprodukovao original bug, fix, i BF-1/R2-BF-1 scenarije direktno. 171 test, ruff/mypy čisto na oba pregleda. Finalni decision packet: `agent_reports/2026-09-01-ACS-HOTFIX-001-final-decision-packet.md`. Čeka Human Owner merge odobrenje. |
+| ACS-HOTFIX-001 | **DONE — merged u main** | MiniMax | Codex, Claude (HIGH) | Merge commit `bcec979` (`--no-ff`, branch `hotfix/ACS-HOTFIX-001-job-event-ordering` @ `56a67d2`). Fix: `threading.Lock()` → `RLock()`, `CREATED` emit pomjeren unutar `submit()`-ovog lock bloka, `_emit()` sad drži lock kroz cio callback dispatch. Novi deterministički test (slow-callback adversarial probe) — dokazano da je probabilistički pristup propustio bug tri runde zaredom. Koordinator i Codex NEZAVISNO otkrili isti nalaz: fix ima redundantnu zaštitu (bilo koja dva od tri elementa su samostalno dovoljna) — ne defekt. Codex `PASS_WITH_NOTES`, bez blocking findings. Finalni decision packet: `agent_reports/2026-09-01-ACS-HOTFIX-001-final-decision-packet.md`. Human Owner approval: "Odobravam". Post-merge gate PASS na `main` (171 testova, ruff, mypy, health-check, 20x targeted loop čist) — **nakon ručnog ispravljanja `.pth`-a** koji je prvo pokazivao na uklonjeni worktree (vidi napomenu iznad). Worktree uklonjen (clean, bez force-a). |
 | ACS-P0-001 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `def4ea1` (`--no-ff`, task branch `task/ACS-P0-001-repo-foundation` @ `949d18c`). Reviews: Claude PASS, Codex PASS_WITH_NOTES (no blocking findings). Human Owner approval: "Odobravam". Post-merge gate PASS. Worktree uklonjen. |
 | ACS-P0-002 | **DONE — merged u main** | Pi | Codex, Claude | Merge commit `e187a56` (`--no-ff`, task branch `task/ACS-P0-002-config-boundaries` @ `d6dc783`). 5 review rundi: Codex REJECT×4 (BF-1: boundary-checker bypassi pa lexical/class-scope resolution bugovi), svaki fix nezavisno re-verifikovan od koordinatora (kombinovana adversarial reprodukcija do 11 bypass/scope oblika u finalnoj rundi), round 5 `PASS_WITH_NOTES` bez blocking findings. Finalni decision packet: `agent_reports/2026-08-31-ACS-P0-002-final-decision-packet.md` (READY FOR HUMAN APPROVAL, R1–R6 reziduelni rizici). Human Owner approval: "Slažem se". Post-merge gate PASS na `main` (43 testa, ruff, mypy, health-check, Python 3.14.1). Worktree uklonjen (`--force`, samo Pi-jevi već-inkorporirani raw report fajlovi izgubljeni, bez sadržajnog gubitka). |
 | ACS-P0-003 | **DONE — merged u main** | Pi | Codex, Claude | Merge commit `e8c0a54` (`--no-ff`, task branch `task/ACS-P0-003-localization` @ `7df75c3`). 2 review runde: Codex REJECT×1 (BF-1..3: neuhvaćen `ValueError` na malformed template, non-string katalog vrijednost ruši translator, neuhvaćen `JSONDecodeError` u validatoru), fix nezavisno re-verifikovan od koordinatora, round 2 `PASS_WITH_NOTES` bez blocking findings (uključujući mixed valid/invalid-JSON edge case). Finalni decision packet: `agent_reports/2026-08-31-ACS-P0-003-final-decision-packet.md`. Human Owner approval: "odobravam". Post-merge gate PASS na `main` (91 test, ruff, mypy, validate_resources, health-check). Worktree uklonjen (`--force`, samo Pi-jevi već-inkorporirani raw report fajlovi izgubljeni). |
@@ -140,7 +144,7 @@ tvrditi `pytest: true` dok ovo nije zatvoreno.
 | ACS-P0-005 | **DONE — merged u main** | Pi | Codex, Claude | Merge commit `c76eb9b` (`--no-ff`, task branch `task/ACS-P0-005-ai-registry-secrets` @ `2ff5f4e`). 2 review runde: Codex REJECT×1 (BF-1..3: secret leak kroz exception `__cause__`, env-var collision za nekanonska imena, modeli za nepoznatog providera), fix nezavisno re-verifikovan od koordinatora, round 2 `PASS_WITH_NOTES` bez blocking findings. Finalni decision packet: `agent_reports/2026-09-01-ACS-P0-005-final-decision-packet.md`. Human Owner approval: "Odobravam". Trivijalan add/add merge konflikt na `infrastructure/__init__.py` (obje 005 i 006 kontrakte su nezavisno listale isti fajl — moja greška u allowed_paths disjoint provjeri za taj par) — riješen ručno, samo docstring razlika. Post-merge gate PASS na `main`. Worktree uklonjen (`--force`, samo Pi-jevi već-inkorporirani raw report fajlovi izgubljeni). |
 | ACS-P0-006 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `298bbd3` (`--no-ff`, task branch `task/ACS-P0-006-sqlite-foundation` @ `8d45167`). 2 review runde: Codex REJECT×1 (BF-1/2: UoW re-use nakon commit-a onemogući rollback, migration runner rollback-uje caller-owned transakciju kad BEGIN padne), fix nezavisno re-verifikovan od koordinatora, round 2 `PASS_WITH_NOTES` bez blocking findings. Finalni decision packet: `agent_reports/2026-09-01-ACS-P0-006-final-decision-packet.md`. Human Owner approval: "odobravam". Post-merge gate PASS na `main` (104 testa, ruff, mypy, health-check). Worktree uklonjen (clean, bez force-a). Usput: `.codex_tmp/` scratch fajl Codex-a je nakratko interferisao sa `ruff check .` (nije gitignored) — nestao je sam prije nego što je trebalo trajno rješenje, nije naš kod. |
 | ACS-P0-007 | **DONE — merged u main** | Pi | Codex, Claude | Merge commit `1071eff` (`--no-ff`, task branch `task/ACS-P0-007-jobs-presentation-bootstrap` @ `c553379`). Scope: P0.20–P0.23 (Jobs + Presentation contracts + Bootstrap wiring). Tri Codex REJECT/REJECT/PASS_WITH_NOTES runde: BF-1 (submit-after-shutdown orphan job), BF-2 (dynamic-import guard bypass), R2-BF-1 (queued job trajno PENDING nakon shutdown-cancellation) — sva tri nalaza nezavisno reprodukovana od koordinatora PRIJE svake fix-runde I nezavisno reverifikovana POSLIJE (uključujući reprodukciju Codex-ovog 100-job concurrent submit/shutdown stress probe-a). Codex round 3: PASS_WITH_NOTES, bez blocking findings. Finalni decision packet: `agent_reports/2026-09-01-ACS-P0-007-final-decision-packet.md`. Human Owner approval: "Odobravam". Post-merge gate PASS na `main` (170 testova, ruff, mypy, oba health-check entrypointa, Python 3.14.1). Čist merge, bez konflikta. Jedan prihvaćen non-blocking rezidual (double-indirection dynamic-import bypass u presentation guardu, eksplicitno van scope-a po Codex-ovoj preporuci). Worktree uklonjen (clean, bez force-a). |
-| ACS-P0-008 | **Codex REJECT — fix round poslan MiniMax-u** | MiniMax | Codex, Claude (HIGH) | Scope: P0.24–P0.30. Grana `task/ACS-P0-008-validators-ci-security-gate` @ `d84c28b` (nije merged). Claude review PASS (koordinator našao i riješio 2 manja nalaza prije Codex-a: `.gitignore` blocker, netačna evidence-report tvrdnja). **Codex REJECT** (`agent_reports/2026-09-01-ACS-P0-008-review-codex.md`), oba nalaza nezavisno potvrđena od koordinatora: BF-1 (secret scanner self-poisoning — tracked test fixture-i sadrže literal secret-shaped stringove koje scanner sam hvata, uzrokuje 2 pytest failure-a i gate report `status: FAIL`; dodatno, gate report-ov interni `ACS_GATE_REPORT_RUNNING=1` recursion guard maskira taj isti failure kao "pytest: true" — inconsistency koju je koordinator otkrio pri nezavisnoj reprodukciji), BF-2 (scanner i gate report ispisuju SIROVU secret vrijednost u stderr/tracked JSON notes — potvrđeno in vivo, `artifacts/phase0_foundation_gate.json` u worktree-u trenutno sadrži procurjelu vrijednost kao dokaz, NIJE commit-ovano). Fix round brief poslan MiniMax-u. |
+| ACS-P0-008 | **Codex REJECT — fix round poslan MiniMax-u** | MiniMax | Codex, Claude (HIGH) | Scope: P0.24–P0.30. Grana `task/ACS-P0-008-validators-ci-security-gate` @ `d84c28b` (nije merged). Claude review PASS (koordinator našao i riješio 2 manja nalaza prije Codex-a: `.gitignore` blocker, netačna evidence-report tvrdnja). **Codex REJECT** (`agent_reports/2026-09-01-ACS-P0-008-review-codex.md`), oba nalaza nezavisno potvrđena od koordinatora: BF-1 (secret scanner self-poisoning — tracked test fixture-i sadrže literal secret-shaped stringove koje scanner sam hvata, uzrokuje 2 pytest failure-a i gate report `status: FAIL`; dodatno, gate report-ov interni `ACS_GATE_REPORT_RUNNING=1` recursion guard maskira taj isti failure kao "pytest: true" — inconsistency koju je koordinator otkrio pri nezavisnoj reprodukciji), BF-2 (scanner i gate report ispisuju SIROVU secret vrijednost u stderr/tracked JSON notes — potvrđeno in vivo, `artifacts/phase0_foundation_gate.json` u worktree-u trenutno sadrži procurjelu vrijednost kao dokaz, NIJE commit-ovano). Fix round brief poslan MiniMax-u. **NOVO (2026-09-01, poslije ACS-HOTFIX-001 merge-a)**: ova grana je granata sa main-a PRIJE hotfix-a — kad BF-1/BF-2 fix stigne, PRIJE finalizacije treba merge-ovati ažurirani `main` (`bcec979`+) u ovu granu, PA TEK ONDA ponovo generisati `artifacts/phase0_foundation_gate.json` (da `pytest` check stvarno pokrije JobManager fix), i provjeriti `.pth` stanje prije verifikacije (vidi environment napomenu). |
 
 ## Paralelizacija — trenutna provjera
 
@@ -182,15 +186,16 @@ ACS-P0-007 je sada jedini kandidat — nema drugog unblocked P0 taska za paralel
 
 ## Verification baseline
 
-Uspostavljen na `main` poslije merge-a ACS-P0-007 (2026-09-01, root `.venv`, Python 3.14.1):
+Uspostavljen na `main` poslije merge-a ACS-HOTFIX-001 (2026-09-01, root `.venv`, Python 3.14.1,
+`.pth` ručno provjeren/vraćen na main checkout — vidi napomenu iznad):
 
 ```text
 import ai_campaign_studio          → OK (0.1.0)
-python -m pytest -q                → 170 passed
+python -m pytest -q                → 171 passed
 python -m ruff check .             → All checks passed!
 python -m mypy src                 → Success: no issues found in 51 source files
 python -m ai_campaign_studio.main --health-check → exit 0
-python scripts/health_check.py     → exit 0
+20x loop -k "event_sequence or event_ordering_under_slow" → 20/20 čisto
 ```
 
 ## CI
