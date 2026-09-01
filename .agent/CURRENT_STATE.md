@@ -122,17 +122,17 @@ okruženje je ne izlaže pouzdano (0/300 pokušaja lokalno; Linux CI je udario
 3x u istom run-u). Task contract: `agent_reports/ACS-HOTFIX-001-task-contract.md`.
 Worktree: `../ai-campaign-studio-worktrees/ACS-HOTFIX-001-job-event-ordering`,
 branch `hotfix/ACS-HOTFIX-001-job-event-ordering`, base `main@638a479`.
-Implementer: Pi (poznaje fajl iz 3 runde ACS-P0-007). HIGH risk, puni Codex
-ciklus. **Blokira legitiman ACS-P0-008 gate report** (pytest mora biti
-deterministički zeleno). ACS-P0-008 implementacija (MiniMax) može nastaviti
-na scripts/CI dijelu paralelno (disjoint allowed_paths), ali finalni gate
-report ne može tvrditi `pytest: true` dok ovo nije zatvoreno.
+Implementer: MiniMax (reassigned sa Pi, Human Owner odluka 2026-09-01).
+HIGH risk, puni Codex ciklus. **Blokira legitiman ACS-P0-008 gate report**
+(pytest mora biti deterministički zeleno). ACS-P0-008 implementacija je već
+gotova (Claude review PASS, čeka Codex) — finalni gate report ne može
+tvrditi `pytest: true` dok ovo nije zatvoreno.
 
 ## Aktivni taskovi
 
 | Task | Status | Implementer | Reviewers | Napomena |
 |---|---|---|---|---|
-| ACS-HOTFIX-001 | **OPEN — contract + worktree spremni** | Pi | Codex, Claude (HIGH) | Vidi sekciju "HITNO" iznad. |
+| ACS-HOTFIX-001 | **OPEN — contract + worktree spremni** | MiniMax | Codex, Claude (HIGH) | Vidi sekciju "HITNO" iznad. Implementer promijenjen sa Pi na MiniMax (Human Owner odluka, 2026-09-01) — MiniMax je taj dan već pokazao vrlo temeljit rad na ACS-P0-008. |
 | ACS-P0-001 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `def4ea1` (`--no-ff`, task branch `task/ACS-P0-001-repo-foundation` @ `949d18c`). Reviews: Claude PASS, Codex PASS_WITH_NOTES (no blocking findings). Human Owner approval: "Odobravam". Post-merge gate PASS. Worktree uklonjen. |
 | ACS-P0-002 | **DONE — merged u main** | Pi | Codex, Claude | Merge commit `e187a56` (`--no-ff`, task branch `task/ACS-P0-002-config-boundaries` @ `d6dc783`). 5 review rundi: Codex REJECT×4 (BF-1: boundary-checker bypassi pa lexical/class-scope resolution bugovi), svaki fix nezavisno re-verifikovan od koordinatora (kombinovana adversarial reprodukcija do 11 bypass/scope oblika u finalnoj rundi), round 5 `PASS_WITH_NOTES` bez blocking findings. Finalni decision packet: `agent_reports/2026-08-31-ACS-P0-002-final-decision-packet.md` (READY FOR HUMAN APPROVAL, R1–R6 reziduelni rizici). Human Owner approval: "Slažem se". Post-merge gate PASS na `main` (43 testa, ruff, mypy, health-check, Python 3.14.1). Worktree uklonjen (`--force`, samo Pi-jevi već-inkorporirani raw report fajlovi izgubljeni, bez sadržajnog gubitka). |
 | ACS-P0-003 | **DONE — merged u main** | Pi | Codex, Claude | Merge commit `e8c0a54` (`--no-ff`, task branch `task/ACS-P0-003-localization` @ `7df75c3`). 2 review runde: Codex REJECT×1 (BF-1..3: neuhvaćen `ValueError` na malformed template, non-string katalog vrijednost ruši translator, neuhvaćen `JSONDecodeError` u validatoru), fix nezavisno re-verifikovan od koordinatora, round 2 `PASS_WITH_NOTES` bez blocking findings (uključujući mixed valid/invalid-JSON edge case). Finalni decision packet: `agent_reports/2026-08-31-ACS-P0-003-final-decision-packet.md`. Human Owner approval: "odobravam". Post-merge gate PASS na `main` (91 test, ruff, mypy, validate_resources, health-check). Worktree uklonjen (`--force`, samo Pi-jevi već-inkorporirani raw report fajlovi izgubljeni). |
