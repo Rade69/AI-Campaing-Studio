@@ -85,5 +85,8 @@ Default:
 - Claude Code — koordinator + architecture/integration reviewer.
 - Codex — nezavisni test/adversarial reviewer.
 - Pi / Crush — implementeri.
+- MiniMax — implementer i nezavisni reviewer (isti status kao Codex/Pi/Crush
+  po sposobnostima; trenutno angažovan kao implementer i pregledač, kao
+  Codex).
 
 Tačna uloga za konkretan task mora stajati u Task Contractu.

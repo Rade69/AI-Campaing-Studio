@@ -95,7 +95,7 @@ Presentation → Application/Use Cases → Domain ← Ports ← Infrastructure a
 | ACS-P0-005 | P0.14–P0.15 AI Provider/Model Registry + SecretStore | Pi | HIGH | 002 |
 | ACS-P0-006 | P0.16–P0.19 SQLite + migrations + UoW | Crush | HIGH | 002 |
 | ACS-P0-007 | P0.20–P0.23 Jobs + Presentation contracts + Bootstrap | Pi | HIGH | 003,004,005,006 |
-| ACS-P0-008 | P0.24–P0.30 Validators + CI + security + P0 gate | Crush | HIGH | sve prethodne |
+| ACS-P0-008 | P0.24–P0.30 Validators + CI + security + P0 gate | MiniMax | HIGH | sve prethodne |
 
 DAG: `001 → 002 → {003,004,005,006} → 007 → 008 → P0-GATE PASS`. 003–006 se ne granaju dok 002 nije stvarno merged u main.
 

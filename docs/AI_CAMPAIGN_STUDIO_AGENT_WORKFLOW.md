@@ -64,7 +64,12 @@ Koordinator nije automatski reviewer ako je implementirao task.
 
 Codex može biti koordinator ako Human Owner tako odluči.
 
-## Implementeri — default Pi / Crush
+## Implementeri — default Pi / Crush / MiniMax
+
+MiniMax je dodat kao agent od 2026-09-01 (Human Owner odluka). Sposoban je i
+za implementaciju i za nezavisan review (isti profil kao Codex), ali je za
+sada angažovan u obje uloge po potrebi — trenutna prva dodjela je
+implementer. Ista pravila kao za Pi/Crush važe bez izuzetka.
 
 Odgovornosti:
 

@@ -19,11 +19,16 @@ header-e (workflow §30 touched-file rule).
 ```text
 Human Owner    — ti. Jedini autoritet za scope, prioritet, merge odobrenje.
 Coordinator    — Claude (ova sesija). Priprema, verifikuje, ne vjeruje na riječ, merguje.
-Implementeri   — Pi, Crush. Rade unutar allowed_paths, pišu kod i testove.
-Reviewer       — Codex. Nezavisan adversarial/test review za HIGH taskove.
+Implementeri   — Pi, Crush, MiniMax. Rade unutar allowed_paths, pišu kod i testove.
+Reviewer       — Codex, MiniMax. Nezavisan adversarial/test review za HIGH taskove.
 ```
 
-Coordinator (Claude) nema direktan CLI pristup pravim Pi/Crush/Codex
+MiniMax je dodat 2026-09-01 (Human Owner odluka) — sposoban je za obje
+uloge (implementer i reviewer, kao Codex), za sada angažovan po potrebi u
+oba svojstva. Isti "implementer != reviewer" princip važi: MiniMax ne
+pregleda sopstvenu implementaciju istog taska.
+
+Coordinator (Claude) nema direktan CLI pristup pravim Pi/Crush/Codex/MiniMax
 alatima — priprema worktree i eksplicitna uputstva (Task Contract, brief),
 a ti pokrećeš te agente eksterno i vraćaš mi rezultat/putanju do fajla.
 
@@ -60,7 +65,7 @@ kroz ovo.
 6. Commit-ujem kontrakt na `main`, ažuriram `.agent/CURRENT_STATE.md`
    (status: "OPEN — contract spreman, čeka implementaciju"), push-ujem.
 
-### 2.2 Implementacija (Pi ili Crush, eksterno)
+### 2.2 Implementacija (Pi, Crush ili MiniMax, eksterno)
 
 Ti pokreneš implementera u tom worktree-u sa tim kontraktom. Implementer:
 
@@ -82,7 +87,7 @@ sam izvršavam adversarial dokaze koje kontrakt traži, prije nego što uopšte
 krenem dalje. Ne pretpostavljam da je nešto testirano samo zato što
 kontrakt to traži.
 
-Kažeš mi: **"Pi/Crush je završio"**.
+Kažeš mi: **"Pi/Crush/MiniMax je završio"**.
 
 ### 2.3 Verifikacija (coordinator — "ne vjeruj na riječ")
 
