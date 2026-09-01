@@ -87,8 +87,8 @@ def _read_applied(connection: sqlite3.Connection) -> dict[int, str]:
 
 
 def _apply_migration(connection: sqlite3.Connection, migration: Migration) -> None:
+    connection.execute("BEGIN")
     try:
-        connection.execute("BEGIN")
         for statement in _split_statements(migration.sql):
             connection.execute(statement)
         connection.execute(

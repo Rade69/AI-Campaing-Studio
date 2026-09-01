@@ -28,6 +28,7 @@ class SqliteUnitOfWork:
         self._committed = True
 
     def __enter__(self) -> SqliteUnitOfWork:
+        self._committed = False
         self._connection.execute("BEGIN")
         return self
 

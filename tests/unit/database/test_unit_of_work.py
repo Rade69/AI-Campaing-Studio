@@ -55,3 +55,19 @@ def test_no_commit_rolls_back(tmp_path: Path) -> None:
 
     assert _count_items(conn) == 0
     conn.close()
+
+
+def test_reuse_after_commit_rolls_back_second_block(tmp_path: Path) -> None:
+    conn = create_connection(tmp_path / "test.db")
+    _setup_table(conn)
+    uow = SqliteUnitOfWork(conn)
+
+    with uow:
+        uow.connection.execute("INSERT INTO items (name) VALUES ('a')")
+        uow.commit()
+
+    with uow:
+        uow.connection.execute("INSERT INTO items (name) VALUES ('b')")
+
+    assert _count_items(conn) == 1
+    conn.close()

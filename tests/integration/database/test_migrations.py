@@ -101,3 +101,24 @@ def test_provider_configs_has_no_secret_columns(tmp_path: Path) -> None:
     conn.close()
 
     assert {"api_key", "token", "secret"}.isdisjoint(columns)
+
+
+def test_migration_does_not_rollback_caller_transaction(tmp_path: Path) -> None:
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    (migrations_dir / "0000_foundation.sql").write_text(
+        "CREATE TABLE foundation_table (id INTEGER PRIMARY KEY);",
+        encoding="utf-8",
+    )
+
+    conn = create_connection(tmp_path / "test.db")
+    conn.execute("CREATE TABLE caller_table (id INTEGER PRIMARY KEY)")
+    conn.execute("BEGIN")
+    conn.execute("INSERT INTO caller_table (id) VALUES (1)")
+
+    with pytest.raises(sqlite3.OperationalError):
+        run_migrations(conn, migrations_dir)
+
+    assert conn.execute("SELECT COUNT(*) FROM caller_table").fetchone()[0] == 1
+    conn.execute("ROLLBACK")
+    conn.close()
