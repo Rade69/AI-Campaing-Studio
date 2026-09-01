@@ -1,23 +1,32 @@
 """Environment-variable backed secret store (dev/test adapter)."""
 
 import os
+import re
 
 from ai_campaign_studio.domain.common.errors import SecretStoreError
 from ai_campaign_studio.ports.secrets import SecretStorePort
 
 _ENV_PREFIX = "AI_CAMPAIGN_STUDIO_"
+_SECRET_NAME_RE = re.compile(r"^provider/([A-Za-z0-9_]+)/api_key$")
 
 
 def secret_to_env_var(name: str) -> str:
-    """Map a secret name to its environment variable.
+    """Map a canonical secret name to its environment variable.
 
     ``provider/OPENAI/api_key`` -> ``AI_CAMPAIGN_STUDIO_OPENAI_API_KEY``.
+
+    Only the canonical ``provider/<PROVIDER_CODE>/api_key`` form is accepted;
+    any other shape raises ``ValueError`` so two different names can never
+    silently map to the same environment variable.
     """
-    parts = name.split("/")
-    if parts and parts[0].lower() == "provider":
-        parts = parts[1:]
-    suffix = "_".join(part.upper() for part in parts)
-    return f"{_ENV_PREFIX}{suffix}"
+    match = _SECRET_NAME_RE.fullmatch(name)
+    if match is None:
+        raise ValueError(
+            f"invalid secret name {name!r}; "
+            "expected 'provider/<PROVIDER_CODE>/api_key'"
+        )
+    provider_code = match.group(1).upper()
+    return f"{_ENV_PREFIX}{provider_code}_API_KEY"
 
 
 class EnvironmentSecretStore(SecretStorePort):

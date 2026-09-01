@@ -95,6 +95,7 @@ class AIProviderRegistry(AIProviderRegistryPort, ModelRegistryPort):
 
     def register_manual_model(self, model: ModelProfile) -> None:
         self._ensure_loaded()
+        self.get_provider(model.provider_code)  # raises RegistryError if unknown
         self._register(model)
 
     def register_discovered_models(
@@ -102,6 +103,7 @@ class AIProviderRegistry(AIProviderRegistryPort, ModelRegistryPort):
     ) -> None:
         self._ensure_loaded()
         key = provider_code.strip().upper()
+        self.get_provider(key)  # raises RegistryError if unknown provider
         for model in models:
             if model.provider_code != key:
                 raise RegistryError(

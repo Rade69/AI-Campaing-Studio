@@ -25,8 +25,11 @@ class KeyringSecretStore(SecretStorePort):
     """Stores secrets in the OS keyring.
 
     ``get_secret`` returns ``None`` for a missing entry. Backend errors are
-    wrapped in ``SecretStoreError`` whose message never contains the secret
-    value; this adapter never logs secret values.
+    wrapped in ``SecretStoreError``; the original backend exception is never
+    chained (``from None``) so a potentially secret-bearing backend message
+    cannot leak through ``__cause__``/traceback. Only the backend exception
+    class name is kept as safe ``technical_context``. This adapter never logs
+    secret values.
     """
 
     def __init__(
@@ -42,21 +45,24 @@ class KeyringSecretStore(SecretStorePort):
             return self._backend.get_password(self._service_name, name)
         except Exception as exc:  # noqa: BLE001
             raise SecretStoreError(
-                f"failed to read secret {name!r} from keyring"
-            ) from exc
+                f"failed to read secret {name!r} from keyring",
+                technical_context=f"backend={type(exc).__name__}",
+            ) from None
 
     def set_secret(self, name: str, value: str) -> None:
         try:
             self._backend.set_password(self._service_name, name, value)
         except Exception as exc:  # noqa: BLE001
             raise SecretStoreError(
-                f"failed to store secret {name!r} in keyring"
-            ) from exc
+                f"failed to store secret {name!r} in keyring",
+                technical_context=f"backend={type(exc).__name__}",
+            ) from None
 
     def delete_secret(self, name: str) -> None:
         try:
             self._backend.delete_password(self._service_name, name)
         except Exception as exc:  # noqa: BLE001
             raise SecretStoreError(
-                f"failed to delete secret {name!r} from keyring"
-            ) from exc
+                f"failed to delete secret {name!r} from keyring",
+                technical_context=f"backend={type(exc).__name__}",
+            ) from None

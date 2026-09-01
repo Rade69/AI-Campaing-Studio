@@ -147,3 +147,21 @@ def test_register_discovered_models_rejects_provider_mismatch(tmp_path) -> None:
     )
     with pytest.raises(RegistryError):
         registry.register_discovered_models("OPENAI", [mismatched])
+
+
+def test_register_manual_model_unknown_provider_rejected(tmp_path) -> None:
+    _write_provider(tmp_path, "OPENAI")
+    registry = AIProviderRegistry(tmp_path)
+
+    model = ModelProfile(provider_code="UNKNOWN", model_id="m", display_name="M")
+    with pytest.raises(RegistryError):
+        registry.register_manual_model(model)
+
+
+def test_register_discovered_models_unknown_provider_rejected(tmp_path) -> None:
+    _write_provider(tmp_path, "OPENAI")
+    registry = AIProviderRegistry(tmp_path)
+
+    model = ModelProfile(provider_code="UNKNOWN", model_id="m", display_name="M")
+    with pytest.raises(RegistryError):
+        registry.register_discovered_models("UNKNOWN", [model])
