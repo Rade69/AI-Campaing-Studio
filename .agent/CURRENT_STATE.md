@@ -104,15 +104,15 @@ još ne postoji (gate fajl nastaje tek u ACS-P0-008). `src/ai_campaign_studio/` 
 | ACS-P0-003 | **DONE — merged u main** | Pi | Codex, Claude | Merge commit `e8c0a54` (`--no-ff`, task branch `task/ACS-P0-003-localization` @ `7df75c3`). 2 review runde: Codex REJECT×1 (BF-1..3: neuhvaćen `ValueError` na malformed template, non-string katalog vrijednost ruši translator, neuhvaćen `JSONDecodeError` u validatoru), fix nezavisno re-verifikovan od koordinatora, round 2 `PASS_WITH_NOTES` bez blocking findings (uključujući mixed valid/invalid-JSON edge case). Finalni decision packet: `agent_reports/2026-08-31-ACS-P0-003-final-decision-packet.md`. Human Owner approval: "odobravam". Post-merge gate PASS na `main` (91 test, ruff, mypy, validate_resources, health-check). Worktree uklonjen (`--force`, samo Pi-jevi već-inkorporirani raw report fajlovi izgubljeni). |
 | ACS-P0-004 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `5ecf43f` (`--no-ff`, task branch `task/ACS-P0-004-channel-registry` @ `be3767a`). 3 review runde: Codex REJECT×2 (BF-1..3 pa BF-4, 4 stvarna nalaza — TypeError umjesto RegistryError, mutable "frozen" model, duplicate reference, `or []` falsy-scalar zamka), svaki fix nezavisno re-verifikovan od koordinatora, round 3 `PASS_WITH_NOTES` bez blocking findings. Crush nije predao nijedan self-report kroz cio task — sva evidence rekonstruisana od koordinatora. Finalni decision packet: `agent_reports/2026-08-31-ACS-P0-004-final-decision-packet.md`. Human Owner approval: "odobravam". Post-merge gate PASS na `main` (65 testova, ruff, mypy, health-check). Worktree uklonjen (clean, bez force-a). |
 | ACS-P0-005 | BF-1/2/3 FIX DONE (coordinator-confirmed), čeka Codex re-review + Human Owner approval | Pi | Codex, Claude | Novi HEAD `2ff5f4e` (prošli REJECT bio na `5517c8b`). Fix dirao 5 fajlova. Koordinator nezavisno ponovio sva tri originalna Codex probe scenarija — sva tri sad ispravno rade. Pun set 121 test zelen. Evidence: `agent_reports/2026-09-01-ACS-P0-005-fix-round-pi-confirmed.md`. Codex re-review brief: `agent_reports/2026-09-01-ACS-P0-005-codex-rereview-request.md`. HIGH/security task — ostaje na punom ciklusu po review politici (vidi vrh fajla). |
-| ACS-P0-006 | BF-1/2 FIX DONE (coordinator-confirmed), čeka Codex re-review + Human Owner approval | Crush | Codex, Claude | Novi HEAD `8d45167` (prošli REJECT bio na `92f3917`). Fix dirao 4 fajla. Koordinator nezavisno ponovio oba originalna Codex probe scenarija — oba sad ispravno rade. Pun set 104 testa zelen. Evidence: `agent_reports/2026-09-01-ACS-P0-006-fix-round-crush-confirmed.md`. Codex re-review brief: `agent_reports/2026-09-01-ACS-P0-006-codex-rereview-request.md`. HIGH task — ostaje na punom ciklusu po review politici (vidi vrh fajla). |
-| ACS-P0-007..008 | BLOCKED | — | — | 007 čeka 005+006; 008 čeka sve. DAG u `.agent/PROJECT_MAP.md` §5. |
+| ACS-P0-006 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `298bbd3` (`--no-ff`, task branch `task/ACS-P0-006-sqlite-foundation` @ `8d45167`). 2 review runde: Codex REJECT×1 (BF-1/2: UoW re-use nakon commit-a onemogući rollback, migration runner rollback-uje caller-owned transakciju kad BEGIN padne), fix nezavisno re-verifikovan od koordinatora, round 2 `PASS_WITH_NOTES` bez blocking findings. Finalni decision packet: `agent_reports/2026-09-01-ACS-P0-006-final-decision-packet.md`. Human Owner approval: "odobravam". Post-merge gate PASS na `main` (104 testa, ruff, mypy, health-check). Worktree uklonjen (clean, bez force-a). Usput: `.codex_tmp/` scratch fajl Codex-a je nakratko interferisao sa `ruff check .` (nije gitignored) — nestao je sam prije nego što je trebalo trajno rješenje, nije naš kod. |
+| ACS-P0-007 | BLOCKED — čeka ACS-P0-005 | — | — | 005 (SecretStore) je jedini preostali blokator; 006 je merged. |
+| ACS-P0-008 | BLOCKED — čeka sve prethodne | — | — | DAG u `.agent/PROJECT_MAP.md` §5. |
 
 ## Paralelizacija — trenutna provjera
 
-Prvi paralelni par (ACS-P0-003 + ACS-P0-004, pokrenut 2026-08-31) je uspješno dokazan — oba
-mergovana bez međusobne kolizije, uprkos tome što je 004 imalo 3 review runde i mergovalo se
-prije 003. Trenutno nema aktivnog taska. ACS-P0-005/006 su unblocked ali contract nije napisan —
-čekaju Human Owner odluku o redoslijedu/paralelizmu.
+Drugi paralelni par (ACS-P0-005 + ACS-P0-006, pokrenut 2026-09-01) je potvrdio isti obrazac —
+006 je merged bez kolizije dok je 005 još u review-u (drugi 006 nego 003 slučaj, ali isti princip).
+ACS-P0-005 (SecretStore) je jedini preostali aktivan task, čeka Codex round 2.
 
 ## Poznati blokatori
 
@@ -145,13 +145,13 @@ prije 003. Trenutno nema aktivnog taska. ACS-P0-005/006 su unblocked ali contrac
 
 ## Verification baseline
 
-Uspostavljen na `main` poslije merge-a ACS-P0-003 (2026-08-31, root `.venv`, Python 3.14.1):
+Uspostavljen na `main` poslije merge-a ACS-P0-006 (2026-09-01, root `.venv`, Python 3.14.1):
 
 ```text
 import ai_campaign_studio          → OK (0.1.0)
-python -m pytest -q                → 91 passed
+python -m pytest -q                → 104 passed
 python -m ruff check .             → All checks passed!
-python -m mypy src                 → Success: no issues found in 28 source files
+python -m mypy src                 → Success: no issues found in 34 source files
 python scripts/validate_resources.py → All localization resources are valid.
 python -m ai_campaign_studio.main --health-check → exit 0
 ```
@@ -174,12 +174,12 @@ secrete prije prvog push-a (2026-08-31) — čisto.
 
 ## GitNexus index status
 
-Indeksirano poslije merge-a ACS-P0-003:
+Indeksirano poslije merge-a ACS-P0-006:
 
 ```text
-Indexed commit: e8c0a54 (= trenutni main HEAD)
+Indexed commit: 298bbd3 (= trenutni main HEAD)
 Status: up-to-date
-2652 nodes | 3025 edges | 37 clusters | 13 flows
+3170 nodes | 3589 edges | 41 clusters | 16 flows
 ```
 
 `mcp__gitnexus__*` MCP alati su dostupni u koordinator sesiji (pored CLI), ali dijele istu
@@ -188,7 +188,6 @@ ponovo pokrenuti `npx gitnexus analyze --skip-agents-md` pa `npx gitnexus status
 
 ## Sljedeći task
 
-ACS-P0-001–004 su svi DONE. ACS-P0-005 (AI Provider/Model Registry + SecretStore, HIGH) i
-ACS-P0-006 (SQLite + migrations + UoW, HIGH) su unblocked, contracts nisu napisani — čekaju
-Human Owner odluku o redoslijedu/paralelizmu. Prvi paralelni par (003+004) je uspješno dokazan
-kao osnova za tu odluku.
+ACS-P0-001–004 i ACS-P0-006 su DONE. ACS-P0-005 (SecretStore) čeka Codex round 2 — jedini
+preostali aktivan task. ACS-P0-007 (Jobs + Presentation contracts + Bootstrap) postaje unblocked
+čim 005 bude merged.
