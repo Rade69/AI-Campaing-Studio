@@ -3,9 +3,27 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-08-31, poslije merge-a ACS-P0-002 (coordinator: claude)
+**Zadnje ažurirano:** 2026-09-01 (coordinator: claude)
 
 ---
+
+## Review politika (Human Owner odluka, 2026-09-01) — PROVJERITI PRIJE SVAKOG NAREDNOG TASKA
+
+Puni detalj: `docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md` §29.
+
+```text
+HIGH-risk / bezbjednosno kritično (SecretStore, SQLite/migrations, architecture
+boundaries/bootstrap, AI/Channel/Localization registry contract, itd. — puna
+lista u workflow §4) → NEPROMIJENJENO: Codex + Claude + eksplicitno Human
+Owner merge odobrenje.
+
+Sve ostalo (LOW/MEDIUM) → SAMO Claude review. Claude PASS → koordinator
+ODMAH commit-uje i push-uje/merguje, bez Codex runde i bez posebnog
+per-task Human Owner odobrenja.
+```
+
+Ako se tokom review-a pokaže da task ipak dira HIGH listu — STOP, vratiti na
+puni ciklus, ne nastaviti olakšanim putem tiho.
 
 ## Aktivna faza
 

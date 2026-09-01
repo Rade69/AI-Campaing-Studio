@@ -1034,3 +1034,59 @@ Cilj je da arhitektonske greške budu jeftino uhvaćene dok je repo mali.
 Kada prvih 10–15 taskova pokaže stabilan obrazac, Human Owner može smanjiti review trošak za LOW/MEDIUM taskove.
 
 To je svjesna odluka, ne tiho popuštanje procesa.
+
+---
+
+# 29. Smanjen review trošak za LOW/MEDIUM (Human Owner odluka, 2026-09-01)
+
+Human Owner je eksplicitno odlučio (nakon ACS-P0-001 do ACS-P0-006) da se
+review trošak smanji za sve taskove koji NISU HIGH-risk/bezbjednosno
+kritični, jer je puni Codex+Claude ciklus (viđeno do 5 review rundi po
+tasku na ACS-P0-002) usporio tempo više nego što je opravdano za taj nivo
+rizika.
+
+## I dalje nepromijenjeno — puni ciklus (Codex + Claude + eksplicitno Human Owner merge odobrenje)
+
+Taskovi koji diraju bilo šta sa liste iz §4 (elevated P0 standard) ili su
+inače HIGH po §3:
+
+```text
+SecretStore / API credential handling
+SQLite schema/migrations sa postojećim podacima
+architecture boundaries / bootstrap / composition root
+AI Provider/Model Registry
+Channel/Platform/Format registry contract
+localization contract
+concurrency/lifecycle koji može korumpirati state
+bilo koji drugi shared-contract/security invarijant
+```
+
+Za ove taskove ništa se ne mijenja: Pi/Crush implementacija → Codex
+adversarial/test review → Claude architecture/integration review → Human
+Owner eksplicitno "odobreno"/"merge"/"odobravam" prije merge-a.
+
+## Novo — samo Claude review za LOW/MEDIUM
+
+Za taskove van gornje liste (LOW/MEDIUM po §3, npr. čist UI state facade,
+izolovana resource/config dopuna, non-shared-contract izmjena bez
+security/persistence uticaja):
+
+```text
+implementacija
+→ Claude review (stvarna verifikacija: diff, komande, adversarial dokaz
+  ako kontrakt to traži — isti nivo rigoroznosti kao do sad, samo bez
+  dodatne Codex runde)
+→ Claude PASS → koordinator ODMAH commit-uje i push-uje/merguje
+```
+
+Bez čekanja na Codex rundu i bez posebnog Human Owner "odobravam" po
+svakom pojedinačnom tasku iz ove kategorije — Claude PASS je dovoljan
+signal za merge unutar ove kategorije.
+
+Ako Claude tokom review-a otkrije da task ipak dira nešto sa HIGH liste
+(scope se pokazao širi nego što je kontrakt najavio), STOP — vratiti na
+puni Codex+Claude+Human Owner ciklus, ne tiho nastaviti olakšanim putem.
+
+`.agent/CURRENT_STATE.md` mora imati kratku napomenu koja kategorija
+review-a je trenutno na snazi, da naredna sesija/task ne posegne nazad za
+starim punim ciklusom bez razloga.
