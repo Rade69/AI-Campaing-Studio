@@ -21,6 +21,15 @@ if str(_SCRIPTS) not in sys.path:
 
 import validate_resources as vr  # type: ignore[import-not-found]  # noqa: E402
 
+# Runtime-constructed key fixture so the source has no key-shaped
+# literal in the tracked test scope (Codex review BF-1). Mirrors the
+# helper in ``test_check_no_secrets.py``.
+_FILLER = "abcdefghijklmnop"  # 16 chars, no prefix on its own
+
+
+def _real_openai_key() -> str:
+    return "sk-" + _FILLER * 2  # 32 alphanumerics after "sk-"
+
 
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -129,7 +138,7 @@ def test_validate_platforms_passes_on_minimal_canonical(tmp_path: Path) -> None:
 
 def test_validate_platforms_flags_secret_like_field(tmp_path: Path) -> None:
     platforms = tmp_path / "platforms"
-    key = "sk-abcdefghijklmnopqrstuvwxyz123456"
+    key = _real_openai_key()
     body = (
         _platform_yaml(code="LEAKY")
         + f"\n# someone tried to sneak a key in:\napi_key: {key}\n"
@@ -195,7 +204,7 @@ def test_validate_ai_providers_flags_secret_like_field(tmp_path: Path) -> None:
             "supports_model_discovery: false\n"
             "base_url_mode: NONE\n"
             "enabled: true\n"
-            "api_key: sk-abcdefghijklmnopqrstuvwxyz123456\n"
+            f"api_key: {_real_openai_key()}\n"
         ),
     )
     errors = vr.validate_ai_providers(providers)

@@ -82,6 +82,9 @@ def _run_python(repo_root: Path, args: list[str]) -> tuple[bool, str]:
         and args[0] == "-m"
         and args[1] == "pytest"
     )
+    is_secret_scan = (
+        len(args) >= 1 and args[-1].endswith("check_no_secrets.py")
+    )
     env = os.environ.copy() if is_pytest else None
     if is_pytest:
         env["ACS_GATE_REPORT_RUNNING"] = "1"
@@ -97,6 +100,14 @@ def _run_python(repo_root: Path, args: list[str]) -> tuple[bool, str]:
     except OSError as exc:
         return False, f"could not launch {args}: {exc}"
     passed = completed.returncode == 0
+    # Codex review BF-2: the no-secret scanner's stderr output can itself
+    # contain the secret-shaped value it just detected (e.g. ``"api_key:
+    # sk-abcdef..."``). Persisting that into ``notes[].detail`` would
+    # commit the secret into the tracked gate artefact. For the secret
+    # scanner we therefore persist *only* the exit code — the operator
+    # can re-run the scanner to see the rendered (redacted) findings.
+    if is_secret_scan:
+        return passed, f"exit={completed.returncode}"
     stderr = completed.stderr.strip()
     last_line = stderr.splitlines()[-1] if stderr else "<empty>"
     detail = f"exit={completed.returncode} stderr_tail={last_line}"

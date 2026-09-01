@@ -84,9 +84,13 @@ def main():
     # `git add`-ed before the run, and `git rm`-ed (or just unlink the
     # file) afterward.
     probe = REPO / "src" / "ai_campaign_studio" / "_adv_probe.py"
+    # Built at runtime so this script's own source has no key-shaped
+    # literal in the tracked test scope (Codex review BF-1).
+    _filler = "abcdefghijklmnop"
+    probe_key = "sk-" + _filler * 2
     probe.write_text(
         '"""Adversarial probe."""\n'
-        'OPENAI_API_KEY = "sk-abcdefghijklmnopqrstuvwxyz123456"\n',
+        f'OPENAI_API_KEY = "{probe_key}"\n',
         encoding="utf-8",
     )
     subprocess.run(

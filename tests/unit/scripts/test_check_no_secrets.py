@@ -1,4 +1,10 @@
-"""Unit tests for ``scripts/check_no_secrets.py``."""
+"""Unit tests for ``scripts/check_no_secrets.py``.
+
+Test fixtures build key-shaped values at *runtime* via the
+``_real_*`` helpers below so the source contains no key-shaped literal
+in the tracked test scope. This keeps the scanner's baseline
+``git ls-files`` scan clean (Codex review BF-1).
+"""
 
 from __future__ import annotations
 
@@ -16,6 +22,34 @@ if str(_SCRIPTS) not in sys.path:
 import check_no_secrets as cns  # type: ignore[import-not-found]  # noqa: E402  isort: skip
 
 
+# --- runtime-constructed fixtures --------------------------------------
+#
+# These helpers concatenate short substrings at *runtime* so the source
+# file has no single 16+ alphanumerics-after-prefix literal. The
+# resulting strings are 32 alphanumerics after the prefix — the same
+# shape the scanner is designed to catch — but the scanner never sees
+# them as source text, only as values written into test fixtures in
+# a temp directory or as values passed to ``_is_placeholder``.
+
+_FILLER = "abcdefghijklmnop"  # 16 chars, no prefix on its own
+
+
+def _real_openai_key() -> str:
+    """Return an OpenAI-shaped key; built at runtime to avoid a
+    source-literal that the scanner would flag."""
+    return "sk-" + _FILLER * 2  # 32 alphanumerics after "sk-"
+
+
+def _real_bearer_token() -> str:
+    """Return a Bearer-shaped value (no prefix in the body)."""
+    return _FILLER * 2  # 32 alphanumerics
+
+
+def _real_api_key_value() -> str:
+    """Return a generic ``api_key``-style value (no prefix)."""
+    return _FILLER * 2  # 32 alphanumerics; scanner requires 8+
+
+
 # --- is_placeholder -----------------------------------------------------
 
 
@@ -23,7 +57,8 @@ import check_no_secrets as cns  # type: ignore[import-not-found]  # noqa: E402  
     "value",
     [
         "EXAMPLE",
-        "sk-EXAMPLEKEYEXAMPLEKEY",
+        # Built at runtime so the source itself has no key-shaped literal.
+        "sk-" + "EXAMPLEKEYEXAMPLEKEY",
         "your-key-here-1234",
         "REDACTED-secret-by-vault",
         "placeholder",
@@ -40,8 +75,9 @@ def test_is_placeholder_true(value: str) -> None:
 @pytest.mark.parametrize(
     "value",
     [
-        "sk-abcdefghijklmnopqrstuvwxyz123456",
-        "abcdefghijklmnopqrst",
+        # Built at runtime so the source itself has no key-shaped literal.
+        _real_openai_key(),
+        _real_bearer_token(),
     ],
 )
 def test_is_placeholder_false(value: str) -> None:
@@ -102,34 +138,54 @@ def test_is_scannable_includes_source_and_tests() -> None:
 
 def test_scan_file_detects_openai_sk_prefix(tmp_path: Path) -> None:
     p = tmp_path / "leak.py"
-    key = "sk-abcdefghijklmnopqrstuvwxyz123456"
+    key = _real_openai_key()
     p.write_text(f'OPENAI_API_KEY = "{key}"\n', encoding="utf-8")
     findings = list(cns._scan_file(tmp_path, "leak.py"))
     pattern_ids = {f.pattern_id for f in findings}
     assert "openai_sk_prefix" in pattern_ids
     assert "openai_key" in pattern_ids
+    # BF-2: the rendered finding must NOT contain the raw key value.
+    for f in findings:
+        assert key not in f.render(), (
+            f"finding leaked raw key in render output: {f.render()!r}"
+        )
 
 
 def test_scan_file_detects_bearer(tmp_path: Path) -> None:
     p = tmp_path / "h.py"
+    bearer = _real_bearer_token()
     p.write_text(
-        'h = {"Authorization": "Bearer abcdefghijklmnopqrstuvwxyz123456"}\n',
+        f'h = {{"Authorization": "Bearer {bearer}"}}\n',
         encoding="utf-8",
     )
     findings = list(cns._scan_file(tmp_path, "h.py"))
     assert any(f.pattern_id == "bearer_token" for f in findings)
+    for f in findings:
+        assert bearer not in f.render(), (
+            f"finding leaked raw bearer in render output: {f.render()!r}"
+        )
 
 
 def test_scan_file_detects_api_key_assignment(tmp_path: Path) -> None:
     p = tmp_path / "cfg.py"
-    p.write_text('cfg = {"api_key": "abcdefghijklmnop"}\n', encoding="utf-8")
+    value = _real_api_key_value()
+    p.write_text(f'cfg = {{"api_key": "{value}"}}\n', encoding="utf-8")
     findings = list(cns._scan_file(tmp_path, "cfg.py"))
     assert any(f.pattern_id == "generic_api_key" for f in findings)
+    for f in findings:
+        assert value not in f.render(), (
+            f"finding leaked raw api_key value in render output: "
+            f"{f.render()!r}"
+        )
 
 
 def test_scan_file_ignores_placeholder(tmp_path: Path) -> None:
     p = tmp_path / "cfg.py"
-    p.write_text('OPENAI_API_KEY = "sk-EXAMPLEKEYEXAMPLEKEY"\n', encoding="utf-8")
+    # "sk-EXAMPLEKEYEXAMPLEKEY" contains the placeholder substring
+    # "example" so the scanner must skip it after the placeholder filter.
+    p.write_text(
+        'OPENAI_API_KEY = "sk-EXAMPLEKEYEXAMPLEKEY"\n', encoding="utf-8"
+    )
     findings = list(cns._scan_file(tmp_path, "cfg.py"))
     assert findings == []
 
@@ -162,7 +218,8 @@ def test_scan_dedupes_repeat_matches(tmp_path: Path, monkeypatch) -> None:
     # tracked file with a real key.
     leak = tmp_path / "src" / "leak.py"
     leak.parent.mkdir(parents=True, exist_ok=True)
-    leak.write_text('k = "sk-abcdefghijklmnopqrstuvwxyz123456"\n', encoding="utf-8")
+    key = _real_openai_key()
+    leak.write_text(f'k = "{key}"\n', encoding="utf-8")
 
     # Stage a git repo so _list_tracked_files returns our file.
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
@@ -203,3 +260,12 @@ def test_main_against_clean_repo_passes() -> None:
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "NO CONFIRMED SECRET" in completed.stdout
+    # BF-2: the scanner's stdout/stderr on the clean repo must not echo
+    # any key-shaped value (there shouldn't be any in a clean repo,
+    # but this guards against future regressions).
+    leaked = _FILLER * 2
+    combined = completed.stdout + completed.stderr
+    assert leaked not in combined, (
+        f"clean-repo scanner output leaked a key-shaped value: "
+        f"{combined!r}"
+    )

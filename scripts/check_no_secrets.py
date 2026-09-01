@@ -112,7 +112,14 @@ class Finding:
     snippet: str
 
     def render(self) -> str:
-        return f"{self.path}:{self.line}: [{self.pattern_id}] {self.snippet}"
+        # Codex review BF-2: never echo the raw value into stderr.
+        # The contract requires ``file:line`` and the pattern name so the
+        # operator can locate the finding; the secret-shaped value
+        # itself must not be duplicated into CI logs, ``notes[]`` of
+        # the gate report, or any tracked artefact. ``snippet`` is
+        # still kept on the dataclass for in-process callers that need
+        # the full context, but the human-facing render redacts it.
+        return f"{self.path}:{self.line}: [{self.pattern_id}] <redacted>"
 
 
 # Directories that are never scanned, even if they live under a tracked
