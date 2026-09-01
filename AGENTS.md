@@ -47,7 +47,10 @@ Ako postoji konflikt, NE nagađaj. Prijavi ga koordinatoru.
 - MEDIUM/HIGH i svaki shared-contract/refactor task mora imati GitNexus impact analizu prije izmjene.
 - GitNexus `detect-changes` je obavezan prije reviewa za MEDIUM/HIGH.
 - Ne vjeruj implementer izvještaju bez stvarnog diff-a i execution evidence.
-- Nema merge-a bez eksplicitnog odobrenja Human Ownera.
+- Nema merge-a bez eksplicitnog odobrenja Human Ownera — **osim** LOW/MEDIUM
+  taskova pod smanjenim review troškom (workflow §29, od 2026-09-01), gdje
+  Claude PASS dovoljan za odmah commit/push/merge. HIGH/bezbjednosno-kritični
+  taskovi ostaju na punom ciklusu bez izuzetka.
 - Nakon merge-a obavezan je post-merge integration gate.
 - API ključevi se nikad ne commit-uju niti čuvaju plaintext u SQLite/config fajlovima.
 - Domain/Application boundary se ne probija radi "bržeg" rješenja.
