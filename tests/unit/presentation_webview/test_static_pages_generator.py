@@ -16,6 +16,22 @@ from ai_campaign_studio.presentation_webview.screens import write_all_pages
 from ai_campaign_studio.presentation_webview.shell import SIDEBAR_ITEMS
 
 
+def test_write_all_pages_materialises_static_assets_on_disk(tmp_path: Path) -> None:
+    """Regression: generated pages link '../static/app.css'/'app.js' relative
+    to screens/{key}/index.html -- those files must actually exist in
+    target_dir/static/, not just be referenced by path in the HTML string.
+    A prior version only asserted the href/src text and missed that the
+    files were never copied, so pywebview rendered bare, unstyled HTML.
+    """
+    write_all_pages(tmp_path)
+    css_path = tmp_path / "static" / "app.css"
+    js_path = tmp_path / "static" / "app.js"
+    assert css_path.is_file(), f"missing {css_path}"
+    assert js_path.is_file(), f"missing {js_path}"
+    assert css_path.stat().st_size > 0
+    assert js_path.stat().st_size > 0
+
+
 def _active_a(html: str) -> str:
     """Return the screen key of the active <a class="active"> in the sidebar."""
     m = re.search(r'class="active" href="\.\./screens/(\w+)/index\.html"', html)

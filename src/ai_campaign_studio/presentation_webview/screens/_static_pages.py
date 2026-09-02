@@ -12,10 +12,18 @@ The function takes the target directory as a parameter so tests and
 from __future__ import annotations
 
 import importlib
+import shutil
 from pathlib import Path
 
 from ..shell import SIDEBAR_ITEMS, render_shell
 from .pocetna import render_body as render_pocetna_body
+
+# Package-relative source of the shared CSS/JS this module vendors into
+# every generated ``target_dir``. Every generated page links to
+# ``../static/app.css``/``../static/app.js`` (see shell.render_shell) --
+# without this copy step those links 404 and pywebview renders bare,
+# unstyled HTML.
+_STATIC_SRC = Path(__file__).resolve().parent.parent / "static"
 
 
 def _body_for(key: str) -> str:
@@ -31,15 +39,31 @@ def _body_for(key: str) -> str:
     return module.render_body()
 
 
+def _copy_static_assets(target_dir: Path) -> None:
+    """Copy the package's static/app.css + app.js into target_dir/static/.
+
+    Every generated screen references these via a relative ``../static/``
+    link, so they must exist alongside the generated ``screens/`` tree,
+    not just in the source package.
+    """
+    dest = target_dir / "static"
+    dest.mkdir(parents=True, exist_ok=True)
+    for name in ("app.css", "app.js"):
+        shutil.copyfile(_STATIC_SRC / name, dest / name)
+
+
 def write_all_pages(target_dir: Path) -> dict[str, Path]:
     """Render every screen through ``render_shell`` into ``target_dir``.
 
     Writes ``target_dir/screens/{key}/index.html`` for each screen in
     :data:`shell.SIDEBAR_ITEMS` (Početna, Brend, Kampanje, Kalendar,
-    Podešavanja). Returns a mapping ``{key: file_path}`` for callers
+    Podešavanja), and copies the shared ``static/app.css``/``app.js``
+    into ``target_dir/static/`` so the relative links in each page
+    actually resolve. Returns a mapping ``{key: file_path}`` for callers
     that need the entry-point URL (pywebview).
     """
     target_dir = Path(target_dir)
+    _copy_static_assets(target_dir)
     out: dict[str, Path] = {}
     for key, label, _icon, _href in SIDEBAR_ITEMS:
         body = _body_for(key)
