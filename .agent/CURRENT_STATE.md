@@ -3,7 +3,7 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — ACS-P0-008 Codex round 3 PASS_WITH_NOTES, READY FOR HUMAN APPROVAL — posljednji P0 task. SPIKE-001 (pywebview) prošireno u punu GUI izradu paralelno.
+**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **P0-GATE = PASS.** ACS-P0-008 merged u main (`aef1b0d`), svih 8 P0 taskova gotovo. `artifacts/phase0_foundation_gate.json` na main-u: `status: PASS`, svih 17 checkova `true`. Faza 1 više NIJE blokirana. SPIKE-001 (pywebview) paralelno u toku — MiniMax radi GUI prema mokapu.
 
 ---
 
@@ -99,15 +99,38 @@ Performance/Analytics Task Contract mora slijediti `.agent/TASK_ROUTING.md` sekc
 
 ## Trenutni P0 gate
 
-NOT DONE — ACS-P0-001 do ACS-P0-007 (7 od 8 P0 taskova) su merged.
-`artifacts/phase0_foundation_gate.json` još ne postoji (gate fajl nastaje tek u ACS-P0-008).
-`src/ai_campaign_studio/` sada ima punu foundation površinu: `config/`, `logging/`, `domain/common/`,
-`localization/`, `channels/`, `ai_registry/`, `infrastructure/{secrets,database}/`, svih 5 `ports/`
-contracta, `jobs/` (JobManager), `presentation/` (framework-neutral state/contracts), pun
-`bootstrap.py` composition root, `--health-check` entrypoint, i
-`tests/architecture/test_import_boundaries.py`. ACS-P0-008 (Validators + CI + security + P0 gate)
-je sada jedini preostali P0 task — posljednji prije `artifacts/phase0_foundation_gate.json` i
-prelaska na Faza 1.
+**PASS — 2026-09-02.** Svih 8 P0 taskova (ACS-P0-001 do ACS-P0-008) su merged.
+`artifacts/phase0_foundation_gate.json` postoji na `main` (commit `aef1b0d`),
+regenerisan protiv stvarnog merge-ovanog main-a (ne stale/worktree stanja):
+
+```json
+{
+  "phase": "implementation-phase-0",
+  "status": "PASS",
+  "checks": { ... svih 17 true ... },
+  "ui_framework": "NOT_SELECTED",
+  "campaign_engine_implemented": false,
+  "website_ingestion_implemented": false,
+  "notes": []
+}
+```
+
+`src/ai_campaign_studio/` ima punu foundation površinu: `config/`, `logging/`,
+`domain/common/`, `localization/`, `channels/`, `ai_registry/`,
+`infrastructure/{secrets,database}/`, svih 5 `ports/` contracta, `jobs/`
+(JobManager, sa ACS-HOTFIX-001 event-ordering fix-om), `presentation/`
+(framework-neutral state/contracts), pun `bootstrap.py` composition root,
+`--health-check` entrypoint, `scripts/{validate_resources,check_no_secrets,
+generate_phase0_gate_report}.py`, i `tests/architecture/test_import_boundaries.py`.
+
+**Faza 1 više NIJE blokirana** (uslov iz "Aktivna faza" sekcije je ispunjen).
+Prije nego što se formalno pređe na Faza 1 rad: pročitati plan §37 (P0.30
+STOP) — agent ne nastavlja automatski sa Brand/Facts/CampaignPlan/
+ContentPiece/OpenAI generation/GUI/renderer dok Human Owner eksplicitno ne
+potvrdi prelazak. Napomena: SPIKE-001 (pywebview UI validacija, kasnije
+prošireno u punu GUI izradu od strane MiniMax-a) je već u toku paralelno —
+to je Human Owner odluka da se UI rad počne i prije formalnog P0.29/P0.30
+zapisa, van P0 Task Contract sistema (vidi SPIKE_NOTES.md u tom worktree-u).
 
 ## ACS-HOTFIX-001 — RIJEŠENO (2026-09-01)
 
@@ -144,7 +167,7 @@ protiv pogrešnog koda. Za verifikaciju u worktree-u, eksplicitan
 | ACS-P0-005 | **DONE — merged u main** | Pi | Codex, Claude | Merge commit `c76eb9b` (`--no-ff`, task branch `task/ACS-P0-005-ai-registry-secrets` @ `2ff5f4e`). 2 review runde: Codex REJECT×1 (BF-1..3: secret leak kroz exception `__cause__`, env-var collision za nekanonska imena, modeli za nepoznatog providera), fix nezavisno re-verifikovan od koordinatora, round 2 `PASS_WITH_NOTES` bez blocking findings. Finalni decision packet: `agent_reports/2026-09-01-ACS-P0-005-final-decision-packet.md`. Human Owner approval: "Odobravam". Trivijalan add/add merge konflikt na `infrastructure/__init__.py` (obje 005 i 006 kontrakte su nezavisno listale isti fajl — moja greška u allowed_paths disjoint provjeri za taj par) — riješen ručno, samo docstring razlika. Post-merge gate PASS na `main`. Worktree uklonjen (`--force`, samo Pi-jevi već-inkorporirani raw report fajlovi izgubljeni). |
 | ACS-P0-006 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `298bbd3` (`--no-ff`, task branch `task/ACS-P0-006-sqlite-foundation` @ `8d45167`). 2 review runde: Codex REJECT×1 (BF-1/2: UoW re-use nakon commit-a onemogući rollback, migration runner rollback-uje caller-owned transakciju kad BEGIN padne), fix nezavisno re-verifikovan od koordinatora, round 2 `PASS_WITH_NOTES` bez blocking findings. Finalni decision packet: `agent_reports/2026-09-01-ACS-P0-006-final-decision-packet.md`. Human Owner approval: "odobravam". Post-merge gate PASS na `main` (104 testa, ruff, mypy, health-check). Worktree uklonjen (clean, bez force-a). Usput: `.codex_tmp/` scratch fajl Codex-a je nakratko interferisao sa `ruff check .` (nije gitignored) — nestao je sam prije nego što je trebalo trajno rješenje, nije naš kod. |
 | ACS-P0-007 | **DONE — merged u main** | Pi | Codex, Claude | Merge commit `1071eff` (`--no-ff`, task branch `task/ACS-P0-007-jobs-presentation-bootstrap` @ `c553379`). Scope: P0.20–P0.23 (Jobs + Presentation contracts + Bootstrap wiring). Tri Codex REJECT/REJECT/PASS_WITH_NOTES runde: BF-1 (submit-after-shutdown orphan job), BF-2 (dynamic-import guard bypass), R2-BF-1 (queued job trajno PENDING nakon shutdown-cancellation) — sva tri nalaza nezavisno reprodukovana od koordinatora PRIJE svake fix-runde I nezavisno reverifikovana POSLIJE (uključujući reprodukciju Codex-ovog 100-job concurrent submit/shutdown stress probe-a). Codex round 3: PASS_WITH_NOTES, bez blocking findings. Finalni decision packet: `agent_reports/2026-09-01-ACS-P0-007-final-decision-packet.md`. Human Owner approval: "Odobravam". Post-merge gate PASS na `main` (170 testova, ruff, mypy, oba health-check entrypointa, Python 3.14.1). Čist merge, bez konflikta. Jedan prihvaćen non-blocking rezidual (double-indirection dynamic-import bypass u presentation guardu, eksplicitno van scope-a po Codex-ovoj preporuci). Worktree uklonjen (clean, bez force-a). |
-| ACS-P0-008 | **READY FOR HUMAN APPROVAL — posljednji P0 task** | MiniMax | Codex, Claude (HIGH) | Scope: P0.24–P0.30. Grana `task/ACS-P0-008-validators-ci-security-gate` @ `5774303` (nije merged; uključuje main sa ACS-HOTFIX-001). Tok: Codex round 1 REJECT (BF-1 scanner self-poisoning, BF-2 raw-value leak) → fix round 1 → **Codex round 2 PASS_WITH_NOTES** → BF-3 (secret scanner provider-coverage gap, Google/OpenRouter propust, flagovano iz eksterne analize, empirijski potvrđeno) + `_KEY_VALUE` character-class bug (MiniMax sam otkrio) → **Codex round 3 PASS_WITH_NOTES** (`agent_reports/2026-09-02-ACS-P0-008-review-codex-round3.md`, bez blocking findings, nezavisne adversarial probe — Cohere-Enterprise provider, dotted/dashed vrijednosti). Svaki nalaz kroz sve tri runde nezavisno potvrđen od koordinatora DRUGAČIJOM probom od implementera/Codex-a. 217 testova, ruff/mypy čisto, gate report `status: PASS`, svih 17 checkova `true`. Finalni decision packet: `agent_reports/2026-09-02-ACS-P0-008-final-decision-packet.md` — READY FOR HUMAN APPROVAL. Čeka Human Owner merge odobrenje — **posljednji P0 coding task**, poslije merge-a P0-GATE = PASS. |
+| ACS-P0-008 | **DONE — merged u main — POSLJEDNJI P0 TASK, P0-GATE = PASS** | MiniMax | Codex, Claude (HIGH) | Merge commit `aef1b0d` (`--no-ff`, task branch `task/ACS-P0-008-validators-ci-security-gate` @ `5774303`). Tok: Codex round 1 REJECT (BF-1 scanner self-poisoning, BF-2 raw-value leak) → fix round 1 → Codex round 2 `PASS_WITH_NOTES` → BF-3 (secret scanner provider-coverage gap, Google/OpenRouter propust, flagovano iz eksterne analize, empirijski potvrđeno) + `_KEY_VALUE` character-class bug (MiniMax sam otkrio) → Codex round 3 `PASS_WITH_NOTES`, bez blocking findings. Svaki nalaz kroz sve tri runde nezavisno potvrđen od koordinatora DRUGAČIJOM probom od implementera/Codex-a. Finalni decision packet: `agent_reports/2026-09-02-ACS-P0-008-final-decision-packet.md`. Human Owner approval: "Merdžuj, komituj i pušuj na github". Post-merge gate PASS na `main` (217 testova, ruff, mypy, validate_resources, check_no_secrets, health-check, 10x race-stress loop čist) — `.pth` provjeren prije verifikacije (lekcija iz ACS-HOTFIX-001). Gate report regenerisan protiv stvarnog merge-ovanog main-a: `status: PASS`, svih 17 checkova `true`. Worktree uklonjen (`--force`, samo LF/CRLF whitespace artifact, bez sadržajnog gubitka). |
 
 ## Paralelizacija — trenutna provjera
 
@@ -197,27 +220,31 @@ ACS-P0-007 je sada jedini kandidat — nema drugog unblocked P0 taska za paralel
 
 ## Verification baseline
 
-Uspostavljen na `main` poslije merge-a ACS-HOTFIX-001 (2026-09-01, root `.venv`, Python 3.14.1,
-`.pth` ručno provjeren/vraćen na main checkout — vidi napomenu iznad):
+Uspostavljen na `main` poslije merge-a ACS-P0-008 — **P0-GATE = PASS** (2026-09-02, root `.venv`,
+Python 3.14.1, `.pth` ručno provjeren/vraćen na main checkout — vidi napomenu iznad):
 
 ```text
 import ai_campaign_studio          → OK (0.1.0)
-python -m pytest -q                → 171 passed
+python -m pytest -q                → 217 passed
 python -m ruff check .             → All checks passed!
 python -m mypy src                 → Success: no issues found in 51 source files
+python scripts/validate_resources.py → All resources are valid
+python scripts/check_no_secrets.py   → NO CONFIRMED SECRET IN TRACKED FILES
 python -m ai_campaign_studio.main --health-check → exit 0
-20x loop -k "event_sequence or event_ordering_under_slow" → 20/20 čisto
+python scripts/generate_phase0_gate_report.py → status: PASS, svih 17 checkova true
+10x loop -k "event_sequence or event_ordering_under_slow" → 10/10 čisto
 ```
 
 ## CI
 
-`.github/workflows/ci.yml` postoji od 2026-08-31 (dodano ranije nego što plan predviđa za
-ACS-P0-008, na osnovu eksterne analize repoa koja je flag-ovala nedostatak CI gate-a).
-Pokreće `ruff check .` → `mypy src` → `pytest -q` na `push`/`pull_request` ka `main`, GitHub-ov
-Python 3.12 runner (donja granica iz `requires-python`). Prvi run zelen: https://github.com/Rade69/AI-Campaing-Studio/actions
-(run `33413783089`, 30s). Ovo NE zamjenjuje ručnu post-merge gate provjeru koordinatora — i dalje
-ručno pokretati pun set prije/poslije merge-a, CI je dodatna, ne jedina zaštita (npr. ne pokriva
-`--health-check` niti GitNexus korake).
+`.github/workflows/ci.yml` postoji od 2026-08-31, prošireno u ACS-P0-008 (2026-09-01/02).
+Pokreće `ruff check .` → `mypy src` → `pytest -q` → resource validation → no-secret scan →
+health-check (izolovan temp data dir preko `AppPaths(data_dir_override=...)`, bez keyring/GUI/
+network) na `push`/`pull_request` ka `main`, GitHub-ov Python 3.12 runner (donja granica iz
+`requires-python`). Merge commit ACS-HOTFIX-001 (`bcec979`) i ACS-P0-008 (`aef1b0d`) oba zelena
+na GitHub Actions. Ovo NE zamjenjuje ručnu post-merge gate provjeru koordinatora — i dalje ručno
+pokretati pun set prije/poslije merge-a, CI je dodatna, ne jedina zaštita (npr. ne pokriva
+`generate_phase0_gate_report.py` niti GitNexus korake).
 
 ## Repo na GitHub-u
 
@@ -241,6 +268,13 @@ ponovo pokrenuti `npx gitnexus analyze --skip-agents-md` pa `npx gitnexus status
 
 ## Sljedeći task
 
-ACS-P0-001–007 su svi DONE. ACS-P0-008 (Validators + CI + security + P0 gate, P0.24–P0.30) je
-jedini preostali P0 task — posljednji prije `artifacts/phase0_foundation_gate.json` i prelaska na
-Faza 1. Contract nije napisan.
+**P0 je gotov — svih 8 taskova (ACS-P0-001–008) su DONE, P0-GATE = PASS.** Faza 1 više nije
+blokirana. Prije formalnog prelaska: pročitati `AI_Campaign_Studio_Faza_1_v1_4_Agent_Workflow_Integrated.md`
+od početka (plan §37/P0.30 STOP kaže da agent ne nastavlja automatski sa Brand/Facts/CampaignPlan/
+ContentPiece/OpenAI generation/GUI/renderer bez eksplicitne Human Owner potvrde prelaska).
+
+Paralelno već u toku, van formalnog P0/Faza 1 task-contract sistema: **SPIKE-001** (pywebview UI
+validacija, `spike/pywebview-content-studio` grana) — MiniMax trenutno proširuje sa jednog
+Content Studio ekrana na punu GUI izradu prema mokapu. Ovo je Human Owner odluka da UI rad počne
+prije formalnog Faza 1 zapisa — pratiti taj rad odvojeno, ne miješati ga sa P0/Faza 1 Task
+Contract disciplinom dok se eksplicitno ne odluči da se uvede u tu disciplinu.
