@@ -10,8 +10,8 @@ ACS-F1-009 zavisi samo od `TextGenerationPort` Protocol-a, ne od konkretnog adap
 uključuje jednu usko-skopiranu aditivnu izmjenu na `CampaignRepositoryPort` (`get_brief` — zatvara
 persistence read-path rupu, GitNexus upstream impact = LOW). Worktree kreiran:
 `../ai-campaign-studio-worktrees/ACS-F1-009-campaign-brief-plan-generation`, branch
-`task/ACS-F1-009-campaign-brief-plan-generation` @ `main 23b08ca`. Implementer još nije dodijeljen
-(TBD — Human Owner bira). Detalji: `agent_reports/ACS-F1-009-task-contract.md`.
+`task/ACS-F1-009-campaign-brief-plan-generation` @ `main 23b08ca`. Implementer: **Pi** (Human Owner odluka, 2026-09-02). Detalji:
+`agent_reports/ACS-F1-009-task-contract.md`.
 
 Prethodni entry (2026-09-02): **ACS-F1-007, ACS-F1-008, ACS-GUI-002 sva tri merged u main** (paralelni round, svi Claude-only MEDIUM review PASS, svi commit-ovani/push-ovani odmah po §29, bez posebnog Human Owner odobrenja per-task). Redoslijed merge-a: F1-007 → F1-008 → GUI-002, svi čisti merge-evi bez konflikta (disjoint `allowed_paths`). Nakon sva tri: **425 testova, ruff/mypy čisti, `python scripts/generate_phase0_gate_report.py` → `status: PASS`, svih 17 checkova true**. Detalji po tasku u tabeli ispod. Sve tri worktree uklonjene (clean, bez force-a); task branch-evi ostavljeni lokalno (isti pattern kao P0/F1-001..006).
 
