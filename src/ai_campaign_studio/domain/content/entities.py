@@ -51,6 +51,7 @@ class ContentPiece:
     facts_allowed: tuple[FactId, ...] = ()
     claims: tuple[ContentClaim, ...] = ()
     revision_ids: tuple[RevisionId, ...] = ()
+    payload: SocialPostPayload | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "facts_allowed", tuple(self.facts_allowed))
