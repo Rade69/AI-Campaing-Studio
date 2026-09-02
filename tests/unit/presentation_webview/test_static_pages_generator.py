@@ -166,24 +166,26 @@ def test_write_all_pages_pocetna_carries_fixture_data(tmp_path: Path) -> None:
         assert needle in pocetna, f"Početna missing fixture string: {needle!r}"
 
 
-def test_write_all_pages_placeholder_screens_carry_only_their_label(
-    tmp_path: Path,
-) -> None:
-    """Each placeholder shows its own h2 + 'ACS-GUI-002' notice — no shell drift."""
+def test_write_all_pages_screens_carry_real_content(tmp_path: Path) -> None:
+    """Each screen shows its own h2 + real fixture-driven content (ACS-GUI-002).
+
+    Superseded the earlier placeholder-only assertion once Brend/Kampanje/
+    Kalendar/Podešavanja got their real ``render_body()`` implementations —
+    no shell drift, and no screen regresses back to a bare placeholder.
+    """
     pages = write_all_pages(tmp_path)
     expectations = {
-        "brend": "Brend",
-        "kampanje": "Kampanje",
-        "kalendar": "Kalendar",
-        "podesavanja": "Podešavanja",
+        "brend": ("Brend", "BrightSmile Oral Care"),
+        "kampanje": ("Kampanje", "Proljetna kolekcija"),
+        "kalendar": ("Kalendar", "queue/retry"),
+        "podesavanja": ("Podešavanja", "AI provajderi"),
     }
     for key, path in pages.items():
         html = path.read_text(encoding="utf-8")
         if key == "pocetna":
             continue
-        assert f"<h2>{expectations[key]}</h2>" in html, (
-            f"{key} page missing h2 label"
-        )
-        assert "ACS-GUI-002" in html, (
-            f"{key} page missing ACS-GUI-002 pointer"
+        h2_label, content_needle = expectations[key]
+        assert f"<h2>{h2_label}</h2>" in html, f"{key} page missing h2 label"
+        assert content_needle in html, (
+            f"{key} page missing real content: {content_needle!r}"
         )
