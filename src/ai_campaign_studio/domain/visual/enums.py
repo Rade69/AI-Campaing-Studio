@@ -50,3 +50,57 @@ class OverflowPolicy(StrEnum):
     CLIP = "CLIP"
     ELLIPSIS = "ELLIPSIS"
     SHRINK = "SHRINK"
+
+
+class ImagePosition(StrEnum):
+    """Where the image sits within a layout primitive."""
+
+    LEFT = "LEFT"
+    RIGHT = "RIGHT"
+    TOP = "TOP"
+    BOTTOM = "BOTTOM"
+    BACKGROUND = "BACKGROUND"
+    NONE = "NONE"
+
+
+class HeadlinePosition(StrEnum):
+    """Where the headline sits within a layout primitive."""
+
+    TOP = "TOP"
+    CENTER = "CENTER"
+    BOTTOM = "BOTTOM"
+
+
+class HeadlineScale(StrEnum):
+    """Relative headline size."""
+
+    SMALL = "SMALL"
+    MEDIUM = "MEDIUM"
+    LARGE = "LARGE"
+
+
+class Overlay(StrEnum):
+    """Overlay treatment over the image."""
+
+    NONE = "NONE"
+    DARK = "DARK"
+    LIGHT = "LIGHT"
+    GRADIENT = "GRADIENT"
+
+
+class LogoPosition(StrEnum):
+    """Where the logo sits within a layout primitive."""
+
+    TOP_LEFT = "TOP_LEFT"
+    TOP_RIGHT = "TOP_RIGHT"
+    BOTTOM_LEFT = "BOTTOM_LEFT"
+    BOTTOM_RIGHT = "BOTTOM_RIGHT"
+    CENTER = "CENTER"
+
+
+class CtaStyle(StrEnum):
+    """Visual style of the CTA element."""
+
+    SOLID = "SOLID"
+    OUTLINE = "OUTLINE"
+    TEXT = "TEXT"
