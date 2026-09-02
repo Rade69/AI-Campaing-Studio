@@ -3,7 +3,29 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **ACS-F1-009 (A9 — CreateCampaign +
+**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Dva nova kontrakta napisana za A11:
+ACS-F1-010 i ACS-F1-011, oba OPEN, implementer TBD.** Pri pisanju A11 kontrakta otkriven pravi
+gap: `ContentPiece` nema polje za sam generisani post (`SocialPostPayload`) — već dokumentovano
+kao svjestan scope-granica u ACS-F1-006. Zatvaranje gap-a zahtijeva prvu `ALTER TABLE` migraciju
+u projektu → HIGH risk po CLAUDE.md pravilu (SQLite/migrations), puni Codex+Claude+Human Owner
+ciklus, ne streamlined MEDIUM put. Zato DVA odvojena kontrakta:
+
+- **ACS-F1-010** (HIGH, blokira ACS-F1-011): aditivno `ContentPiece.payload` polje +
+  `resources/migrations/0003_content_payload.sql` (`ALTER TABLE content_pieces ADD COLUMN
+  payload_json TEXT`) + `SqliteContentRepository` read/write. GitNexus impact potvrđuje mali
+  stvaran blast radius uprkos HIGH kategoriji (napomenuto u kontraktu za Codex/Human Owner
+  kalibraciju review dubine).
+- **ACS-F1-011** (MEDIUM, status BLOCKED dok ACS-F1-010 ne merguje): `GenerateSocialPost` —
+  `select_allowed_facts` (deterministički, bez embeddings/vector DB) + Fact-ID validator (plan
+  sekcija 35, SAMO taj dio — NE puni A12 linter) + orchestration. Dokumentovano interim
+  `ContentStatus` pravilo: bilo koji `UNSUPPORTED` claim → `NEEDS_REVIEW`, inače `GENERATING`
+  (NIKAD `DRAFT` — taj status je rezervisan za "nema upozorenja" ishod A12-ovog lintera, koji ovaj
+  task ne implementira).
+
+Oba worktree-a kreirana, implementer nije dodijeljen. Detalji:
+`agent_reports/ACS-F1-010-task-contract.md`, `agent_reports/ACS-F1-011-task-contract.md`.
+
+Prethodni entry (2026-09-02): **ACS-F1-009 (A9 — CreateCampaign +
 GenerateCampaignPlan) merged u main.** Prvi task koji stvarno spaja ACS-F1-007 i ACS-F1-008 u
 generation pipeline: `CreateCampaign` (validacija → mapper → atomic persist brief+campaign) i
 `GenerateCampaignPlan` (Campaign→BrandSnapshot→CampaignBrief→prompt→`TextGenerationPort`→
@@ -371,14 +393,16 @@ business persistence (ACS-F1-005/006), fixture load use-case (ACS-F1-007), promp
 repository + AI port + mock adapter (ACS-F1-008), CreateCampaign + GenerateCampaignPlan
 (ACS-F1-009) svi merged u main (2026-09-02), 452 testova, sve zeleno. GUI paralelno: svih 5
 sidebar ekrana (Početna + Brend/Kampanje/Kalendar/Podešavanja) takođe merged i **live-
-verifikovano od Human Owner-a**. Contract za sljedeći task nije napisan. Kandidati: **A10 —
-Plan editing/versioning/approval** (edit/reorder/approve nad `CampaignPlan`, plan sekcija
-"A10"), **A8 — live provider adapter** (i dalje odgođen po Human Owner odluci, 2026-09-02),
-**A11 — Allowed Facts + Social Content Generation** (post generation use-case, sljedeći korak
-u istom generation pipeline-u kao A9), ili GUI dizajn iteracija (vidi ispod — Human Owner nije
-zadovoljan trenutnim izgledom, čeka se MiniMax-ov trenutni popravak prije nastavka).
-**ACS-GUI-003** (campaign workflow ekrani) i dalje čeka da application use-caseovi budu
-dovoljno razvijeni da ih GUI stvarno poziva.
+verifikovano od Human Owner-a**.
+
+**A11 kontrakti napisani** (vidi entry na vrhu fajla): **ACS-F1-010** (HIGH, payload persistence
+prerequisite, implementer TBD) mora ići prvo; **ACS-F1-011** (MEDIUM, `GenerateSocialPost`,
+implementer TBD, BLOCKED dok ACS-F1-010 ne merguje) odmah poslije. Ostali kandidati, još bez
+kontrakta: **A10 — Plan editing/versioning/approval** (edit/reorder/approve nad `CampaignPlan`,
+plan sekcija "A10"), **A8 — live provider adapter** (i dalje odgođen po Human Owner odluci,
+2026-09-02). GUI dizajn iteracija (vidi ispod) je paralelan, nezavisan trak — čeka MiniMax-ov
+trenutni popravak prije nastavka. **ACS-GUI-003** (campaign workflow ekrani) i dalje čeka da
+application use-caseovi budu dovoljno razvijeni da ih GUI stvarno poziva.
 
 ## GUI dizajn — otvoreno pitanje (Human Owner feedback, 2026-09-02)
 
