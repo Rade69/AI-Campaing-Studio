@@ -39,6 +39,20 @@ _FORBIDDEN_PREFIXES: dict[str, tuple[str, ...]] = {
     "application": (_PRESENTATION_MODULE, _INFRA_MODULE),
     "ports": (_INFRA_MODULE,),
     "presentation": (_INFRA_MODULE,),
+    # presentation_webview/ is GUI-BASE (ACS-GUI-001). It owns its own
+    # composition root and must NOT reach back into domain / application /
+    # ports / infrastructure / presentation / jobs. Provider SDKs are
+    # also forbidden — bridge calls go through a future PresentationFacade
+    # contract, never raw provider imports. pywebview is the only allowed
+    # GUI library (this is the *only* layer where it is permitted).
+    "presentation_webview": (
+        _INFRA_MODULE,
+        _PRESENTATION_MODULE,
+        _JOBS_MODULE,
+        "ai_campaign_studio.domain",
+        "ai_campaign_studio.application",
+        "ai_campaign_studio.ports",
+    ),
 }
 
 _FORBIDDEN_TOP_LEVEL: dict[str, set[str]] = {
@@ -46,6 +60,14 @@ _FORBIDDEN_TOP_LEVEL: dict[str, set[str]] = {
     "application": _GUI_MODULES | _PROVIDER_SDK_MODULES | _BROWSER_MODULES,
     "ports": set(),
     "presentation": _PROVIDER_SDK_MODULES,
+    # presentation_webview may import pywebview (it IS the GUI layer);
+    # nothing else from the GUI / browser / provider / web sets.
+    "presentation_webview": (
+        _PROVIDER_SDK_MODULES
+        | {"playwright"}
+        | _WEB_MODULES
+        | {"PySide6", "PyQt6"},
+    ),
 }
 
 
