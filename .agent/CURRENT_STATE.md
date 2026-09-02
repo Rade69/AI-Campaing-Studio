@@ -3,7 +3,7 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Task A3 GOTOV.** A4 kontrakti napisani i OPEN: **ACS-F1-003** (Pi) i **ACS-F1-004** (Crush), paralelni, base `main @ 0edae77`. `docs/gui-v3/` kanonski GUI izvor. `docs/PYWEBVIEW_SECURITY.md` hardening politika dodana. **G9 UI Framework Gate ZATVOREN** — Human Owner zaključao pywebview bez PySide6 poređenja (vidi "G9 — UI Framework Gate" sekciju). **ACS-GUI-001** (MiniMax, GUI-BASE shell, production `presentation_webview/`) napisan i OPEN.
+**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Task A4 (boundary schemas) GOTOV** — ACS-F1-003 (Pi) i ACS-F1-004 (Crush) oba merged u main (`b3369f1`, `894c457`→`380a279`), 290 testova, ruff/mypy/import-boundaries čisti, nezavisno reverifikovano. `docs/gui-v3/` kanonski GUI izvor. `docs/PYWEBVIEW_SECURITY.md` hardening politika dodana. **G9 UI Framework Gate ZATVOREN** (pywebview zaključan). **ACS-GUI-001** (MiniMax, GUI-BASE) OPEN, u toku — vidi "Poznati blokatori" za jedan nalaz iz tog rada koji treba MiniMax-ova pažnja. Sljedeći Faza 1 task: A5 (business persistence).
 
 ---
 
@@ -162,6 +162,8 @@ protiv pogrešnog koda. Za verifikaciju u worktree-u, eksplicitan
 |---|---|---|---|---|
 | ACS-F1-001 | **DONE — merged u main** | Pi | Claude (MEDIUM) | Merge commit `2e83911` (`--no-ff`, branch `task/ACS-F1-001-domain-common-brand-facts` @ `47bffde`). Scope: `domain/common` extension (10 typed ID aliasa kao `NewType`, 3 nove `DomainError` podklase) + `domain/brand/` (frozen value objects + entities) + `domain/facts/` (FactStatus, immutable ApprovedFact, versioning policies). Koordinator nezavisno pročitao sav kod, pokrenuo pun test suite (242 testa) + architecture boundary suite (15 testova), i sam reprodukovao immutability/InvariantViolation/non-mutation invarijante van test suite-a. MEDIUM risk → Claude-only review → odmah merge po §29, bez posebnog Human Owner odobrenja. Post-merge gate PASS na `main`, CI zeleno (potvrđeno uživo). Worktree uklonjen (clean). |
 | ACS-F1-002 | **DONE — merged u main** | Crush | Claude (MEDIUM) | Merge commit `b30166b` (`--no-ff`, branch `task/ACS-F1-002-domain-campaign-content-visual` @ `2404ba9`). Korak 1 (enums/roles/templates/slots, bez zavisnosti) + Korak 2 (entities.py, content/claims.py, content/revisions.py, visual/layout.py — nakon što je ACS-F1-001 dao typed ID aliase). Svi typed ID-jevi ispravno importovani iz `domain.common.ids`, bez lokalnih duplikata (0A.5). `LayoutSpec` polja su sva tipizirani enumi (novi `ImagePosition`/`HeadlinePosition`/`HeadlineScale`/`Overlay`/`LogoPosition`/`CtaStyle` dodati u `visual/enums.py`). Koordinator nezavisno pročitao sav kod, pokrenuo pun test suite (263 testa) + architecture boundary suite (15 testova), i sam reprodukovao immutability i `lead_generation_v1` sekvencu (7 uloga, bez duplikata) van test suite-a. MEDIUM risk → Claude-only review → odmah merge po §29. Post-merge gate PASS na `main`, CI zeleno (potvrđeno uživo). Worktree uklonjen (clean). |
+| ACS-F1-003 | **DONE — merged u main** | Pi | Claude (MEDIUM) | Merge commit `b3369f1` (`--no-ff` u `380a279`, branch `task/ACS-F1-003-brand-fixture-schema`). `application/schemas/brand_fixture.py` (Pydantic) + `application/mappers/brand_fixture_mapper.py` (mapira u postojeće `Brand`/`BrandSnapshot`/`ApprovedFact`) + demo fixture `resources/fixtures/brightsmile.json`. `Restriction` NIJE proširen (implementer procijenio da fixture ne treba dodatna polja — dobra disciplina protiv "za svaki slučaj"). Worktree nije bio pre-kreiran od koordinatora (implementer ga sam napravio na `main @ 0a6dbc4` umjesto navedenog `0edae77` — obrazloženo i prihvaćeno, `0edae77` je bio predak kontrakt-commita). Koordinator nezavisno reprodukovao pytest/ruff/mypy/import-boundaries sa čistim `PYTHONPATH` overrideom, pročitao sav schema/mapper/test kod. MEDIUM risk → Claude-only review → odmah merge po §29. Post-merge gate PASS na `main` (290 testova ukupno nakon oba A4 merge-a). Worktree uklonjen (clean). |
+| ACS-F1-004 | **DONE — merged u main** | Crush | Claude (MEDIUM) | Merge commit `894c457` (`--no-ff` u `380a279`, branch `task/ACS-F1-004-campaign-content-visual-schemas`). Pet Pydantic schema fajlova (campaign_brief, campaign_plan_output, social_post_generation_output, revision_output, visual_direction_output). `domain/visual/enums.py` čisto additivno prošireno (`ImageTreatment`/`LogoRule`/`CtaRule`) — verifikovano `git diff` da nijedan postojeći enum član nije dirat. Isti worktree-base napomena kao ACS-F1-003. Trivijalan `application/schemas/__init__.py` add/add merge konflikt (oba taska dodala docstring-only fajl) — koordinator ručno spojio u opisniji docstring, bez funkcionalnog uticaja. Koordinator nezavisno reprodukovao pytest/ruff/mypy/import-boundaries, pročitao sve schema fajlove + adversarial testove (odbijanje proizvoljnih enum stringova, dupli `order`, partial-update semantika). MEDIUM risk → Claude-only review → odmah merge po §29. Post-merge gate PASS na `main`. Worktree uklonjen (clean, nakon jednog retry-a zbog file lock-a). |
 | ACS-HOTFIX-001 | **DONE — merged u main** | MiniMax | Codex, Claude (HIGH) | Merge commit `bcec979` (`--no-ff`, branch `hotfix/ACS-HOTFIX-001-job-event-ordering` @ `56a67d2`). Fix: `threading.Lock()` → `RLock()`, `CREATED` emit pomjeren unutar `submit()`-ovog lock bloka, `_emit()` sad drži lock kroz cio callback dispatch. Novi deterministički test (slow-callback adversarial probe) — dokazano da je probabilistički pristup propustio bug tri runde zaredom. Koordinator i Codex NEZAVISNO otkrili isti nalaz: fix ima redundantnu zaštitu (bilo koja dva od tri elementa su samostalno dovoljna) — ne defekt. Codex `PASS_WITH_NOTES`, bez blocking findings. Finalni decision packet: `agent_reports/2026-09-01-ACS-HOTFIX-001-final-decision-packet.md`. Human Owner approval: "Odobravam". Post-merge gate PASS na `main` (171 testova, ruff, mypy, health-check, 20x targeted loop čist) — **nakon ručnog ispravljanja `.pth`-a** koji je prvo pokazivao na uklonjeni worktree (vidi napomenu iznad). Worktree uklonjen (clean, bez force-a). |
 | ACS-P0-001 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `def4ea1` (`--no-ff`, task branch `task/ACS-P0-001-repo-foundation` @ `949d18c`). Reviews: Claude PASS, Codex PASS_WITH_NOTES (no blocking findings). Human Owner approval: "Odobravam". Post-merge gate PASS. Worktree uklonjen. |
 | ACS-P0-002 | **DONE — merged u main** | Pi | Codex, Claude | Merge commit `e187a56` (`--no-ff`, task branch `task/ACS-P0-002-config-boundaries` @ `d6dc783`). 5 review rundi: Codex REJECT×4 (BF-1: boundary-checker bypassi pa lexical/class-scope resolution bugovi), svaki fix nezavisno re-verifikovan od koordinatora (kombinovana adversarial reprodukcija do 11 bypass/scope oblika u finalnoj rundi), round 5 `PASS_WITH_NOTES` bez blocking findings. Finalni decision packet: `agent_reports/2026-08-31-ACS-P0-002-final-decision-packet.md` (READY FOR HUMAN APPROVAL, R1–R6 reziduelni rizici). Human Owner approval: "Slažem se". Post-merge gate PASS na `main` (43 testa, ruff, mypy, health-check, Python 3.14.1). Worktree uklonjen (`--force`, samo Pi-jevi već-inkorporirani raw report fajlovi izgubljeni, bez sadržajnog gubitka). |
@@ -183,6 +185,23 @@ ACS-P0-007 je sada jedini kandidat — nema drugog unblocked P0 taska za paralel
 
 ## Poznati blokatori
 
+- **MiniMax (ACS-GUI-001) je direktno izmijenio fajl u GLAVNOM checkout-u
+  (`H:\AI Campaing Studio`), ne u svom worktree-u (2026-09-02).** Prilikom A4
+  post-merge provjere koordinator je zatekao necommit-ovanu izmjenu
+  `tests/architecture/test_import_boundaries.py` direktno u main working tree-u
+  — dodaje `presentation_webview` boundary pravila (zabranjuje domain/application/
+  ports/infrastructure/presentation importe, dozvoljava samo pywebview kao GUI
+  lib). Sadržaj je legitiman i tačno u duhu ACS-GUI-001 kontrakta (acceptance
+  eksplicitno traži proširenje tog testa), ali je napisan na pogrešnom mjestu —
+  MiniMax-ov vlastiti worktree (`ACS-GUI-001-gui-base-shell`) NIJE imao ovu
+  izmjenu kad je koordinator provjerio (samo `artifacts/phase0_foundation_gate.json`
+  modifikovan tamo, plus očekivani novi `presentation_webview/` fajlovi). Da ne
+  bi kontaminirao A4 merge, koordinator je izmjenu **stash-ovao** iz main-a
+  (`git stash` poruka: `found-uncommitted-in-main-2026-09-02-import-boundaries-presentation_webview`)
+  — main je čist, ništa nije izgubljeno. **Treba se javiti MiniMax-u**: raditi
+  isključivo u dodijeljenom worktree-u (`H:\ai-campaign-studio-worktrees\ACS-GUI-001-gui-base-shell`),
+  ne u glavnom checkout-u. Sadržaj stash-a se može primijeniti (`git stash apply`)
+  u ACS-GUI-001 worktree kad MiniMax nastavi, umjesto da se ponovo piše od nule.
 - **PROCES-GREŠKA (koordinator, 2026-09-02): CI status na task branch push-ovima
   nije bio redovno provjeravan tokom review ciklusa, pa je slomljen `ci.yml` prošao
   nezapaženo kroz cijeli ACS-P0-008 review (Claude, Codex x3 runde) i merge.**
@@ -295,13 +314,13 @@ ponovo pokrenuti `npx gitnexus analyze --skip-agents-md` pa `npx gitnexus status
 
 ## Sljedeći task
 
-**A3 "Common + Domain enums/entities" je GOTOV** — i ACS-F1-001 i ACS-F1-002 merged u main
-(2026-09-02). Cijeli domain sloj (`domain/common`, `brand`, `facts`, `campaign`, `content`,
-`visual`) sad postoji, 263 testa, CI zeleno. Sljedeći task u planu: **A4 — boundary schemas +
-mappers** (Pydantic granice: `application/schemas/brand_fixture.py` itd. — vidi plan sekciju 15).
-Contract za A4 nije napisan. Poslije A4: A5 (business persistence nad postojećim SQLite
-foundationom), A6 (fixture loading — Brand Fixture, prvi stvaran podatak), A7+ (prompts/AI/
-application pipeline).
+**A3 i A4 su GOTOVI** — ACS-F1-001/002 (domain) i ACS-F1-003/004 (boundary schemas) svi merged
+u main (2026-09-02). Domain sloj + Pydantic granice (`application/schemas/`, `application/
+mappers/brand_fixture_mapper.py`) sad postoje, 290 testova, sve zeleno. Sljedeći task u planu:
+**A5 — business persistence nad postojećim SQLite foundationom** (plan sekcija 16, repository
+portovi: `BrandRepositoryPort`, `FactRepositoryPort`, `CampaignRepositoryPort`,
+`ContentRepositoryPort`). Contract za A5 nije napisan. Poslije A5: A6 (fixture loading — Brand
+Fixture kroz repository, prvi stvaran perzistovan podatak), A7+ (prompts/AI/application pipeline).
 
 Paralelno već u toku, van formalnog Faza 1 Task Contract sistema: **SPIKE-001** (pywebview UI,
 `spike/pywebview-content-studio` grana) — MiniMax radi GUI prema mokapu.
