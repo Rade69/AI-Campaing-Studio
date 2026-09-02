@@ -3,7 +3,20 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Novi task napisan: ACS-F1-009** (A9 —
+**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Human Owner live-pokrenuo pravu
+pywebview aplikaciju i podijelio screenshot-e sva 5 sidebar ekrana** (Početna/Brend/Kampanje/
+Kalendar/Podešavanja) na stvarnoj mašini, Edge WebView2, stilizovano (CSS/JS se učitavaju —
+potvrđuje da `d71d84d` static-assets fix stvarno radi u praksi, ne samo u testu). Koordinator
+pregledao svih 5 screenshot-a protiv `DEFAULT_FIXTURE` vrijednosti i `docs/gui-v3` reference:
+Kalendar dani 3/5/9 sa tačnim eventima/bojama, Kampanje sva 3 reda sa tačnim statusima/brojevima,
+Brend sve 3 činjenice + glas brenda bedževi + status datum, Podešavanja svih 5 providera "Nije
+povezano", Početna brojke (3/18/6/12) i liste — sve se poklapa, nema vizuelnih grešaka. Ovo
+zatvara jedinu preostalu prazninu iz ACS-GUI-002 review-a (implementer nije mogao live-testirati u
+svom env-u, koordinator to nije ponovio pri merge-u za taj konkretan task — vidi ACS-GUI-002 red u
+tabeli ispod). **Sva GUI-BASE površina (shell + svih 5 ekrana) je sada live-verifikovana, ne samo
+test-verifikovana.**
+
+Prethodni entry (2026-09-02): **Novi task napisan: ACS-F1-009** (A9 —
 `CreateCampaign` + `GenerateCampaignPlan` use-caseovi, spaja ACS-F1-007 + ACS-F1-008 u prvi pravi
 generation pipeline). A8 (pravi live provider adapter) EKSPLICITNO odgođen po Human Owner odluci —
 ACS-F1-009 zavisi samo od `TextGenerationPort` Protocol-a, ne od konkretnog adaptera. Kontrakt
