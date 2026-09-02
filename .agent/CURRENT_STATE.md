@@ -3,7 +3,7 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **ACS-F1-001 DONE, merged u main** (prvi Faza 1 task, MEDIUM risk, Claude-only review, odmah merge po §29). ACS-F1-002 (Crush) završio Korak 1, main spojen u njegovu granu, sad radi Korak 2 (entities.py, sad kad typed ID aliasi postoje). SPIKE-001 (pywebview GUI) paralelno u toku.
+**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Task A3 "Common + Domain enums/entities" POTPUNO GOTOV** — i ACS-F1-001 i ACS-F1-002 merged u main (`b30166b`), 263 testa, CI zeleno. Sljedeći Faza 1 task: A4 (boundary schemas + mappers). Usput: neočekivan `GUI-architecture/` direktorijum (untracked) primijećen u main checkout-u — vidi napomenu u "Poznati blokatori", čeka Human Owner odluku šta s njim.
 
 ---
 
@@ -37,8 +37,8 @@ puni ciklus, ne nastaviti olakšanim putem tiho.
 ## Aktivna faza
 
 **Faza 1 — Vertical Slice 1.** P0 Foundation je DONE (`P0-GATE = PASS`, 2026-09-02).
-Aktivni plan: `AI_Campaign_Studio_Faza_1_v1_4_Agent_Workflow_Integrated.md`, task A3
-("Common + Domain enums/entities") u toku, paralelizovan kao ACS-F1-001/002.
+Aktivni plan: `AI_Campaign_Studio_Faza_1_v1_4_Agent_Workflow_Integrated.md`. Task A3
+("Common + Domain enums/entities") DONE (ACS-F1-001 + ACS-F1-002 merged). Sljedeći: A4.
 
 ## Aktivni dokumenti
 
@@ -161,7 +161,7 @@ protiv pogrešnog koda. Za verifikaciju u worktree-u, eksplicitan
 | Task | Status | Implementer | Reviewers | Napomena |
 |---|---|---|---|---|
 | ACS-F1-001 | **DONE — merged u main** | Pi | Claude (MEDIUM) | Merge commit `2e83911` (`--no-ff`, branch `task/ACS-F1-001-domain-common-brand-facts` @ `47bffde`). Scope: `domain/common` extension (10 typed ID aliasa kao `NewType`, 3 nove `DomainError` podklase) + `domain/brand/` (frozen value objects + entities) + `domain/facts/` (FactStatus, immutable ApprovedFact, versioning policies). Koordinator nezavisno pročitao sav kod, pokrenuo pun test suite (242 testa) + architecture boundary suite (15 testova), i sam reprodukovao immutability/InvariantViolation/non-mutation invarijante van test suite-a. MEDIUM risk → Claude-only review → odmah merge po §29, bez posebnog Human Owner odobrenja. Post-merge gate PASS na `main`, CI zeleno (potvrđeno uživo). Worktree uklonjen (clean). |
-| ACS-F1-002 | **Korak 1 DONE, merged main u granu — Korak 2 (entities.py) u toku** | Crush | Claude (MEDIUM) | Grana `task/ACS-F1-002-domain-campaign-content-visual` @ `0b40c23` (nije merged). Korak 1 (`33bdca5`, bez zavisnosti — enums/roles/templates/slots) nezavisno verifikovan (229 testova), commit-ovan i pushovan. Koordinator zatim spojio ažurirani main (sa ACS-F1-001) u ovu granu (`0b40c23`, čist merge) da typed ID aliasi budu dostupni — 254 testa poslije merge-a. Čeka Korak 2 (`entities.py`, `content/claims.py`, `content/revisions.py`, `visual/layout.py`). |
+| ACS-F1-002 | **DONE — merged u main** | Crush | Claude (MEDIUM) | Merge commit `b30166b` (`--no-ff`, branch `task/ACS-F1-002-domain-campaign-content-visual` @ `2404ba9`). Korak 1 (enums/roles/templates/slots, bez zavisnosti) + Korak 2 (entities.py, content/claims.py, content/revisions.py, visual/layout.py — nakon što je ACS-F1-001 dao typed ID aliase). Svi typed ID-jevi ispravno importovani iz `domain.common.ids`, bez lokalnih duplikata (0A.5). `LayoutSpec` polja su sva tipizirani enumi (novi `ImagePosition`/`HeadlinePosition`/`HeadlineScale`/`Overlay`/`LogoPosition`/`CtaStyle` dodati u `visual/enums.py`). Koordinator nezavisno pročitao sav kod, pokrenuo pun test suite (263 testa) + architecture boundary suite (15 testova), i sam reprodukovao immutability i `lead_generation_v1` sekvencu (7 uloga, bez duplikata) van test suite-a. MEDIUM risk → Claude-only review → odmah merge po §29. Post-merge gate PASS na `main`, CI zeleno (potvrđeno uživo). Worktree uklonjen (clean). |
 | ACS-HOTFIX-001 | **DONE — merged u main** | MiniMax | Codex, Claude (HIGH) | Merge commit `bcec979` (`--no-ff`, branch `hotfix/ACS-HOTFIX-001-job-event-ordering` @ `56a67d2`). Fix: `threading.Lock()` → `RLock()`, `CREATED` emit pomjeren unutar `submit()`-ovog lock bloka, `_emit()` sad drži lock kroz cio callback dispatch. Novi deterministički test (slow-callback adversarial probe) — dokazano da je probabilistički pristup propustio bug tri runde zaredom. Koordinator i Codex NEZAVISNO otkrili isti nalaz: fix ima redundantnu zaštitu (bilo koja dva od tri elementa su samostalno dovoljna) — ne defekt. Codex `PASS_WITH_NOTES`, bez blocking findings. Finalni decision packet: `agent_reports/2026-09-01-ACS-HOTFIX-001-final-decision-packet.md`. Human Owner approval: "Odobravam". Post-merge gate PASS na `main` (171 testova, ruff, mypy, health-check, 20x targeted loop čist) — **nakon ručnog ispravljanja `.pth`-a** koji je prvo pokazivao na uklonjeni worktree (vidi napomenu iznad). Worktree uklonjen (clean, bez force-a). |
 | ACS-P0-001 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `def4ea1` (`--no-ff`, task branch `task/ACS-P0-001-repo-foundation` @ `949d18c`). Reviews: Claude PASS, Codex PASS_WITH_NOTES (no blocking findings). Human Owner approval: "Odobravam". Post-merge gate PASS. Worktree uklonjen. |
 | ACS-P0-002 | **DONE — merged u main** | Pi | Codex, Claude | Merge commit `e187a56` (`--no-ff`, task branch `task/ACS-P0-002-config-boundaries` @ `d6dc783`). 5 review rundi: Codex REJECT×4 (BF-1: boundary-checker bypassi pa lexical/class-scope resolution bugovi), svaki fix nezavisno re-verifikovan od koordinatora (kombinovana adversarial reprodukcija do 11 bypass/scope oblika u finalnoj rundi), round 5 `PASS_WITH_NOTES` bez blocking findings. Finalni decision packet: `agent_reports/2026-08-31-ACS-P0-002-final-decision-packet.md` (READY FOR HUMAN APPROVAL, R1–R6 reziduelni rizici). Human Owner approval: "Slažem se". Post-merge gate PASS na `main` (43 testa, ruff, mypy, health-check, Python 3.14.1). Worktree uklonjen (`--force`, samo Pi-jevi već-inkorporirani raw report fajlovi izgubljeni, bez sadržajnog gubitka). |
@@ -183,6 +183,16 @@ ACS-P0-007 je sada jedini kandidat — nema drugog unblocked P0 taska za paralel
 
 ## Poznati blokatori
 
+- **`GUI-architecture/` direktorijum u main checkout-u (untracked, primijećeno 2026-09-02).**
+  Sadrži `AI_Campaign_Studio_GUI_V3/` (9 HTML ekrana, README, V3_PLAN.md,
+  INTEGRATION.md, .zip arhiva) — treća, odvojena GUI mockup iteracija, van
+  SPIKE-001 worktree-a i van bilo kog task sistema. Neko (Human Owner ili
+  eksterni alat) ga je stavio direktno u main working tree, nije committed.
+  Koordinator ga NIJE dirao (nepoznata namjera/status). Treba odluku: da li
+  se ovo briše, premješta u SPIKE-001 worktree, ili tretira kao novi
+  kanonski GUI izvor (u kom slučaju treba pomiriti sa mockup_proposal_v2/
+  i originalnim ChatGPT mokapom — tri različite GUI iteracije trenutno
+  postoje paralelno).
 - **PROCES-GREŠKA (koordinator, 2026-09-02): CI status na task branch push-ovima
   nije bio redovno provjeravan tokom review ciklusa, pa je slomljen `ci.yml` prošao
   nezapaženo kroz cijeli ACS-P0-008 review (Claude, Codex x3 runde) i merge.**
@@ -295,13 +305,17 @@ ponovo pokrenuti `npx gitnexus analyze --skip-agents-md` pa `npx gitnexus status
 
 ## Sljedeći task
 
-**P0 je gotov.** Faza 1 formalno počela 2026-09-02 — Human Owner eksplicitno potvrdio prelazak
-(plan §37/P0.30 STOP zahtjev ispunjen). Prva dva Faza 1 taska u toku: **ACS-F1-001** (Pi) i
-**ACS-F1-002** (Crush), oba dio A3 "Common + Domain enums/entities", paralelizovana. Poslije A3:
-A4 (boundary schemas + mappers), A5 (business persistence nad postojećim SQLite foundationom),
-A6 (fixture loading — Brand Fixture, prvi stvaran podatak), A7+ (prompts/AI/application pipeline).
+**A3 "Common + Domain enums/entities" je GOTOV** — i ACS-F1-001 i ACS-F1-002 merged u main
+(2026-09-02). Cijeli domain sloj (`domain/common`, `brand`, `facts`, `campaign`, `content`,
+`visual`) sad postoji, 263 testa, CI zeleno. Sljedeći task u planu: **A4 — boundary schemas +
+mappers** (Pydantic granice: `application/schemas/brand_fixture.py` itd. — vidi plan sekciju 15).
+Contract za A4 nije napisan. Poslije A4: A5 (business persistence nad postojećim SQLite
+foundationom), A6 (fixture loading — Brand Fixture, prvi stvaran podatak), A7+ (prompts/AI/
+application pipeline).
 
-Paralelno već u toku, van formalnog Faza 1 Task Contract sistema: **SPIKE-001** (pywebview UI
-validacija, `spike/pywebview-content-studio` grana) — MiniMax radi GUI prema mokapu, koji se
-trenutno ponovo doteruje (dva mokap-pokušaja postoje, treba ih pomiriti u jedan kanonski prije
-nego se GUI implementacija smatra finalnom). Pratiti taj rad odvojeno od domain-layer taskova.
+Paralelno već u toku, van formalnog Faza 1 Task Contract sistema: **SPIKE-001** (pywebview UI,
+`spike/pywebview-content-studio` grana) — MiniMax radi GUI prema mokapu. **Tri odvojene GUI
+mockup iteracije trenutno postoje** (originalni ChatGPT mokap, `mockup_proposal_v2/` u
+SPIKE-001 grani, i neočekivan `GUI-architecture/AI_Campaign_Studio_GUI_V3/` u main checkout-u,
+untracked — vidi "Poznati blokatori") — treba ih pomiriti u jedan kanonski izvor prije nego se
+GUI implementacija smatra finalnom.
