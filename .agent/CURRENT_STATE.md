@@ -3,7 +3,14 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **ACS-F1-014 (A10 — Plan editing/
+**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **FLOW-1000 — Plan-approved guard u
+GenerateSocialPost kontrakt napisan, OPEN, implementer TBD.** Prvi task pod novom `FLOW-NNNN`
+šemom (§31). Zatvara poznat gap iz ACS-F1-014: `GenerateSocialPost` ne provjerava da je plan
+`APPROVED` prije generisanja posta. Worktree spreman:
+`../ai-campaign-studio-worktrees/FLOW-1000-plan-approved-guard`. Detalji:
+`agent_reports/FLOW-1000-task-contract.md`.
+
+Prethodni entry (2026-09-02): **ACS-F1-014 (A10 — Plan editing/
 versioning/approval) merged u main.** `EditCampaignPlan` (pozivalac šalje CIJELU novu listu itema;
 stari DRAFT plan → `SUPERSEDED`, novi → `DRAFT` `version+1`, atomično; editovanje APPROVED/
 SUPERSEDED plana odbijeno) + `ReorderCampaignItem` (validira permutaciju postojećih item id-jeva,
