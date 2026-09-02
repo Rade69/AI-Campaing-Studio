@@ -3,7 +3,24 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **ACS-F1-012 (A12 dio 1 — Claim linter +
+**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **ACS-F1-014 (A10 — Plan editing/
+versioning/approval) merged u main.** `EditCampaignPlan` (pozivalac šalje CIJELU novu listu itema;
+stari DRAFT plan → `SUPERSEDED`, novi → `DRAFT` `version+1`, atomično; editovanje APPROVED/
+SUPERSEDED plana odbijeno) + `ReorderCampaignItem` (validira permutaciju postojećih item id-jeva,
+`order→1..N`, STVARNO delegira na `EditCampaignPlan`, ne duplira logiku — potvrđeno čitanjem) +
+`ApproveCampaignPlan` (`CampaignPlan→APPROVED` + `Campaign→PLAN_APPROVED` atomično, provjere:
+item count, unique order, non-empty topic/goal). **Vrijedna implementer dizajn odluka**: svaki
+item u novoj verziji plana dobija SVJEŽ id (ne zadržava stari), jer je `campaign_items.id`
+globalni `PRIMARY KEY` (potvrđeno u migraciji) — stari SUPERSEDED plan i dalje drži stare id-e,
+pa bi reuse pucao na constraint. `generate_social_post.py` NIJE diran (poznat gap — post
+generation ne provjerava da je plan APPROVED — ostaje dokumentovan, namjerno van scope-a da se
+izbjegne konflikt sa ACS-F1-012). Koordinator nezavisno reprodukovao pytest (499 u izolovanom
+worktree-u, 512 na `main` post-merge)/ruff/mypy/import-boundaries (16) čisti, pročitao sav kod
+(3 use-case fajla + svih 5 test fajlova, uključujući 2 prava atomicity testa na SQLite bazi za
+edit i approve). MEDIUM risk → Claude-only review → odmah merge po §29. Merge commit `f230db0`
+(`--no-ff` u `6aec5ca`). Worktree uklonjen (clean).
+
+Prethodni entry (2026-09-02): **ACS-F1-012 (A12 dio 1 — Claim linter +
 final ContentStatus derivacija) merged u main.** `claim_linter.py` (data-driven pravila iz
 `resources/claim_rules/default_v1.yaml` — prohibited termini + currency simboli) primijenjen na
 SVAKI claim: prohibited termin → `PROHIBITED` (nadjačava ČAK i `VERIFIED_BY_FACT`), numeric signal
@@ -323,6 +340,7 @@ protiv pogrešnog koda. Za verifikaciju u worktree-u, eksplicitan
 | ACS-F1-010 | **DONE — merged u main** | Claude | Codex (HIGH) | Merge commit `1de7423` (`--no-ff` u `faaa5d7`, branch `task/ACS-F1-010-social-post-payload-persistence`). Aditivno `ContentPiece.payload: SocialPostPayload \| None = None` (jedno trailing polje) + prva `ALTER TABLE` migracija u projektu (`resources/migrations/0003_content_payload.sql` — `content_pieces.payload_json TEXT`, nullable) + `SqliteContentRepository` read/write proširen. Zatvara persistence gap dokumentovan u ACS-F1-006 (ContentPiece nije imao mjesto za stvaran generisan post) koji bi inače blokirao ACS-F1-011. **Netipičan implementer**: Claude (Human Owner odluka) — pošto je Claude i koordinator i implementer na ovom tasku, review NIJE mogao biti "Claude-only" (Implementer != reviewer) — umjesto toga Codex je uradio jedinu review rundu, `PASS_WITH_NOTES`, bez blocking findings, plus SVOJA nezavisna adversarial provjera (scratch DB samo sa 0000-0002, potvrda da `payload_json` ne postoji, pa primjena 0003, potvrda da se pojavljuje, pa `payload=None` vs namjerno prazan `SocialPostPayload` — oba ostaju semantički različita nakon round-trip-a). Finalni decision packet: `agent_reports/2026-09-02-ACS-F1-010-final-decision-packet.md`. Human Owner odobrenje: "Odobravam". Post-merge gate: 455 testova (scoped `ruff check src tests scripts` čist — whole-repo `ruff`/gate-report i dalje kontaminirani MiniMax-ovim necommit-ovanim scratch fajlovima, nepovezano sa ovim taskom), mypy čist, boundaries (16) čisti. Worktree uklonjen (clean). |
 | ACS-F1-011 | **DONE — merged u main** | Pi | Claude (MEDIUM) | Merge commit `1c28789` (`--no-ff` u `13d5b3a`, branch `task/ACS-F1-011-allowed-facts-post-generation`). A11 — `select_allowed_facts` (deterministički, samo `is_fact_usable` fact-ovi, case-insensitive lexical substring matching protiv `facts_needed`, prazan `facts_needed` → prazan set, nije greška) + `claim_validator` (plan sekcija 35 TAČNO, ne 36 — FACT claim treba postojeći+usable+dozvoljen fact_id → `VERIFIED_BY_FACT`, inače `UNSUPPORTED` sa reason code-om `missing-fact-id`/`fact-not-found`/`fact-not-approved`/`fact-not-offered`; CTA/OPINION/CREATIVE → uvijek `NON_FACTUAL`) + `GenerateSocialPost` (učitava Campaign/Plan/CampaignItem in-memory pretragom kroz `plan.items`/BrandSnapshot/facts → `post_generation` prompt → `AIRequest` → AI poziv → `SocialPostGenerationOutput.model_validate` (Pydantic greška PRIJE perzistencije) → claim-po-claim validacija → interim `ContentStatus` pravilo TAČNO kako je kontrakt specificirao (bilo koji `UNSUPPORTED` → `NEEDS_REVIEW`, inače `GENERATING`, NIKAD `DRAFT`) → atomic persist `ContentPiece` sa `payload`-om iz ACS-F1-010). Zavisi samo od portova + lokalnog `_UnitOfWork` Protocol-a — koordinator potvrdio bez `channels`/`ai_registry` importa (`grep` sweep). Integration test lanči `LoadBrandFixture` → `CreateCampaign` → (ručno sastavljen plan, plan generation već pokriven ACS-F1-009) → `GenerateSocialPost` na pravoj SQLite bazi sa pravim fact-om iz `brightsmile.json`, PLUS bonus atomicity test (mid-persist failure na `save_content_piece` ostavlja `content_pieces` praznim — nije bio formalno tražen acceptance kriterijum za single-write use-case, implementer ga ipak dodao). Koordinator nezavisno reprodukovao pytest (458 u izolovanom worktree-u, 471 na `main` post-merge)/ruff/mypy/import-boundaries (16) čisti, pročitao sav kod (3 core fajla + 4 test fajla) i git status scope (sve novo, ništa van `application/posts/`+testovi). MEDIUM risk → Claude-only review → odmah merge po §29. Worktree uklonjen (clean). **A11 gotov — campaign plan I social post generation sad oba postoje end-to-end nad mock AI adapterom, isti obrazac spreman za A8 (live provider) kad god se odluči da ide.** |
 | ACS-F1-012 | **DONE — merged u main** | Pi | Claude (MEDIUM) | Merge commit `a4baeed` (`--no-ff` u `4218750`, branch `task/ACS-F1-012-claim-linter-status`). "A12 dio 1" — `claim_linter.py` (data-driven pravila iz `resources/claim_rules/default_v1.yaml`) primijenjen na SVAKI claim bez obzira na trenutni status: prohibited/riskantan termin (case-insensitive substring) → `PROHIBITED` + `prohibited-claim` reason (nadjačava ČAK i `VERIFIED_BY_FACT` — riskantan jezik ostaje riskantan i kad je fact-backed); numeric signal (cijena/postotak/trajanje/datum/goli broj, provjereno tim redoslijedom) na claim koji NIJE već `VERIFIED_BY_FACT` → `UNSUPPORTED` sa odgovarajućim reason code-om. `derive_content_status.py` (čista funkcija) — bilo koji `PROHIBITED`/`UNSUPPORTED` → `NEEDS_REVIEW`, inače `DRAFT`, nikad `APPROVED`. Prežicao `GenerateSocialPost` (ACS-F1-011) — zamijenio interim `GENERATING`/`NEEDS_REVIEW` logiku ovom finalnom; ažurirao POSTOJEĆE ACS-F1-011 testove (happy path `GENERATING`→`DRAFT`, nije ih oslabio/obrisao) + dodao novi regression test (`test_prohibited_claim_yields_needs_review`) koji dokazuje da `PROHIBITED` stvarno nadjačava fact-backed claim end-to-end kroz cijeli use-case, ne samo u izolovanom linter unit testu. Sekcija 38 (Content revisions) namjerno van scope-a — ide u budući ACS-F1-013. Koordinator nezavisno reprodukovao pytest (472 u izolovanom worktree-u, 485 na `main` post-merge)/ruff/mypy/import-boundaries (16) čisti, pročitao sav kod (linter, status derivacija, rewiring diff, oba nova + oba ažurirana test fajla) i git status scope (`select_allowed_facts.py`/`claim_validator.py`/`domain/` potvrđeno netaknuti). MEDIUM risk → Claude-only review → odmah merge po §29. Worktree uklonjen (clean). |
+| ACS-F1-014 | **DONE — merged u main** | Crush | Claude (MEDIUM) | Merge commit `f230db0` (`--no-ff` u `6aec5ca`, branch `task/ACS-F1-014-campaign-plan-editing`). "A10" (plan-numeracija, ne task-ID ACS-F1-010) — `EditCampaignPlan` (pozivalac šalje cijelu novu listu itema; stari DRAFT→SUPERSEDED, novi→DRAFT `version+1`, atomično; editovanje APPROVED/SUPERSEDED odbijeno) + `ReorderCampaignItem` (validira permutaciju, `order→1..N`, delegira na `EditCampaignPlan` — DRY potvrđen čitanjem) + `ApproveCampaignPlan` (`CampaignPlan→APPROVED` + `Campaign→PLAN_APPROVED` atomično). Implementer dizajn odluka: svaki item nove verzije dobija SVJEŽ id (`campaign_items.id` je globalni PRIMARY KEY, stari SUPERSEDED plan drži stare id-e — reuse bi pucao na constraint) — dobro uočeno, jasno dokumentovano, koordinator nezavisno potvrdio protiv migracije. `generate_social_post.py` NIJE diran (poznat gap, namjerno van scope-a da se izbjegne konflikt sa ACS-F1-012). Koordinator nezavisno reprodukovao pytest (499 u izolovanom worktree-u, 512 na `main` post-merge)/ruff/mypy/import-boundaries (16) čisti, pročitao sav kod (3 use-case fajla + 5 test fajlova, uključujući 2 prava atomicity testa na SQLite bazi). MEDIUM risk → Claude-only review → odmah merge po §29. Worktree uklonjen (clean). |
 | ACS-HOTFIX-001 | **DONE — merged u main** | MiniMax | Codex, Claude (HIGH) | Merge commit `bcec979` (`--no-ff`, branch `hotfix/ACS-HOTFIX-001-job-event-ordering` @ `56a67d2`). Fix: `threading.Lock()` → `RLock()`, `CREATED` emit pomjeren unutar `submit()`-ovog lock bloka, `_emit()` sad drži lock kroz cio callback dispatch. Novi deterministički test (slow-callback adversarial probe) — dokazano da je probabilistički pristup propustio bug tri runde zaredom. Koordinator i Codex NEZAVISNO otkrili isti nalaz: fix ima redundantnu zaštitu (bilo koja dva od tri elementa su samostalno dovoljna) — ne defekt. Codex `PASS_WITH_NOTES`, bez blocking findings. Finalni decision packet: `agent_reports/2026-09-01-ACS-HOTFIX-001-final-decision-packet.md`. Human Owner approval: "Odobravam". Post-merge gate PASS na `main` (171 testova, ruff, mypy, health-check, 20x targeted loop čist) — **nakon ručnog ispravljanja `.pth`-a** koji je prvo pokazivao na uklonjeni worktree (vidi napomenu iznad). Worktree uklonjen (clean, bez force-a). |
 | ACS-P0-001 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `def4ea1` (`--no-ff`, task branch `task/ACS-P0-001-repo-foundation` @ `949d18c`). Reviews: Claude PASS, Codex PASS_WITH_NOTES (no blocking findings). Human Owner approval: "Odobravam". Post-merge gate PASS. Worktree uklonjen. |
 | ACS-P0-002 | **DONE — merged u main** | Pi | Codex, Claude | Merge commit `e187a56` (`--no-ff`, task branch `task/ACS-P0-002-config-boundaries` @ `d6dc783`). 5 review rundi: Codex REJECT×4 (BF-1: boundary-checker bypassi pa lexical/class-scope resolution bugovi), svaki fix nezavisno re-verifikovan od koordinatora (kombinovana adversarial reprodukcija do 11 bypass/scope oblika u finalnoj rundi), round 5 `PASS_WITH_NOTES` bez blocking findings. Finalni decision packet: `agent_reports/2026-08-31-ACS-P0-002-final-decision-packet.md` (READY FOR HUMAN APPROVAL, R1–R6 reziduelni rizici). Human Owner approval: "Slažem se". Post-merge gate PASS na `main` (43 testa, ruff, mypy, health-check, Python 3.14.1). Worktree uklonjen (`--force`, samo Pi-jevi već-inkorporirani raw report fajlovi izgubljeni, bez sadržajnog gubitka). |
@@ -469,27 +487,30 @@ ponovo pokrenuti `npx gitnexus analyze --skip-agents-md` pa `npx gitnexus status
 
 ## Sljedeći task
 
-**A3–A12(dio 1) su GOTOVI** — domain sloj (ACS-F1-001/002), boundary schemas (ACS-F1-003/004),
-business persistence (ACS-F1-005/006), fixture load use-case (ACS-F1-007), prompt
-repository + AI port + mock adapter (ACS-F1-008), CreateCampaign + GenerateCampaignPlan
-(ACS-F1-009), SocialPostPayload persistence (ACS-F1-010, HIGH), GenerateSocialPost (ACS-F1-011),
-claim linter + status derivation (ACS-F1-012) svi merged u main (2026-09-02), 485 testova, sve
-zeleno. GUI paralelno: svih 5 sidebar ekrana (Početna + Brend/Kampanje/Kalendar/Podešavanja)
-takođe merged i **live-verifikovano od Human Owner-a**.
+**A3–A12(dio 1) + A10(plan-numeracija) su GOTOVI** — domain sloj (ACS-F1-001/002), boundary
+schemas (ACS-F1-003/004), business persistence (ACS-F1-005/006), fixture load use-case
+(ACS-F1-007), prompt repository + AI port + mock adapter (ACS-F1-008), CreateCampaign +
+GenerateCampaignPlan (ACS-F1-009), SocialPostPayload persistence (ACS-F1-010, HIGH),
+GenerateSocialPost (ACS-F1-011), claim linter + status derivation (ACS-F1-012), plan editing/
+versioning/approval (ACS-F1-014) svi merged u main (2026-09-02), 512 testova, sve zeleno. GUI
+paralelno: svih 5 sidebar ekrana (Početna + Brend/Kampanje/Kalendar/Podešavanja) takođe merged i
+**live-verifikovano od Human Owner-a**.
 
 **Cijeli mock-adapter generation pipeline sad postoji end-to-end I proizvodi finalan
 `ContentStatus`** (`DRAFT`/`NEEDS_REVIEW`, ne više interim `GENERATING`): LoadBrandFixture →
-CreateCampaign → GenerateCampaignPlan → GenerateSocialPost → claim_linter/derive_content_status,
-svaki korak atomičan, svaki nezavisno testiran I lančano integration-testiran preko pravih SQLite
-baza. **ACS-F1-014 kontrakt već napisan i OPEN** (plan-numeracija "A10" — Plan editing/versioning/
-approval, implementer TBD — vidi napomenu iznad da se ne pomiješa sa task-ID-om ACS-F1-010 koji
-nema veze sa plan editing-om). Ostali kandidati, bez kontrakta: **budući "Content revisions" task**
-(plan sekcija 38, `revise_content_piece.py` — prvi novi task koji će koristiti novu `FLOW-NNNN`
-šemu, počevši od `FLOW-1000`, pošto je odluka o promjeni šeme donesena poslije ACS-F1-012
-kontrakta), **A8 — live provider adapter** (i dalje odgođen po Human Owner odluci, 2026-09-02).
-GUI dizajn iteracija (vidi ispod) je paralelan, nezavisan trak — čeka MiniMax-ov trenutni popravak
-prije nastavka. **ACS-GUI-003** (campaign workflow ekrani) i dalje čeka da application use-caseovi
-budu dovoljno razvijeni da ih GUI stvarno poziva.
+CreateCampaign → GenerateCampaignPlan → **EditCampaignPlan/ReorderCampaignItem/
+ApproveCampaignPlan** → GenerateSocialPost → claim_linter/derive_content_status, svaki korak
+atomičan, svaki nezavisno testiran I lančano integration-testiran preko pravih SQLite baza.
+**Poznat, još neriješen gap**: `GenerateSocialPost` i dalje ne provjerava da je plan `APPROVED`
+prije generisanja posta (dokumentovano u ACS-F1-014, namjerno ostavljeno da se izbjegne fajl-
+konflikt — sad kad je ACS-F1-014 mergovan, ovaj mali guard je slobodan da se doda kao prvi
+kandidat za novi `FLOW-NNNN` task). Nijedan kontrakt trenutno OPEN. Kandidati: **taj mali guard
+task** (dodaj `plan.status == APPROVED` provjeru u `GenerateSocialPost`), **budući "Content
+revisions" task** (plan sekcija 38, `revise_content_piece.py`), **A8 — live provider adapter**
+(i dalje odgođen po Human Owner odluci, 2026-09-02). **Sljedeći NOVI task dobija `FLOW-1000`**
+(§31 workflow dokumenta). GUI dizajn iteracija (vidi ispod) je paralelan, nezavisan trak — čeka
+MiniMax-ov trenutni popravak prije nastavka. **ACS-GUI-003** (campaign workflow ekrani) i dalje
+čeka da application use-caseovi budu dovoljno razvijeni da ih GUI stvarno poziva.
 
 ## GUI dizajn — otvoreno pitanje (Human Owner feedback, 2026-09-02)
 
