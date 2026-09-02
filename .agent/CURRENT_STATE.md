@@ -3,7 +3,7 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Task A3 GOTOV.** A4 (boundary schemas + mappers) kontrakti napisani i OPEN: **ACS-F1-003** (Pi — `brand_fixture.py` + mapper) i **ACS-F1-004** (Crush — preostalih 5 schema fajlova), paralelni, bez zavisnosti između njih, base `main @ 0edae77`. GUI mockup rekonsolidacija riješena (`docs/gui-v3/` kanonski, vidi "Sljedeći task"). pywebview sigurnosna politika dodana (`docs/PYWEBVIEW_SECURITY.md`). **OTVORENO PITANJE za MiniMax GUI-BASE task**: G9 UI Framework Gate (plan sekcija 3) traži uporedni pywebview vs PySide6 spike prije nego što se pywebview zaključa kao production izbor; AR5 eksplicitno zabranjuje production `presentation_webview/` prije G9. SPIKE-001 je testirao samo pywebview. Čeka Human Owner odluku (formalno zatvoriti G9 sada bez PySide6 poređenja, ili tražiti brzi PySide6 spike prvo) prije nego se piše formalni MiniMax kontrakt za production wiring.
+**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Task A3 GOTOV.** A4 kontrakti napisani i OPEN: **ACS-F1-003** (Pi) i **ACS-F1-004** (Crush), paralelni, base `main @ 0edae77`. `docs/gui-v3/` kanonski GUI izvor. `docs/PYWEBVIEW_SECURITY.md` hardening politika dodana. **G9 UI Framework Gate ZATVOREN** — Human Owner zaključao pywebview bez PySide6 poređenja (vidi "G9 — UI Framework Gate" sekciju). **ACS-GUI-001** (MiniMax, GUI-BASE shell, production `presentation_webview/`) napisan i OPEN.
 
 ---
 
@@ -340,9 +340,20 @@ ako WebView2 Runtime nije instaliran — mora se forsirati `edgechromium` i eksp
 detektovati odsustvo Runtime-a umjesto tihog downgrade-a. Dokument pokriva i debug/DevTools,
 `js_api` allowlisting, CSP, eksterne linkove, storage/private_mode, i dependency pinning.
 Referenciran kao obavezan read-set u `.agent/TASK_ROUTING.md` za svaki budući task koji dira
-`presentation_webview/`/`js_api`. Politika obavezuje bez obzira što pywebview još nije
-formalno zaključan kao UI framework (UI spike gate nije prošao) — važi od prvog reda
-produkcijskog koda ako/kad se zaključa.
+`presentation_webview/`/`js_api`.
+
+## G9 — UI Framework Gate: ZATVOREN (2026-09-02)
+
+Plan (`AI_Campaign_Studio_Faza_1_v1_4_...md` sekcija 3, G9) formalno traži uporedni
+`pywebview vs PySide6` spike prije zaključavanja UI frameworka; AR5 (sekcija 4) eksplicitno
+zabranjuje production `presentation_webview/`/`presentation_qt/` arhitekturu prije G9. SPIKE-001
+je testirao SAMO pywebview (nikad nije rađen PySide6 spike). **Human Owner je eksplicitno
+odlučio (2026-09-02) zatvoriti G9 bez PySide6 poređenja** — obrazloženje: pywebview je već
+dokazan kroz SPIKE-001 (BHS layout robustan, real desktop window radi, Windows nativni chrome),
+i sada postoji `docs/PYWEBVIEW_SECURITY.md` hardening politika. **UI framework je zaključan:
+pywebview.** `presentation_webview/` production wiring je od ovog trenutka dozvoljen (prvi
+task: ACS-GUI-001, MiniMax, GUI-BASE shell). Ovo NE poništava potrebu da se
+`docs/PYWEBVIEW_SECURITY.md` politika primijeni od prvog reda tog koda.
 
 Sljedeći koraci za GUI: kad se A4+ application/use-case slojevi za Brand/Campaign pojave, otvoriti
 formalni lightweight task (van Task Contract sistema, po uzoru na SPIKE-001, ili kao pravi F1
