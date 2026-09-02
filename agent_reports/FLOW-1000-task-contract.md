@@ -4,7 +4,7 @@ title: "Plan-approved guard u GenerateSocialPost"
 phase: Faza-1
 risk: MEDIUM
 coordinator: claude
-implementer: TBD (Human Owner assigns)
+implementer: pi
 reviewers: [claude]
 status: "OPEN — contract written before code"
 created_at: 2026-09-02
