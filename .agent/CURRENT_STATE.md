@@ -3,7 +3,28 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **ACS-F1-011 (A11 — GenerateSocialPost)
+**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Dva nova kontrakta napisana: ACS-F1-012
+i ACS-F1-014.**
+
+- **ACS-F1-012** ("A12 dio 1" — Claim linter + final `ContentStatus` derivacija, plan sekcije
+  36-37, NE sekcija 38/revizije). Implementer: **Pi**, NIJE blokiran (sve od čega zavisi već
+  postoji na main-u), worktree spreman, brief poslat
+  (`agent_reports/2026-09-02-ACS-F1-012-brief-za-pi.md`). Prežicava već-mergovan
+  `generate_social_post.py` (ACS-F1-011) — mijenja interim status logiku (`GENERATING`/
+  `NEEDS_REVIEW`) na finalnu (`DRAFT`/`NEEDS_REVIEW`), zahtijeva ažuriranje ACS-F1-011-ovih
+  postojećih testova (Pi upozoren da ih ažurira, ne oslabi).
+- **ACS-F1-014** ("A10" plan-numeracija — Plan editing/versioning/approval: `EditCampaignPlan` +
+  `ReorderCampaignItem` + `ApproveCampaignPlan`). **Task-ID namjerno ACS-F1-014, ne ACS-F1-013**
+  — taj broj je već rezervisan za budući "Content revisions" task (plan sekcija 38) u
+  ACS-F1-012-ovim dokumentima. Implementer TBD. Dokumentuje POZNAT, namjerno neriješen gap:
+  `GenerateSocialPost` ne provjerava da je plan `APPROVED` prije generisanja posta — nije
+  popravljeno u ovom tasku da se izbjegne fajl-konflikt sa paralelnim ACS-F1-012 (oba bi dirala
+  `generate_social_post.py`). Nezavisan je od ACS-F1-012 (različit paket), može ići paralelno,
+  ali **ne dira `generate_social_post.py`**.
+
+**A8 (live provider adapter) ostaje odgođen po Human Owner odluci — "ostavljamo još malo".**
+
+Prethodni entry (2026-09-02): **ACS-F1-011 (A11 — GenerateSocialPost)
 merged u main.** `select_allowed_facts` (deterministički, samo `is_fact_usable` fact-ovi, lexical
 matching) + `claim_validator` (plan sekcija 35, SAMO fact-id dio — FACT claim treba postojeći/
 usable/dozvoljen fact_id → `VERIFIED_BY_FACT`, inače `UNSUPPORTED` sa reason code-om;
