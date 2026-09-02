@@ -1,6 +1,10 @@
 # AI Campaign Studio — kanonski agentski workflow
 
 **Status:** ACTIVE  
+**Zadnje usklađeno sa stvarnom praksom:** 2026-09-02 (koordinator: claude) — vidi §2 (kako brief
+stvarno stiže do implementera), §6 (split-kontrakta obrazac), §7 (GitNexus worktree-binding
+ograničenje), §9 (`coordination.py` ne postoji), §13 (`.pth` zamka), §19 (`gitnexus check
+--cycles` ne postoji), §22 (P0 odjeljak je istorijski)  
 **Namjena:** jedini kanonski procesni dokument za Claude, Codex, Pi, Crush i buduće coding agente  
 **Project architecture source of truth:** `AI_Campaign_Studio_Faza_0_6_Channel_Model_LLM_Registry.md`  
 **Foundation execution source:** aktivni Implementation Phase 0 dokument iz `.agent/CURRENT_STATE.md`  
@@ -84,6 +88,38 @@ Odgovornosti:
 - prijavljuju `OUT_OF_SCOPE_FINDING`.
 
 Ne commit-uju/push-uju sami osim ako Task Contract ili Human Owner to eksplicitno traži.
+
+## Kako brief stvarno stiže do implementera/reviewera
+
+Koordinator (Claude Code sesija) **nema direktan CLI/API pristup pravim Codex/Pi/Crush/MiniMax
+alatima.** Stvaran mehanizam je:
+
+```text
+1. Koordinator piše Task Contract (agent_reports/<TASK-ID>-task-contract.md)
+   i, po potrebi, kratak "→ ZA <AGENT>" labelovan brief
+   (agent_reports/YYYY-MM-DD-<TASK-ID>-brief-za-<agent>.md) sa
+   orijentacijom + upozorenjima specifičnim za taj task.
+2. Koordinator priprema worktree + branch, commit-uje/push-uje kontrakt na main.
+3. Human Owner ručno pokreće implementer/reviewer agenta eksterno (izvan ove
+   sesije) i prenosi mu brief/kontrakt (kopira sadržaj ili putanju).
+4. Implementer/reviewer radi u svom worktree-u, piše svoj evidence/review
+   report (necommit-ovan, po konvenciji imenovanja iz §11/§14).
+5. Human Owner javlja koordinatoru da je gotovo (obično prosta poruka +
+   putanja do report fajla) — koordinator TEK TADA čita report i nezavisno
+   pregleda stvaran diff/kod, nikad ne vjeruje samo summary-ju.
+```
+
+Ovo znači da "poslao sam brief" znači fajl postoji, commit-ovan je i push-ovan
+— NE da je implementer stvarno primio poruku. Ako Human Owner traži da se
+brief "pošalje", koordinator treba ili dati putanju DO fajla ILI direktno
+zalijepiti sadržaj u odgovor (da Human Owner ne mora sam otvarati fajl) —
+oboje je legitimno, ali eksplicitnost je bolja od pretpostavke.
+
+`python scripts/coordination.py claim/status/release` iz §9 **ne postoji** u
+ovom repou (provjereno) — trenutna zaštita od paralelnog konflikta je čisto
+disciplina oko `allowed_paths` disjunktnosti (§10), ne alat. Ako broj
+paralelnih worktree-ova poraste dovoljno da to postane nepouzdano, tek tada
+graditi stvaran claim mehanizam — ne prije.
 
 ## Codex — default adversarial/test reviewer
 
@@ -323,6 +359,32 @@ proposed_task:
 
 Ne širi task tiho.
 
+## Split kontrakta kad koordinator (ne implementer) otkrije prerequisite gap
+
+Različito od `OUT_OF_SCOPE_FINDING` (implementer nailazi na problem TOKOM koda) — ponekad
+koordinator, dok PIŠE novi Task Contract (prije nego što je bilo koji kod napisan), otkrije da
+planirani task zavisi od nečeg što ne postoji (npr. domain entitet nema polje potrebno da se
+rezultat perzistuje; repository port nema read metodu koju novi use-case zahtijeva).
+
+Obrazac koji se pokazao dobrim u praksi (ACS-F1-009→ACS-F1-010+011, ACS-F1-011→ACS-F1-012):
+
+```text
+1. NE proširivati originalni task da "usput" pokrije i taj gap.
+2. Napisati ODVOJEN, manji prerequisite Task Contract koji zatvara TAČNO tu
+   rupu — dovoljno usko da ostane u istom risk tier-u kao njegov stvaran
+   blast radius (aditivno polje ostaje MEDIUM čak i kad je u domain/
+   fajlu koji je inače HIGH-listed teritorija; migracija je uvijek HIGH
+   bez obzira na veličinu, po §4/§29 pravilu).
+3. Originalni task dobija `dependencies: [<prerequisite-task-id>]` i
+   `status: BLOCKED` dok prerequisite ne merguje.
+4. Kontekst oba kontrakta eksplicitno objašnjava ZAŠTO su podijeljena — ne
+   ostaviti buduću sesiju da nagađa.
+```
+
+Cilj: risk tier prati stvaran blast radius pojedinačne izmjene, ne cijeli originalni task koji ju
+je otkrio — jedna mala aditivna migracija ne treba da povuče cijeli veći use-case task kroz puni
+HIGH ciklus samo zato što je otkrivena usput.
+
 ---
 
 # 7. GitNexus — hard gate
@@ -394,6 +456,22 @@ za MEDIUM/HIGH.
 
 Nulti rezultat nije validan ako je index stale, repo/worktree pogrešno bindovan, rezultat partial/truncated ili diff očigledno postoji.
 
+## Poznato ograničenje — worktree binding (potvrđeno, nije teoretsko)
+
+`mcp__gitnexus__*` alati i `npx gitnexus status`/`detect-changes`/`context`/`impact` se bindiraju
+na **registrovani glavni checkout, ne na linked worktree**. Pokretanje iz task worktree-a (`../ai
+-campaign-studio-worktrees/<TASK-ID>-...`) vraća `Repository not indexed`/`Repository "." not
+found` čak i kad je repo indeksiran — ovo je potvrđeno na svakom review-u kroz cijelu Faza 1
+(ACS-F1-007 pa nadalje), ne izolovan slučaj.
+
+Praktična posljedica: `detect-changes`/`status`/`impact` pokretati **iz glavnog checkout-a**
+(`H:\AI Campaing Studio`), NE iz worktree-a, kad je moguće; `mcp__gitnexus__impact` sa
+`repo: "<ime-repoa>"` parametrom radi iz bilo koje putanje jer eksplicitno imenuje repo. Kad ni to
+nije dovoljno (npr. treba dijafragma protiv TAČNO task branch-a, ne main-a), tretirati GitNexus
+nalaz kao `UNKNOWN` i kompenzovati ručnim `git diff`/`rg` pregledom stvarnih caller-a — ne kao
+"nema impacta". Ovo NIJE isto što i "GitNexus nije obavezan" — obavezan je, samo se
+pre-change/post-change provjera radi drugačijim putem kad worktree binding ne radi.
+
 ## Post-merge
 
 Na main:
@@ -436,35 +514,35 @@ Ne granati sa zastarjelog main-a.
 
 # 9. Coordination claim
 
-Prije paralelnog rada:
+**Status (2026-09-02): `scripts/coordination.py` ne postoji u repou.** Nikad nije implementiran
+niti korišten — dosad je uvijek postojao najviše jedan-dva paralelna unblocked taska, pa je
+sljedeći, jednostavniji mehanizam bio dovoljan:
+
+```text
+1. Task Contract eksplicitno navodi allowed_paths.
+2. Prije pisanja/pokretanja paralelnog taska, koordinator provjerava
+   allowed_paths(A) ∩ allowed_paths(B) = ∅ ručno (§10).
+3. Task Contract-ov "Coordination" odjeljak eksplicitno imenuje sa kojim
+   drugim OPEN/aktivnim taskovima je (ne)zavisan i (ne)paralelan.
+4. Nema centralnog claim registra — disciplina dolazi iz kontrakta samog,
+   ne iz alata.
+```
+
+Ovo je namjerno lakše od dolje opisanog aspiracijskog skript-baziranog pristupa. Ako broj stvarno
+paralelnih worktree-ova poraste dovoljno da ručna provjera postane nepouzdana (npr. 4+ paralelna
+taska istovremeno), tek tada vrijedi izgraditi pravi `coordination.py` claim/status/release alat —
+ne prije, i ne "za svaki slučaj".
+
+Ako se ipak napravi, plan ostaje:
 
 ```bash
 python scripts/coordination.py claim --task ACS-P0-004 --agent pi --paths src/ai_campaign_studio/localization,resources/i18n,tests/unit/localization
-```
-
-Provjera:
-
-```bash
 python scripts/coordination.py status
-```
-
-Na kraju:
-
-```bash
 python scripts/coordination.py release --task ACS-P0-004
 ```
 
-Claimovati konkretne paths.
-
-Ne claimovati cijeli `agent_reports/`.
-
-Ako claim konflikt postoji:
-
-```text
-NE pregaziti
-```
-
-ili redizajnirati task ili raditi sekvencijalno.
+Claimovati konkretne paths, ne cijeli `agent_reports/`. Claim konflikt → NE pregaziti, redizajnirati
+task ili raditi sekvencijalno.
 
 ---
 
@@ -556,9 +634,26 @@ python scripts/validate_resources.py
 python -m ai_campaign_studio.main --health-check
 ```
 
+**Faza 1 dodaje** (od ACS-P0-008 nadalje, dio standardnog post-merge gate-a, ne samo P0):
+
+```bash
+python scripts/check_no_secrets.py
+python scripts/generate_phase0_gate_report.py
+```
+
 Kasnije se dodaju relevantni integration/golden/UI/renderer testovi.
 
 Ne tvrditi full green ako je pokrenut samo targeted test.
+
+## Poznata zamka — `.pth` editable-install (potvrđeno više puta)
+
+Dijeljeni `.venv`-ov editable-install `.pth` fajl
+(`.venv/Lib/site-packages/__editable__.ai_campaign_studio-0.1.0.pth`) može tiho pokazivati na
+PROŠLI worktree umjesto na main checkout — otkriveno prvi put tokom ACS-HOTFIX-001, potvrđeno
+ponovo poslije. Posljedica: post-merge gate "prolazi" ali testira pogrešan kod (stari worktree-ov
+sadržaj), ne stvarno mergovan main. **Prije svakog post-merge gate-a na main-u, ručno provjeriti/
+vratiti `.pth` na main checkout putanju**, ili koristiti eksplicitan `PYTHONPATH` override umjesto
+oslanjanja na `.pth` stanje (pouzdanije za worktree verifikaciju).
 
 ---
 
@@ -701,8 +796,13 @@ Zatim GitNexus:
 
 ```bash
 npx gitnexus analyze --skip-agents-md
-npx gitnexus check --cycles --repo .
 ```
+
+**`npx gitnexus check --cycles --repo .` NE POSTOJI u instaliranoj CLI verziji** (potvrđeno,
+`error: unknown command 'check'`) — ranija verzija ovog dokumenta ga je navodila, ali komanda
+nikad nije radila. Ne pokušavati je ponovo dok se ne provjeri `npx gitnexus --help` za stvaran
+naziv cycle-check komande (ako uopšte postoji u trenutnoj verziji); do tada `analyze` je jedini
+pouzdan post-merge korak.
 
 Ako merge gate pada:
 
@@ -747,6 +847,13 @@ Senzor ne zamjenjuje reviewer.
 ---
 
 # 22. Prvi P0 task paketi
+
+**Istorijski odjeljak (§22-23) — svih 8 P0 taskova su DONE, P0-GATE = PASS od 2026-09-02.** Ostaje
+u dokumentu kao referenca za KAKO se P0 originalno paketovao (i kao primjer risk-tier/dependency
+DAG rasuđivanja koji se i dalje primjenjuje na Faza 1 taskove), ne kao aktivna to-do lista.
+Aktivan, tekući spisak taskova (Faza 1: ACS-F1-001 pa nadalje) živi u `.agent/CURRENT_STATE.md`
+tabeli "Aktivni taskovi", ne ovdje — taj fajl je uvijek istinit trenutni presjek, ovaj odjeljak
+nije.
 
 Implementation Phase 0 ostaje detaljan proceduralni source of truth.
 
