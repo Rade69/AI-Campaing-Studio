@@ -9,12 +9,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    env:
-      # CI-only data dir override. ``AppPaths`` reads ``data_dir_override``
-      # from the explicit constructor argument; the inline Python step
-      # below passes the value through so the health check never touches
-      # the runner's user profile.
-      AI_CAMPAIGN_STUDIO_CI_DATA_DIR: ${{ runner.temp }}/acs-data
     steps:
       - uses: actions/checkout@v4
 
@@ -40,42 +34,14 @@ jobs:
       - name: No-secret scan (tracked files)
         run: python scripts/check_no_secrets.py
 
-      # Health check with a temp data dir. ``python -m ai_campaign_studio.main
-      # --health-check`` builds the bootstrap with default settings, which
-      # would otherwise use ``platformdirs.user_data_dir`` (the runner's
-      # user profile on macOS / Linux / Windows). The inline snippet below
-      # calls the same public ``create_bootstrap`` and ``run_health_check``
-      # functions but threads a runner-local ``AppPaths(data_dir_override=
-      # ...)`` through, so nothing in the real user profile is touched.
-      # It also explicitly uses ``EnvironmentSecretStore`` semantics
-      # (default in non-production environment) — no keyring, no GUI,
-      # no network, no provider SDK.
-      - name: Health check (CI temp data dir, no keyring/GUI)
-        env:
-          AI_CAMPAIGN_STUDIO_CI_DATA_DIR: ${{ runner.temp }}/acs-data
-        run: |
-          mkdir -p "${AI_CAMPAIGN_STUDIO_CI_DATA_DIR}"
-          python - <<'PY'
-          import json
-          import os
-          import sys
-          from pathlib import Path
-
-          from ai_campaign_studio.bootstrap import (
-              create_bootstrap,
-              run_health_check,
-          )
-          from ai_campaign_studio.config.paths import AppPaths
-
-          data_dir = Path(os.environ["AI_CAMPAIGN_STUDIO_CI_DATA_DIR"])
-          bootstrap = create_bootstrap(paths=AppPaths(data_dir_override=data_dir))
-          try:
-              result = run_health_check(bootstrap)
-          finally:
-              bootstrap.job_manager.shutdown(wait=False)
-              bootstrap.database_connection.close()
-
-          json.dump(result, sys.stdout, sort_keys=True)
-          sys.stdout.write("\n")
-          sys.exit(0 if result["status"] == "ok" else 1)
-          PY
+      # Health check. The GitHub Actions runner is a fresh, single-use VM,
+      # so the default AppPaths (platformdirs.user_data_dir under $HOME) is
+      # safe to write to here - no override needed. Uses the same public
+      # --health-check entrypoint as local development, which already has
+      # its own unit/integration test coverage (tests/integration/startup/
+      # test_health_check.py), so this step never duplicates health logic.
+      # Explicitly uses EnvironmentSecretStore semantics (default in
+      # non-production environment) - no keyring, no GUI, no network, no
+      # provider SDK.
+      - name: Health check
+        run: python -m ai_campaign_studio.main --health-check

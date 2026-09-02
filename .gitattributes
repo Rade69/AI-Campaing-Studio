@@ -1,0 +1,11 @@
+# GitHub Actions workflow YAML must stay LF - CRLF (introduced by Windows
+# core.autocrlf) combined with an embedded bash heredoc in a `run: |`
+# block caused GitHub to reject the workflow file outright (0 jobs
+# scheduled, "likely failed because of a workflow file issue" - see
+# ACS-P0-008 post-merge CI failure, 2026-09-02). Force LF regardless of
+# local autocrlf settings so this cannot silently regress.
+.github/workflows/*.yml text eol=lf
+.github/workflows/*.yaml text eol=lf
+
+# Shell scripts are also heredoc/CRLF-sensitive.
+*.sh text eol=lf
