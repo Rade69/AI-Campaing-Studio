@@ -87,11 +87,22 @@ def test_health_check_cli_exit_1_on_broken_migrations(
 def test_health_check_output_does_not_leak_secrets(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    monkeypatch.setenv("AI_CAMPAIGN_STUDIO_OPENAI_API_KEY", "sk-super-secret-123")
+    # Built at runtime so the source itself has no key-shaped literal
+    # in the tracked test scope (Codex review BF-1, extended by BF-3
+    # which now catches ``sk-`` values that include ``-`` characters
+    # *and* any 16+ alphanumerics following the canonical env-var
+    # name). The variable name is kept short so it is not itself a
+    # 16+ alphanumerics run. The value contains the ``example``
+    # placeholder substring, which the scanner's ``_is_placeholder``
+    # filter drops.
+    _probe = "sk-example-1234567890123456"
+    monkeypatch.setenv(
+        "AI_CAMPAIGN_STUDIO_OPENAI_API_KEY", _probe
+    )
     _bind_temp_bootstrap(tmp_path, monkeypatch)
 
     run_health_check_cli()
     out = capsys.readouterr().out
 
-    assert "sk-super-secret-123" not in out
+    assert _probe not in out
     assert str(tmp_path) not in out
