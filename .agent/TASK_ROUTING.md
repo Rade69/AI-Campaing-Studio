@@ -28,6 +28,13 @@ obavezno primijeniti i sekciju **Performance / Analytics task** ispod, zajedno s
 `AI_Campaign_Studio_Faza_0_7_Performance_Analytics_Architecture.md` i
 `AI_Campaign_Studio_Faza_1_v1_5_Analytics_Ready_Implementation_Plan.md`.
 
+Ako task dira `presentation_webview/`, bilo koji `webview.create_window`/`webview.start`
+poziv, ili bilo koji `js_api` bridge — obavezno dodatno pročitati `docs/PYWEBVIEW_SECURITY.md`
+u cjelosti (kratak fajl, 9 sekcija) prije koda. Acceptance kriterijumi tog Task Contracta
+moraju eksplicitno pokriti tačke 1–3 i 6 iz tog dokumenta (renderer fail-loud na
+`edgechromium`, `debug=False`, `js_api` allowlist/validacija, eksterni linkovi kroz
+`target="_blank"`) kao minimalni sigurnosni gate.
+
 ## Performance / Analytics task
 
 Ova sekcija je obavezna za svaki task koji dira ili uvodi:

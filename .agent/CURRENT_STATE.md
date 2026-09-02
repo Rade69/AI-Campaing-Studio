@@ -332,6 +332,18 @@ Dva gapa nađena nezavisnom provjerom HTML-a (nisu bila u README-u) su **POPRAVL
    nepromijenjen (čist globalni pogled). Toggle logika je čisto prezentaciona (čita URL param,
    ne poziva business logiku) u `shared/app.js`.
 
+**Sigurnosna politika za pywebview dodana (2026-09-02): `docs/PYWEBVIEW_SECURITY.md`.** Human
+Owner je tražio maksimalno bezbjedan pywebview 6.2.1 setup. Istraženo protiv zvanične
+dokumentacije (bez trenutnih CVE-ova). Najkritičniji nalaz: na Windows-u pywebview bez
+eksplicitnog `gui='edgechromium'` tiho pada na `mshtml` (IE/Trident, deprecated, bez zakrpa)
+ako WebView2 Runtime nije instaliran — mora se forsirati `edgechromium` i eksplicitno
+detektovati odsustvo Runtime-a umjesto tihog downgrade-a. Dokument pokriva i debug/DevTools,
+`js_api` allowlisting, CSP, eksterne linkove, storage/private_mode, i dependency pinning.
+Referenciran kao obavezan read-set u `.agent/TASK_ROUTING.md` za svaki budući task koji dira
+`presentation_webview/`/`js_api`. Politika obavezuje bez obzira što pywebview još nije
+formalno zaključan kao UI framework (UI spike gate nije prošao) — važi od prvog reda
+produkcijskog koda ako/kad se zaključa.
+
 Sljedeći koraci za GUI: kad se A4+ application/use-case slojevi za Brand/Campaign pojave, otvoriti
 formalni lightweight task (van Task Contract sistema, po uzoru na SPIKE-001, ili kao pravi F1
 contract — odlučiti tada) za wiring `docs/gui-v3/` u `presentation_webview/` po strukturi iz
