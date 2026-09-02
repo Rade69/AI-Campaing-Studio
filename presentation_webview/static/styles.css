@@ -1,0 +1,43 @@
+/* styles.css -- SPIKE-001 Content Studio
+ *
+ * Owns: minor CSS adjustments Tailwind doesn't cover cleanly.
+ * Does not own: any design tokens, theme system, or component library.
+ *
+ * The body uses system fonts so BHS diacritics render with the OS's
+ * best-available face (Segoe UI on Windows handles č ć ž š đ natively).
+ */
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue",
+    Arial, sans-serif;
+}
+
+/* Tailwind's preflight resets some form element font-family; this makes
+ * textareas and inputs inherit Segoe UI instead of falling back to
+ * Times New Roman in some cases. */
+textarea,
+input,
+button {
+  font-family: inherit;
+}
+
+/* Tighter tab transitions so the Edit/Notes toggle feels snappy in the
+ * desktop window. */
+.tab-btn {
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+/* Quick-action buttons: a subtle pressed feedback. */
+.qa-btn:active {
+  transform: translateY(1px);
+}
+
+/* Pre-paint hiding: avoid a flash of untranslated content before
+ * app.js runs and applies the language. */
+body.pre-paint [data-i18n],
+body.pre-paint [data-i18n-bind] {
+  visibility: hidden;
+}

@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-i18n="title">Content Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../static/styles.css" />
+  </head>
+  <body class="bg-slate-50 text-slate-900 min-h-screen font-sans antialiased">
+    <!-- Top bar -->
+    <header
+      class="bg-white border-b border-slate-200 px-5 py-2.5 flex items-center gap-4 shadow-sm"
+    >
+      <div class="flex items-center gap-2 min-w-0 flex-shrink-0">
+        <div
+          class="w-7 h-7 rounded-md bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-[11px] font-bold"
+        >
+          AC
+        </div>
+        <div
+          data-i18n="title"
+          class="text-sm font-semibold text-slate-900 truncate"
+        >
+          Content Studio
+        </div>
+      </div>
+
+      <div
+        class="flex items-center gap-1 text-xs text-slate-500 flex-shrink-0 ml-1"
+      >
+        <button class="w-5 h-5 rounded hover:bg-slate-100 flex items-center justify-center" aria-label="Previous">
+          <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+        </button>
+        <span
+          data-i18n="post_counter"
+          class="font-medium text-slate-700 tabular-nums"
+          >Post 2 of 6</span
+        >
+        <button class="w-5 h-5 rounded hover:bg-slate-100 flex items-center justify-center" aria-label="Next">
+          <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+
+      <div class="flex-1"></div>
+
+      <div
+        class="flex items-center gap-1 text-xs text-slate-500 flex-shrink-0"
+      >
+        <span data-i18n="lang_toggle_label">Language</span>
+        <button
+          data-lang="en"
+          class="lang-btn px-2 py-1 rounded font-medium bg-slate-900 text-white"
+        >
+          EN
+        </button>
+        <button
+          data-lang="bs"
+          class="lang-btn px-2 py-1 rounded font-medium text-slate-700 hover:bg-slate-200"
+        >
+          BHS
+        </button>
+      </div>
+
+      <button
+        data-i18n="exit_btn"
+        id="exit-btn"
+        class="px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-md flex-shrink-0"
+      >
+        Done
+      </button>
+    </header>
+
+    <!-- Main: 3-column grid per mockup -->
+    <main class="px-5 py-4">
+      <div class="grid grid-cols-12 gap-4 max-w-[1500px] mx-auto">
+        <!-- COLUMN 1: visual preview card -->
+        <section class="col-span-12 md:col-span-3 lg:col-span-3 min-w-0">
+          <div
+            class="bg-white rounded-xl border border-slate-200 overflow-hidden"
+          >
+            <div
+              class="aspect-[4/5] bg-gradient-to-br from-cyan-50 via-blue-50 to-indigo-50 flex flex-col items-center justify-center p-4 relative"
+            >
+              <!-- placeholder visual: emoji + label since real image
+                   asset is out of scope for the spike -->
+              <div class="text-6xl mb-2">🦷</div>
+              <div
+                data-i18n="preview_alt"
+                class="text-xs text-slate-700 text-center font-medium leading-tight"
+              >
+                BrightSmile - Oral Care - Science behind your smile.
+              </div>
+              <!-- BRIGHTSMILE logo lockup -->
+              <div class="mt-3 flex items-center gap-1.5">
+                <div
+                  class="w-5 h-5 rounded-sm bg-slate-900 text-white flex items-center justify-center text-[10px] font-bold"
+                >
+                  W
+                </div>
+                <div
+                  class="text-[10px] font-bold tracking-wider text-slate-900"
+                >
+                  BRIGHTSMILE
+                </div>
+                <div class="text-[8px] text-slate-500 -mt-0.5">ORAL CARE</div>
+              </div>
+              <button
+                data-i18n="preview_replace_image"
+                class="absolute bottom-2 left-2 px-2 py-1 text-[10px] font-medium text-slate-600 bg-white/80 hover:bg-white border border-slate-200 rounded"
+              >
+                Replace image
+              </button>
+              <button
+                class="absolute bottom-2 right-2 w-6 h-6 text-slate-400 hover:text-slate-600 bg-white/80 hover:bg-white border border-slate-200 rounded flex items-center justify-center"
+                aria-label="More"
+              >
+                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <circle cx="4" cy="10" r="1.5"/><circle cx="10" cy="10" r="1.5"/><circle cx="16" cy="10" r="1.5"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- COLUMN 2: content editing (middle, widest) -->
+        <section
+          class="col-span-12 md:col-span-5 lg:col-span-5 bg-white rounded-xl border border-slate-200 min-w-0"
+        >
+          <div class="px-2 pt-2">
+            <div class="flex bg-slate-100 rounded-lg p-0.5 w-fit" role="tablist">
+              <button
+                data-i18n="tab_edit"
+                data-tab="edit"
+                class="tab-btn px-3 py-1 text-xs font-medium rounded-md bg-white text-slate-900 shadow-sm"
+              >
+                Edit
+              </button>
+              <button
+                data-i18n="tab_notes"
+                data-tab="notes"
+                class="tab-btn px-3 py-1 text-xs font-medium rounded-md text-slate-500 hover:text-slate-900"
+              >
+                Notes
+              </button>
+            </div>
+          </div>
+
+          <div class="p-4 space-y-3.5">
+            <div>
+              <div class="flex items-baseline justify-between mb-1">
+                <label
+                  data-i18n="headline_label"
+                  class="block text-xs font-semibold text-slate-500 uppercase tracking-wide"
+                >
+                  Headline
+                </label>
+                <span
+                  id="headline-counter"
+                  class="text-[10px] text-slate-400 tabular-nums"
+                ></span>
+              </div>
+              <textarea
+                data-i18n-bind="headline_text"
+                data-counter="headline"
+                data-counter-max="headline_max"
+                rows="1"
+                class="w-full text-base font-semibold text-slate-900 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none break-words whitespace-pre-wrap"
+              ></textarea>
+            </div>
+
+            <div>
+              <div class="flex items-baseline justify-between mb-1">
+                <label
+                  data-i18n="caption_label"
+                  class="block text-xs font-semibold text-slate-500 uppercase tracking-wide"
+                >
+                  Caption
+                </label>
+                <span
+                  id="caption-counter"
+                  class="text-[10px] text-slate-400 tabular-nums"
+                ></span>
+              </div>
+              <textarea
+                data-i18n-bind="caption_text"
+                data-counter="caption"
+                data-counter-max="caption_max"
+                rows="5"
+                class="w-full text-sm text-slate-800 leading-relaxed border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none whitespace-pre-wrap break-words"
+              ></textarea>
+            </div>
+
+            <div>
+              <label
+                data-i18n="cta_label"
+                class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1"
+              >
+                Call to action
+              </label>
+              <input
+                data-i18n-bind-placeholder="cta_placeholder"
+                type="text"
+                class="w-full text-sm text-slate-800 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent break-words"
+              />
+            </div>
+
+            <div>
+              <label
+                data-i18n="hashtags_label"
+                class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1"
+              >
+                Hashtags
+              </label>
+              <div
+                data-i18n-bind="hashtags_text"
+                class="text-sm text-blue-600 break-words mb-1.5"
+              ></div>
+              <div class="relative">
+                <input
+                  data-i18n-bind-placeholder="hashtags_placeholder"
+                  type="text"
+                  class="w-full text-sm text-slate-800 border border-slate-200 rounded-lg pl-3 pr-16 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent break-words"
+                />
+                <button
+                  class="absolute right-1.5 top-1.5 bottom-1.5 px-2.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded"
+                >
+                  <span class="inline-block mr-0.5">+</span>
+                  <span data-i18n="hashtags_placeholder">Add hashtag</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- COLUMN 3: facts + quick actions + claim check (right side panel) -->
+        <aside class="col-span-12 md:col-span-4 lg:col-span-4 space-y-3 min-w-0">
+          <!-- Facts panel -->
+          <div
+            class="bg-white rounded-xl border border-slate-200 p-3.5 min-w-0"
+          >
+            <h3
+              data-i18n="facts_label"
+              class="text-sm font-semibold text-slate-900 mb-2.5 flex items-center gap-2"
+            >
+              <span
+                class="w-4 h-4 rounded bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-bold"
+                >F</span
+              >
+              Facts used (3)
+            </h3>
+            <ul id="facts-list" class="space-y-2"></ul>
+          </div>
+
+          <!-- Quick actions -->
+          <div
+            class="bg-white rounded-xl border border-slate-200 p-3.5 min-w-0"
+          >
+            <h3
+              data-i18n="quick_actions_label"
+              class="text-sm font-semibold text-slate-900 mb-2.5"
+            >
+              Quick actions
+            </h3>
+            <div class="grid grid-cols-2 gap-2">
+              <button
+                data-action="rewrite"
+                class="qa-btn flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors whitespace-nowrap"
+              >
+                <svg class="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828 8 17l1.172-3.828z"/></svg>
+                <span data-i18n="btn_rewrite">Rewrite</span>
+              </button>
+              <button
+                data-action="shorten"
+                class="qa-btn flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors whitespace-nowrap"
+              >
+                <svg class="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 12h16M9 6l-5 6 5 6"/></svg>
+                <span data-i18n="btn_shorten">Shorten</span>
+              </button>
+              <button
+                data-action="improve-hook"
+                class="qa-btn flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors whitespace-nowrap"
+              >
+                <svg class="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                <span data-i18n="btn_improve_hook">Improve hook</span>
+              </button>
+              <button
+                data-action="change-tone"
+                class="qa-btn flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors whitespace-nowrap"
+              >
+                <svg class="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/></svg>
+                <span data-i18n="btn_change_tone">Change tone</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Claim check (compact per mockup) -->
+          <div
+            class="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 min-w-0"
+          >
+            <div class="flex items-start gap-2.5">
+              <div
+                class="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0"
+              >
+                <svg
+                  class="w-3.5 h-3.5 text-white"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="3"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+              </div>
+              <div class="min-w-0 flex-1">
+                <h4
+                  data-i18n="claim_check_title"
+                  class="text-sm font-semibold text-emerald-900"
+                >
+                  Claim Check
+                </h4>
+                <p
+                  data-i18n="claim_check_status"
+                  class="text-xs text-emerald-700 mt-0.5"
+                >
+                  All claims supported
+                </p>
+                <a
+                  href="#"
+                  data-i18n="claim_check_detail"
+                  class="text-xs text-emerald-800 hover:text-emerald-900 underline underline-offset-2 mt-1 inline-block"
+                  >Review facts</a
+                >
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <!-- Bottom bar (fixed) -->
+    <footer
+      class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-5 py-2.5 flex items-center gap-3 shadow-lg z-10"
+    >
+      <!-- warning icon + notice -->
+      <div class="flex items-start gap-2 flex-1 min-w-0">
+        <svg
+          class="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5"
+          fill="currentColor"
+          viewBox="0 0 20 20"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z"
+            clip-rule="evenodd"
+          />
+        </svg>
+        <p
+          data-i18n="bottom_notice"
+          class="text-xs text-slate-600 leading-snug break-words"
+        >
+          Fact-first content. Human review required before publishing.
+        </p>
+      </div>
+      <button
+        data-i18n="btn_save_draft"
+        id="save-draft-btn"
+        class="px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg flex-shrink-0"
+      >
+        Save draft
+      </button>
+      <button
+        data-i18n="btn_send_review"
+        id="send-review-btn"
+        class="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg flex-shrink-0"
+      >
+        Send for review
+      </button>
+    </footer>
+
+    <!-- spacer to keep content above the fixed bottom bar -->
+    <div class="h-14"></div>
+
+    <!-- I18N data + initial language, injected by spike_content_studio.py -->
+    <script>
+      window.__I18N__ = __I18N_DATA__;
+      window.__LANG__ = "__INITIAL_LANG__";
+    </script>
+    <script src="../static/app.js"></script>
+  </body>
+</html>
