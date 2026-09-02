@@ -4,7 +4,9 @@
 **Zadnje usklađeno sa stvarnom praksom:** 2026-09-02 (koordinator: claude) — vidi §2 (kako brief
 stvarno stiže do implementera), §6 (split-kontrakta obrazac), §7 (GitNexus worktree-binding
 ograničenje), §9 (`coordination.py` ne postoji), §13 (`.pth` zamka), §19 (`gitnexus check
---cycles` ne postoji), §22 (P0 odjeljak je istorijski)  
+--cycles` ne postoji), §22 (P0 odjeljak je istorijski), **§31 (Task-ID šema promijenjena:
+`ACS-<FAZA>-NNN` → `FLOW-NNNN` + obavezan naslov, počevši od sljedećeg novog taska — postojećih
+14 taskova SE NE preimenuje)**  
 **Namjena:** jedini kanonski procesni dokument za Claude, Codex, Pi, Crush i buduće coding agente  
 **Project architecture source of truth:** `AI_Campaign_Studio_Faza_0_6_Channel_Model_LLM_Registry.md`  
 **Foundation execution source:** aktivni Implementation Phase 0 dokument iz `.agent/CURRENT_STATE.md`  
@@ -1335,3 +1337,61 @@ Ne mijenjati sve fajlove odjednom. Postupno:
   istom tasku.
 - **Faza 3 — zaseban cleanup**: samo ako se pokaže da agenti i dalje
   previše lutaju kroz određeni subsystem.
+
+---
+
+# 31. Task-ID šema — `FLOW-NNNN` zamjenjuje `ACS-<FAZA>-NNN` (Human Owner odluka, 2026-09-02)
+
+## Zašto
+
+`ACS-F1-009→010/011` stil obilježavanja (task-ID sam po sebi ne nosi značenje, faza-skopiran
+brojač, razdvojen split notacijom) je nerazumljiv na prvi pogled — Human Owner mora otvoriti
+kontrakt/CURRENT_STATE da shvati o čemu se radi. Cilj nove šeme: **naslov nosi značenje, ID je
+samo stabilan identifikator za granu/putanju/reference — ID se NIKAD ne pominje sam bez naslova.**
+
+## Obim promjene — SAMO NAPRIJED
+
+**Postojećih 14 taskova (ACS-P0-001..008, ACS-F1-001..014, ACS-GUI-001/002, ACS-HOTFIX-001) SE NE
+PREIMENUJU.** Već su DONE/merged; retroaktivno preimenovanje bi značilo diranje git branch imena,
+worktree putanja i desetina već-tačnih referenci u `agent_reports/`/`CURRENT_STATE.md` bez stvarne
+koristi — čista istorija ostaje čista. Nova šema važi za **sljedeći task pa nadalje.**
+
+## Nova šema
+
+```text
+FLOW-NNNN — <kratak, opisan naslov>
+```
+
+- `FLOW` je fiksan prefiks za sve buduće taskove (zamjenjuje `ACS-P0-`/`ACS-F1-`/`ACS-GUI-`/
+  `ACS-HOTFIX-` prefikse — jedan prefiks, ne više paralelnih).
+- `NNNN` je **globalni, sekvencijalni brojač** (NE resetuje se po fazi/tipu, za razliku od stare
+  `F1-`/`GUI-`/`P0-` faza-skopirane numeracije). Počinje od **`FLOW-1000`** za prvi novi task
+  poslije ove odluke — okrugao broj, jasno odvojen od stare `ACS-*-0XX` numeracije da se dvije
+  šeme nikad ne pomiješaju slučajno.
+- **Naslov ide UZ broj svaki put kad se task pominje u prozi, commit porukama, chat odgovorima —
+  nikad goli `FLOW-1000` bez konteksta.** Fajlovi (`agent_reports/FLOW-1000-task-contract.md`,
+  branch `task/FLOW-1000-<slug>`, worktree `../ai-campaign-studio-worktrees/FLOW-1000-<slug>`)
+  i dalje koriste kratak slug za putanje (praktična nužnost), ali prozni tekst uvijek piše puni
+  oblik: "FLOW-1000 — SocialPostPayload persistence", ne samo "FLOW-1000".
+- Split-kontrakta obrazac (§6) se ne mijenja — prerequisite i glavni task i dalje dobijaju
+  odvojene, sekvencijalne `FLOW-NNNN` brojeve, svaki sa svojim jasnim naslovom, isto kao što je
+  ACS-F1-010/011 split radio pod starom šemom.
+
+## Primjer
+
+Umjesto:
+
+```text
+ACS-F1-010 (HIGH, payload persistence prerequisite)
+```
+
+piše se:
+
+```text
+FLOW-1000 — SocialPostPayload persistence (HIGH, prerequisite za FLOW-1001)
+```
+
+## Gdje se ovo primjenjuje
+
+Task Contract `task_id` polje, worktree/branch imena, commit poruke, `CURRENT_STATE.md` tabela
+"Aktivni taskovi", chat komunikacija — svugdje gdje se identifikator pojavljuje, prati ga naslov.
