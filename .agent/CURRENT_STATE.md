@@ -3,7 +3,7 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Task A3 "Common + Domain enums/entities" POTPUNO GOTOV** — i ACS-F1-001 i ACS-F1-002 merged u main (`b30166b`), 263 testa, CI zeleno. Sljedeći Faza 1 task: A4 (boundary schemas + mappers). GUI mockup rekonsolidacija riješena: Human Owner potvrdio `docs/gui-v3/` kao kanonski GUI kandidat (vidi "Sljedeći task" sekciju za detalje i dva otvorena gapa).
+**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Task A3 GOTOV.** A4 (boundary schemas + mappers) kontrakti napisani i OPEN: **ACS-F1-003** (Pi — `brand_fixture.py` + mapper) i **ACS-F1-004** (Crush — preostalih 5 schema fajlova), paralelni, bez zavisnosti između njih, base `main @ 0edae77`. GUI mockup rekonsolidacija riješena (`docs/gui-v3/` kanonski, vidi "Sljedeći task"). pywebview sigurnosna politika dodana (`docs/PYWEBVIEW_SECURITY.md`). **OTVORENO PITANJE za MiniMax GUI-BASE task**: G9 UI Framework Gate (plan sekcija 3) traži uporedni pywebview vs PySide6 spike prije nego što se pywebview zaključa kao production izbor; AR5 eksplicitno zabranjuje production `presentation_webview/` prije G9. SPIKE-001 je testirao samo pywebview. Čeka Human Owner odluku (formalno zatvoriti G9 sada bez PySide6 poređenja, ili tražiti brzi PySide6 spike prvo) prije nego se piše formalni MiniMax kontrakt za production wiring.
 
 ---
 
