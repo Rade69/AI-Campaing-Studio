@@ -3,7 +3,17 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **ACS-F1-007, ACS-F1-008, ACS-GUI-002 sva tri merged u main** (paralelni round, svi Claude-only MEDIUM review PASS, svi commit-ovani/push-ovani odmah po §29, bez posebnog Human Owner odobrenja per-task). Redoslijed merge-a: F1-007 → F1-008 → GUI-002, svi čisti merge-evi bez konflikta (disjoint `allowed_paths`). Nakon sva tri: **425 testova, ruff/mypy čisti, `python scripts/generate_phase0_gate_report.py` → `status: PASS`, svih 17 checkova true**. Detalji po tasku u tabeli ispod. Sve tri worktree uklonjene (clean, bez force-a); task branch-evi ostavljeni lokalno (isti pattern kao P0/F1-001..006).
+**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Novi task napisan: ACS-F1-009** (A9 —
+`CreateCampaign` + `GenerateCampaignPlan` use-caseovi, spaja ACS-F1-007 + ACS-F1-008 u prvi pravi
+generation pipeline). A8 (pravi live provider adapter) EKSPLICITNO odgođen po Human Owner odluci —
+ACS-F1-009 zavisi samo od `TextGenerationPort` Protocol-a, ne od konkretnog adaptera. Kontrakt
+uključuje jednu usko-skopiranu aditivnu izmjenu na `CampaignRepositoryPort` (`get_brief` — zatvara
+persistence read-path rupu, GitNexus upstream impact = LOW). Worktree kreiran:
+`../ai-campaign-studio-worktrees/ACS-F1-009-campaign-brief-plan-generation`, branch
+`task/ACS-F1-009-campaign-brief-plan-generation` @ `main 23b08ca`. Implementer još nije dodijeljen
+(TBD — Human Owner bira). Detalji: `agent_reports/ACS-F1-009-task-contract.md`.
+
+Prethodni entry (2026-09-02): **ACS-F1-007, ACS-F1-008, ACS-GUI-002 sva tri merged u main** (paralelni round, svi Claude-only MEDIUM review PASS, svi commit-ovani/push-ovani odmah po §29, bez posebnog Human Owner odobrenja per-task). Redoslijed merge-a: F1-007 → F1-008 → GUI-002, svi čisti merge-evi bez konflikta (disjoint `allowed_paths`). Nakon sva tri: **425 testova, ruff/mypy čisti, `python scripts/generate_phase0_gate_report.py` → `status: PASS`, svih 17 checkova true**. Detalji po tasku u tabeli ispod. Sve tri worktree uklonjene (clean, bez force-a); task branch-evi ostavljeni lokalno (isti pattern kao P0/F1-001..006).
 
 Prethodni entry (2026-09-02): **POST-MERGE BAG NAĐEN I POPRAVLJEN (`d71d84d`): `write_all_pages()` nikad nije kopirao `static/app.css`/`app.js` u runtime temp direktorijum**, pa je Human Owner uživo vidio goli, nestilizovan HTML (svaka generisana stranica linkuje `../static/app.css` relativno, ali taj fajl nikad nije postojao u temp dir-u — 404). Promakao kroz OBA ACS-GUI-001 review round-a jer su svi postojeći testovi provjeravali samo STRING sadržaj href/src u HTML-u, nikad da referencirani fajl stvarno postoji na disku; round-2 live-launch test je provjerio samo da se `Chrome_WidgetWin` proces inicijalizuje (edgechromium, ne mshtml), ne da je stranica stvarno renderovana stilizovano. **Lekcija za buduće review-e GUI/file-generation koda: kad test tvrdi da fajl "postoji" ili je "linkovan", provjeriti stvaran filesystem side-effect, ne samo string u generisanom sadržaju.**
 
