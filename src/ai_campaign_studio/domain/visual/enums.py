@@ -104,3 +104,26 @@ class CtaStyle(StrEnum):
     SOLID = "SOLID"
     OUTLINE = "OUTLINE"
     TEXT = "TEXT"
+
+
+class ImageTreatment(StrEnum):
+    """Visual treatment applied to the image."""
+
+    NONE = "NONE"
+    BORDER = "BORDER"
+    SHADOW = "SHADOW"
+    ROUNDED = "ROUNDED"
+
+
+class LogoRule(StrEnum):
+    """Whether the logo is shown."""
+
+    SHOW = "SHOW"
+    HIDE = "HIDE"
+
+
+class CtaRule(StrEnum):
+    """Whether the CTA element is shown."""
+
+    SHOW = "SHOW"
+    HIDE = "HIDE"
