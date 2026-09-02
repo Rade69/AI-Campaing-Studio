@@ -3,7 +3,7 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **P0-GATE = PASS.** ACS-P0-008 merged u main (`aef1b0d`), svih 8 P0 taskova gotovo. `artifacts/phase0_foundation_gate.json` na main-u: `status: PASS`, svih 17 checkova `true`. Faza 1 više NIJE blokirana. SPIKE-001 (pywebview) paralelno u toku — MiniMax radi GUI prema mokapu.
+**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **P0-GATE = PASS**, i CI stvarno zeleno na GitHub-u (`95a799f`, potvrđeno uživo preko `gh run watch`). ACS-P0-008 merged u main (`aef1b0d`), svih 8 P0 taskova gotovo. Usput otkriven i popravljen CI bug (heredoc u ci.yml je tiho lomio workflow parsing od trenutka kad je ACS-P0-008 proširio ci.yml — vidi sekciju "Poznati blokatori"). Faza 1 više NIJE blokirana. SPIKE-001 (pywebview) paralelno u toku — MiniMax radi GUI prema mokapu.
 
 ---
 
@@ -180,6 +180,30 @@ ACS-P0-007 je sada jedini kandidat — nema drugog unblocked P0 taska za paralel
 
 ## Poznati blokatori
 
+- **PROCES-GREŠKA (koordinator, 2026-09-02): CI status na task branch push-ovima
+  nije bio redovno provjeravan tokom review ciklusa, pa je slomljen `ci.yml` prošao
+  nezapaženo kroz cijeli ACS-P0-008 review (Claude, Codex x3 runde) i merge.**
+  Uzrok: ACS-P0-008 je proširio `ci.yml` health-check korakom koji je koristio bash
+  heredoc (`python - <<'PY' ... PY`) UNUTAR uvučenog YAML block scalar-a
+  (`run: |`). Heredoc terminator linija je naslijedila YAML uvlačenje, pa nikad nije
+  tačno odgovarala bash-ovom zahtjevu da `<<'PY'` terminator bude na početku linije
+  bez uvlačenja — GitHub Actions je odbijao da parsira CIJELI workflow fajl (0 job-ova,
+  "likely failed because of a workflow file issue") na SVAKOM push-u od trenutka kad
+  je ta izmjena landovala (task branch, ACS-HOTFIX-001 merge, ACS-P0-008 merge — svi
+  crveni, svi neprimijećeni). Otkriveno tek nakon P0-008 merge-a kad je koordinator
+  eksplicitno provjerio `gh run list` post-merge. Popravljeno (`95a799f`): uklonjena
+  fragilna heredoc/env-var mašinerija, zamijenjena postojećim, već testiranim
+  `python -m ai_campaign_studio.main --health-check` entrypoint-om (GitHub Actions
+  runner je svježa, jednokratna VM — default `platformdirs.user_data_dir` je
+  bezbjedan za pisanje, temp-dir override nikad nije bio stvarno potreban u CI-ju).
+  Dodan `.gitattributes` (`text eol=lf` za `.github/workflows/*.yml` i `*.sh`) kao
+  dodatna zaštita, iako CRLF nije bio stvaran uzrok ovog konkretnog problema (commit-ovan
+  blob je već bio LF — autocrlf je uticao samo na lokalno radno stablo).
+  **Lekcija za ubuduće**: nakon SVAKOG push-a na task branch ili main, provjeriti
+  `gh run list --branch <branch> --limit 1` kao dio standardne verifikacije — ne
+  samo na "značajnim" merge-ovima. Heredoc unutar YAML `run: |` bloka je generalno
+  fragilan obrazac — izbjegavati ga, koristiti zaseban script fajl ili `python -c`
+  jednolinijski poziv umjesto toga.
 - **GitHub push protection hvata secret-shaped demo vrijednosti u evidence reportima.**
   Kad `agent_reports/*.md` dokumentuje "before" reprodukciju secret-scanner nalaza
   (npr. `check_no_secrets.py` fix-round evidence), literal poput
