@@ -3,7 +3,7 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Task A3 "Common + Domain enums/entities" POTPUNO GOTOV** — i ACS-F1-001 i ACS-F1-002 merged u main (`b30166b`), 263 testa, CI zeleno. Sljedeći Faza 1 task: A4 (boundary schemas + mappers). Usput: neočekivan `GUI-architecture/` direktorijum (untracked) primijećen u main checkout-u — vidi napomenu u "Poznati blokatori", čeka Human Owner odluku šta s njim.
+**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Task A3 "Common + Domain enums/entities" POTPUNO GOTOV** — i ACS-F1-001 i ACS-F1-002 merged u main (`b30166b`), 263 testa, CI zeleno. Sljedeći Faza 1 task: A4 (boundary schemas + mappers). GUI mockup rekonsolidacija riješena: Human Owner potvrdio `docs/gui-v3/` kao kanonski GUI kandidat (vidi "Sljedeći task" sekciju za detalje i dva otvorena gapa).
 
 ---
 
@@ -183,16 +183,6 @@ ACS-P0-007 je sada jedini kandidat — nema drugog unblocked P0 taska za paralel
 
 ## Poznati blokatori
 
-- **`GUI-architecture/` direktorijum u main checkout-u (untracked, primijećeno 2026-09-02).**
-  Sadrži `AI_Campaign_Studio_GUI_V3/` (9 HTML ekrana, README, V3_PLAN.md,
-  INTEGRATION.md, .zip arhiva) — treća, odvojena GUI mockup iteracija, van
-  SPIKE-001 worktree-a i van bilo kog task sistema. Neko (Human Owner ili
-  eksterni alat) ga je stavio direktno u main working tree, nije committed.
-  Koordinator ga NIJE dirao (nepoznata namjera/status). Treba odluku: da li
-  se ovo briše, premješta u SPIKE-001 worktree, ili tretira kao novi
-  kanonski GUI izvor (u kom slučaju treba pomiriti sa mockup_proposal_v2/
-  i originalnim ChatGPT mokapom — tri različite GUI iteracije trenutno
-  postoje paralelno).
 - **PROCES-GREŠKA (koordinator, 2026-09-02): CI status na task branch push-ovima
   nije bio redovno provjeravan tokom review ciklusa, pa je slomljen `ci.yml` prošao
   nezapaženo kroz cijeli ACS-P0-008 review (Claude, Codex x3 runde) i merge.**
@@ -314,8 +304,32 @@ foundationom), A6 (fixture loading — Brand Fixture, prvi stvaran podatak), A7+
 application pipeline).
 
 Paralelno već u toku, van formalnog Faza 1 Task Contract sistema: **SPIKE-001** (pywebview UI,
-`spike/pywebview-content-studio` grana) — MiniMax radi GUI prema mokapu. **Tri odvojene GUI
-mockup iteracije trenutno postoje** (originalni ChatGPT mokap, `mockup_proposal_v2/` u
-SPIKE-001 grani, i neočekivan `GUI-architecture/AI_Campaign_Studio_GUI_V3/` u main checkout-u,
-untracked — vidi "Poznati blokatori") — treba ih pomiriti u jedan kanonski izvor prije nego se
-GUI implementacija smatra finalnom.
+`spike/pywebview-content-studio` grana) — MiniMax radi GUI prema mokapu.
+
+**GUI mockup rekonsolidacija RIJEŠENA (2026-09-02).** `GUI-architecture/` direktorijum
+(untracked, nepoznatog porijekla) je pročitan u cjelosti, sadržaj procijenjen kao kvalitetan
+i usklađen sa zaključanim arhitektonskim odlukama (minimalan sidebar scope, Analytics guard
+prisutan dva puta, Quick Actions + facts + compliance u Studiju, ispravna razlika između
+postojećih `PresentationFacade` metoda i onoga što tek treba F1 contracte). **Human Owner je
+eksplicitno potvrdio V3 kao kanonski GUI kandidat** — `mockup_proposal`/`mockup_proposal_v2`
+iz SPIKE-001 grane ostaju samo referenca/exploration, nisu više kandidat za production wiring.
+Paket je premješten iz untracked `GUI-architecture/` u trackovan **`docs/gui-v3/`**
+(`README.md`, `V3_PLAN.md`, `INTEGRATION.md`, `screens/01_pocetna` … `09_podesavanja`,
+`shared/app.css`, `shared/app.js`; redundantne root-nivo duplikate, `.zip` i
+`phase0_foundation_gate.json` kopiju sam izbacio pri premještanju — originalni
+`GUI-architecture/` direktorijum obrisan).
+
+Dva gapa nađena nezavisnom provjerom HTML-a (nisu bila u README-u), treba popraviti prilikom
+wiring-a u `presentation_webview/`, ne prije:
+1. Stepper elementi (`.step` divovi u ekranima 04–08) nemaju `href` — nisu klikabilni unazad,
+   iako `V3_PLAN.md` tvrdi da stepper omogućava povratak. Trenutno povratak radi samo kroz
+   eksplicitno `←` dugme.
+2. `screens/06_kalendar/index.html` služi dvostruko (globalni Kalendar iz sidebar-a I korak 3
+   campaign workflow-a — link iz `05_plan_kampanje` vodi baš tu), ali nema breadcrumb konteksta
+   kampanje, stepper, niti dugme "Nastavi →" ka Studiju sadržaja. Klik-kroz demo se tu prekida;
+   treba dodati campaign-context varijantu (banner + continue dugme) pri wiring-u.
+
+Sljedeći koraci za GUI: kad se A4+ application/use-case slojevi za Brand/Campaign pojave, otvoriti
+formalni lightweight task (van Task Contract sistema, po uzoru na SPIKE-001, ili kao pravi F1
+contract — odlučiti tada) za wiring `docs/gui-v3/` u `presentation_webview/` po strukturi iz
+`INTEGRATION.md`.
