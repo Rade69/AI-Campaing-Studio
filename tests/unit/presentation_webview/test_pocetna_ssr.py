@@ -112,11 +112,11 @@ def test_render_shell_includes_all_5_sidebar_destinations() -> None:
     keys = {key for key, _, _, _ in SIDEBAR_ITEMS}
     assert keys == {"pocetna", "brend", "kampanje", "kalendar", "podesavanja"}
     for href_marker in (
-        "../screens/pocetna/index.html",
-        "../screens/brend/index.html",
-        "../screens/kampanje/index.html",
-        "../screens/kalendar/index.html",
-        "../screens/podesavanja/index.html",
+        "../pocetna/index.html",
+        "../brend/index.html",
+        "../kampanje/index.html",
+        "../kalendar/index.html",
+        "../podesavanja/index.html",
     ):
         assert href_marker in page, f"missing sidebar href to {href_marker!r}"
 
@@ -142,7 +142,7 @@ def test_render_shell_marks_correct_nav_as_active(
     )
     # The active <a> has class "active" and contains the label span.
     # We assert the structure contains the right adjacent token.
-    assert f'class="active" href="../screens/{active_key}/index.html"' in page
+    assert f'class="active" href="../{active_key}/index.html"' in page
     assert f"<b>{expected_label}</b>" in page
 
 
@@ -171,8 +171,8 @@ def test_render_shell_uses_local_static_assets() -> None:
     assert "fonts.googleapis.com" not in page
     assert "cdn.tailwindcss.com" not in page
     # The static asset links are local.
-    assert 'href="../static/app.css"' in page
-    assert 'src="../static/app.js"' in page
+    assert 'href="../../static/app.css"' in page
+    assert 'src="../../static/app.js"' in page
 
 
 def test_render_shell_has_no_lang_toggle() -> None:

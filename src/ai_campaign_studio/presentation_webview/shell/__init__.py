@@ -37,31 +37,31 @@ SIDEBAR_ITEMS: tuple[tuple[str, str, str, str], ...] = (
         "pocetna",
         "Početna",
         _ICON_POCETNA,
-        "../screens/pocetna/index.html",
+        "../pocetna/index.html",
     ),
     (
         "brend",
         "Brend",
         _ICON_BREND,
-        "../screens/brend/index.html",
+        "../brend/index.html",
     ),
     (
         "kampanje",
         "Kampanje",
         _ICON_KAMPANJE,
-        "../screens/kampanje/index.html",
+        "../kampanje/index.html",
     ),
     (
         "kalendar",
         "Kalendar",
         _ICON_KALENDAR,
-        "../screens/kalendar/index.html",
+        "../kalendar/index.html",
     ),
     (
         "podesavanja",
         "Podešavanja",
         _ICON_PODESAVANJA,
-        "../screens/podesavanja/index.html",
+        "../podesavanja/index.html",
     ),
 )
 
@@ -127,7 +127,7 @@ def render_shell(
         "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'; "
         "script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
         "connect-src 'self'; font-src 'self'\">"
-        "<link rel=\"stylesheet\" href=\"../static/app.css\">"
+        "<link rel=\"stylesheet\" href=\"../../static/app.css\">"
         "</head><body><div class=\"app\">"
         f"<aside class=\"sidebar\"><div class=\"brand\"><h1>AI Campaign Studio</h1>"
         "<small>v1.0</small></div>"
@@ -141,6 +141,6 @@ def render_shell(
         f'<div class="content">{body_html}</div>'
         "</div>"
         "</div>"
-        '<script src="../static/app.js"></script>'
+        '<script src="../../static/app.js"></script>'
         "</body></html>"
     )

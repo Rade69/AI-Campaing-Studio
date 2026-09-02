@@ -11,9 +11,50 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from urllib.parse import urljoin
+from urllib.request import url2pathname
 
 from ai_campaign_studio.presentation_webview.screens import write_all_pages
 from ai_campaign_studio.presentation_webview.shell import SIDEBAR_ITEMS
+
+
+def _hrefs_and_srcs(html: str) -> list[str]:
+    return re.findall(r'(?:href|src)="([^"]+)"', html)
+
+
+def test_write_all_pages_relative_links_resolve_to_real_files(
+    tmp_path: Path,
+) -> None:
+    """Every relative href/src in every generated page must resolve to a
+    file that actually exists on disk, from the page's own location --
+    not just be a plausible-looking string.
+
+    This is the exact class of bug that slipped through round 1 and round
+    2 review: render_shell()'s CSS/JS links and SIDEBAR_ITEMS' nav links
+    were both written assuming pages live one directory level shallower
+    than write_all_pages() actually places them
+    (target_dir/screens/{key}/index.html), so every relative link was off
+    by one ".." segment. String-only assertions like
+    'href="../static/app.css" in page' passed even though the browser
+    could never find the file. Resolving against the real filesystem, as
+    this test does, is the only way to catch that class of bug.
+    """
+    pages = write_all_pages(tmp_path)
+    checked = 0
+    for key, page_path in pages.items():
+        html = page_path.read_text(encoding="utf-8")
+        base_uri = page_path.resolve().as_uri()
+        for link in _hrefs_and_srcs(html):
+            if link.startswith("#") or "://" in link:
+                continue  # in-page anchors / any future absolute URL
+            resolved_uri = urljoin(base_uri, link)
+            resolved_path = Path(url2pathname(resolved_uri[len("file://") :]))
+            assert resolved_path.is_file(), (
+                f"{key} page ({page_path}) links {link!r}, which resolves "
+                f"to {resolved_path}, but that file does not exist"
+            )
+            checked += 1
+    assert checked >= len(pages) * 2, "expected at least CSS+JS link per page"
 
 
 def test_write_all_pages_materialises_static_assets_on_disk(tmp_path: Path) -> None:
@@ -34,7 +75,7 @@ def test_write_all_pages_materialises_static_assets_on_disk(tmp_path: Path) -> N
 
 def _active_a(html: str) -> str:
     """Return the screen key of the active <a class="active"> in the sidebar."""
-    m = re.search(r'class="active" href="\.\./screens/(\w+)/index\.html"', html)
+    m = re.search(r'class="active" href="\.\./(\w+)/index\.html"', html)
     assert m is not None, "no active sidebar link found in page"
     return m.group(1)
 
@@ -71,8 +112,8 @@ def test_write_all_pages_share_one_csp_and_one_static_link(tmp_path: Path) -> No
     for path in pages.values():
         html = path.read_text(encoding="utf-8")
         csp_m = re.search(r'Content-Security-Policy" content="([^"]+)"', html)
-        css_m = re.search(r'href="(\.\./static/app\.css)"', html)
-        js_m = re.search(r'src="(\.\./static/app\.js)"', html)
+        css_m = re.search(r'href="(\.\./\.\./static/app\.css)"', html)
+        js_m = re.search(r'src="(\.\./\.\./static/app\.js)"', html)
         csps.add(csp_m.group(1))
         css_links.add(css_m.group(1))
         js_links.add(js_m.group(1))
