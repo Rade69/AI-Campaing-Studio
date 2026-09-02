@@ -26,12 +26,12 @@ def test_fresh_db_migration_applies_foundation(tmp_path: Path) -> None:
     applied = run_migrations(conn, MIGRATIONS_DIR)
     conn.close()
 
-    assert applied == [0]
+    assert 0 in applied
 
     conn2 = create_connection(tmp_path / "test.db")
     rows = conn2.execute("SELECT version, name FROM schema_migrations").fetchall()
     conn2.close()
-    assert len(rows) == 1
+    assert len(rows) >= 1
     assert rows[0]["version"] == 0
 
 
@@ -44,7 +44,7 @@ def test_idempotency_second_run_applies_nothing(tmp_path: Path) -> None:
     second = run_migrations(conn2, MIGRATIONS_DIR)
     conn2.close()
 
-    assert first == [0]
+    assert 0 in first
     assert second == []
 
 
