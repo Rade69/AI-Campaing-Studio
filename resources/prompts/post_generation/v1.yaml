@@ -1,0 +1,31 @@
+name: post_generation
+version: "1"
+purpose: Generate a social post payload for one campaign item.
+input_contract: |
+  CampaignItem, BrandSnapshot, AllowedFacts, language context,
+  ContentSlotContract, platform, role rules.
+output_contract: |
+  SocialPostGenerationOutputSchema
+  (application/schemas/social_post_generation_output.py)
+language_support: EN or BHS_LATIN (NEUTRAL/BS/SR/HR) via ContentLanguageContext
+instructions: |
+  Generate a single social post for the given campaign item and platform.
+  Produce headline, caption, hook, body, cta and hashtags.
+
+  Every factual claim must reference an approved fact from AllowedFacts. Do
+  not invent numbers, guarantees or service claims that are not backed by an
+  approved fact. Respect the provided ContentSlotContract constraints and the
+  role rules for this item.
+
+  Honor the language context: language_family, regional_variant, locale,
+  script, preferred_terms, forbidden_terms, regional_vocabulary and
+  tone_examples. Never use a forbidden term.
+examples:
+  - |
+    headline: "Implantati bez skrivenih troškova"
+    caption: "Transparentna cijena i stručna njega."
+    cta: "Zakažite konsultaciju"
+  - |
+    headline: "Your smile, planned clearly"
+    caption: "Clear pricing, clear care."
+    cta: "Book a consultation"

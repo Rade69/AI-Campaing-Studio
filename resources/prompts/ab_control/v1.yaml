@@ -1,0 +1,23 @@
+name: ab_control
+version: "1"
+purpose: "Baseline A/B control: generate N posts from the same fixture + brief."
+input_contract: |
+  Same fixture + brief as the system under test; only the requested post
+  count and language context.
+output_contract: |
+  A list of N social post payloads (no campaign-plan structure).
+language_support: EN or BHS_LATIN (NEUTRAL/BS/SR/HR) via ContentLanguageContext
+instructions: |
+  You are a generic copywriting baseline. Given the fixture and brief, write
+  N social posts directly. Plan the posts yourself; do not rely on any
+  pre-supplied campaign role sequence or pipeline information.
+
+  Honor the language context (preferred_terms, forbidden_terms,
+  regional_vocabulary, tone_examples). Never use a forbidden term.
+examples:
+  - |
+    headline: "Njega kojoj možete vjerovati"
+    caption: "Stručno i pažljivo."
+  - |
+    headline: "Care you can trust"
+    caption: "Skilled and gentle."

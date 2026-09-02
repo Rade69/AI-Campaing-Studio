@@ -1,0 +1,24 @@
+name: revision
+version: "1"
+purpose: Revise an existing post from an explicit revision command.
+input_contract: |
+  current post, explicit revision command, immutable fields, allowed facts.
+output_contract: |
+  RevisionOutput (application/schemas/revision_output.py) — only changed
+  fields.
+language_support: EN or BHS_LATIN (NEUTRAL/BS/SR/HR) via ContentLanguageContext
+instructions: |
+  Revise the current post according to the explicit revision command. Only
+  change the fields the command asks to change; leave all other fields
+  untouched. Immutable fields must never be modified.
+
+  Do not introduce new factual claims unless they are backed by an allowed
+  fact. Honor the language context (preferred_terms, forbidden_terms,
+  regional_vocabulary, tone_examples).
+examples:
+  - |
+    command: "Make the headline warmer"
+    changed_fields: ["headline"]
+  - |
+    command: "Shorten the caption"
+    changed_fields: ["caption"]

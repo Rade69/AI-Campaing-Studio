@@ -1,0 +1,23 @@
+name: visual_direction
+version: "1"
+purpose: Produce a schema-valid visual direction for a campaign.
+input_contract: |
+  Campaign visual identity, layout primitive options, slot contracts.
+output_contract: |
+  VisualDirectionOutput
+  (application/schemas/visual_direction_output.py)
+language_support: EN (enum values are language-independent)
+instructions: |
+  Produce a visual direction: a campaign visual system candidate and a layout
+  spec candidate. Every enum-typed field must use one of the allowed enum
+  values exactly; do not invent layout primitives, scales, alignments,
+  overlays or positions.
+examples:
+  - |
+    primary_layout_family: HERO
+    headline_scale: LARGE
+    alignment: CENTER
+  - |
+    primitive: SPLIT
+    image_position: LEFT
+    cta_style: SOLID
