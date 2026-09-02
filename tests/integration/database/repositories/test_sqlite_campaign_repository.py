@@ -109,6 +109,23 @@ def test_round_trip_campaign_and_plan(tmp_path: Path) -> None:
     connection.close()
 
 
+def test_round_trip_brief(tmp_path: Path) -> None:
+    connection = _setup_db(tmp_path)
+    repo = SqliteCampaignRepository(connection)
+
+    repo.save_brief(_brief())
+
+    assert repo.get_brief("brief-1") == _brief()
+    connection.close()
+
+
+def test_get_unknown_brief_returns_none(tmp_path: Path) -> None:
+    connection = _setup_db(tmp_path)
+    repo = SqliteCampaignRepository(connection)
+    assert repo.get_brief("missing") is None
+    connection.close()
+
+
 def test_save_plan_is_idempotent(tmp_path: Path) -> None:
     connection = _setup_db(tmp_path)
     repo = SqliteCampaignRepository(connection)
