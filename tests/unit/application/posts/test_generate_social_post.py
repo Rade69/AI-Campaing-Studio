@@ -267,11 +267,28 @@ def test_happy_path_generates_and_persists() -> None:
         _target(),
     )
 
-    assert piece.status is ContentStatus.GENERATING
+    assert piece.status is ContentStatus.DRAFT
     assert piece.payload is not None
     assert piece.payload.headline == "H"
     assert len(piece.claims) == 2
     assert content_repo.saved == [piece]
+
+
+def test_prohibited_claim_yields_needs_review() -> None:
+    output = _valid_output()
+    # Fact-backed claim that still contains a prohibited term -> PROHIBITED.
+    output["claims"][0]["text"] = "Mi smo najbolji izbor"
+    output["claims"][0]["fact_ids"] = ["fact-1"]
+    use_case = _make_use_case(output)
+
+    piece = use_case.execute(
+        CampaignId("campaign-1"),
+        CampaignPlanId("plan-1"),
+        CampaignItemId("item-1"),
+        _target(),
+    )
+
+    assert piece.status is ContentStatus.NEEDS_REVIEW
 
 
 def test_unsupported_claim_yields_needs_review() -> None:

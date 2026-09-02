@@ -8,9 +8,17 @@ only on ports — no channels/ai_registry/provider imports.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Protocol
 
+from ai_campaign_studio.application.posts.claim_linter import (
+    lint_claim,
+    load_claim_rules,
+)
 from ai_campaign_studio.application.posts.claim_validator import validate_claim
+from ai_campaign_studio.application.posts.derive_content_status import (
+    derive_content_status,
+)
 from ai_campaign_studio.application.posts.select_allowed_facts import (
     AllowedFactSet,
     select_allowed_facts,
@@ -34,11 +42,7 @@ from ai_campaign_studio.domain.content.entities import (
     ContentPiece,
     SocialPostPayload,
 )
-from ai_campaign_studio.domain.content.enums import (
-    ClaimStatus,
-    ContentPayloadType,
-    ContentStatus,
-)
+from ai_campaign_studio.domain.content.enums import ContentPayloadType
 from ai_campaign_studio.domain.facts.entities import ApprovedFact
 from ai_campaign_studio.ports.ai import AIRequest, TextGenerationPort
 from ai_campaign_studio.ports.prompts import PromptRepositoryPort
@@ -51,6 +55,12 @@ from ai_campaign_studio.ports.repositories import (
 
 _PROMPT_NAME = "post_generation"
 _PROMPT_VERSION = "1"
+_CLAIM_RULES_PATH = (
+    Path(__file__).resolve().parents[4]
+    / "resources"
+    / "claim_rules"
+    / "default_v1.yaml"
+)
 
 
 class _UnitOfWork(Protocol):
@@ -138,17 +148,12 @@ class GenerateSocialPost:
             response.structured_payload
         )
 
-        claims = tuple(
+        validated = (
             validate_claim(claim, allowed, self._fact_repo) for claim in output.claims
         )
-
-        # Interim status: any unsupported claim -> review; otherwise still
-        # GENERATING (DRAFT is reserved for A12's "no warnings" outcome).
-        status = (
-            ContentStatus.NEEDS_REVIEW
-            if any(claim.status is ClaimStatus.UNSUPPORTED for claim in claims)
-            else ContentStatus.GENERATING
-        )
+        rules = load_claim_rules(_CLAIM_RULES_PATH)
+        claims = tuple(lint_claim(claim, rules) for claim in validated)
+        status = derive_content_status(claims)
 
         payload = SocialPostPayload(
             headline=output.headline,
