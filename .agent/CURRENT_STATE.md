@@ -3,7 +3,7 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Task A4 (boundary schemas) GOTOV** — ACS-F1-003 (Pi) i ACS-F1-004 (Crush) oba merged u main (`b3369f1`, `894c457`→`380a279`), 290 testova, ruff/mypy/import-boundaries čisti, nezavisno reverifikovano. `docs/gui-v3/` kanonski GUI izvor. `docs/PYWEBVIEW_SECURITY.md` hardening politika dodana. **G9 UI Framework Gate ZATVOREN** (pywebview zaključan). **ACS-GUI-001** (MiniMax, GUI-BASE) OPEN, u toku — vidi "Poznati blokatori" za jedan nalaz iz tog rada koji treba MiniMax-ova pažnja. Sljedeći Faza 1 task: A5 (business persistence).
+**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Task A4 GOTOV.** A5 (business persistence) kontrakti napisani i OPEN: **ACS-F1-005** (Pi — `ports/repositories.py` svih 7 protokola + Brand/Facts SQLite persistence) i **ACS-F1-006** (Crush — Campaign/Content/Visual/Revision SQLite persistence, sekvenciran na ACS-F1-005 za Protocol definicije). Oba MEDIUM risk (repository adapter je eksplicitan MEDIUM primjer u workflow §3; §4-ov pojačan SQLite standard važi samo za P0, ne Faza 1; migracije su čisto additivne, nema postojećih poslovnih podataka). Base `main @ 940d963`. `docs/gui-v3/` kanonski GUI izvor, `docs/PYWEBVIEW_SECURITY.md` hardening politika, G9 gate zatvoren (pywebview zaključan). **ACS-GUI-001** (MiniMax, GUI-BASE) OPEN, u toku — vidi "Poznati blokatori" za nalaz koji treba MiniMax-ova pažnja.
 
 ---
 
