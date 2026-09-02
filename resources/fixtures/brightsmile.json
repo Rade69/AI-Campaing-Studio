@@ -1,0 +1,90 @@
+{
+  "brand": {
+    "name": "BrightSmile Dental"
+  },
+  "default_content_language_context": {
+    "language_family": "BHS",
+    "regional_variant": "NEUTRAL",
+    "script": "LATIN",
+    "locale": "BHS_LATIN",
+    "preferred_terms": ["stomatolog", "tretman"],
+    "forbidden_terms": ["jeftino"],
+    "regional_vocabulary": ["zubar", "zubni implantat"],
+    "tone_examples": ["Vaš osmeh je naš prioritet."]
+  },
+  "voice": {
+    "formality": "friendly-professional",
+    "tone": ["warm", "clear", "reassuring"],
+    "preferred_terms": ["implant", "tretman", "osmeh"],
+    "forbidden_terms": ["garantovano", "najjeftiniji", "bezbolno"],
+    "regional_vocabulary": ["stomatolog", "zubni implantat", "protetika"],
+    "tone_examples": [
+      "Slušamo vas prvo.",
+      "Vaša udobnost nam je važna."
+    ]
+  },
+  "audiences": [
+    {
+      "id": "aud-adults",
+      "name": "Zaposleni odrasli",
+      "description": "25–55 godina, brinu o estetici i funkciji zuba.",
+      "needs": ["trajno rešenje", "pristupačne rate", "minimalan bol"],
+      "objections": [
+        "strah od boli",
+        "cijena implantata",
+        "dugo trajanje tretmana"
+      ]
+    }
+  ],
+  "services": [
+    {
+      "id": "svc-implants",
+      "name": "Zubni implantati",
+      "description": "Titanijumski implantati sa krunicama, od konsultacije do oporavka."
+    }
+  ],
+  "facts": [
+    {
+      "logical_fact_id": "fact-location",
+      "version": 1,
+      "content": "BrightSmile Dental se nalazi u centru grada, na adresi Ulica Primjera 12.",
+      "source_ref": {
+        "source_type": "fixture",
+        "uri": "fixture://brightsmile_v1"
+      }
+    },
+    {
+      "logical_fact_id": "fact-implants",
+      "version": 1,
+      "content": "Klinika nudi titanijumske zubne implantate sa keramičkim krunicama.",
+      "source_ref": {
+        "source_type": "fixture",
+        "uri": "fixture://brightsmile_v1"
+      }
+    },
+    {
+      "logical_fact_id": "fact-team",
+      "version": 1,
+      "content": "Tim čine specijalisti oralne hirurgije i protetike sa preko 10 godina iskustva.",
+      "source_ref": {
+        "source_type": "fixture",
+        "uri": "fixture://brightsmile_v1"
+      }
+    }
+  ],
+  "restrictions": [
+    {
+      "description": "Ne garantovati medicinske ishode niti obećavati potpuno bezbolan tretman."
+    },
+    {
+      "description": "Ne navoditi tačne cijene bez prethodne potvrde klinike."
+    }
+  ],
+  "visual_identity": {
+    "logo_path": "fixtures/brightsmile_logo.png",
+    "primary_colors": ["#0A6EBD", "#FFFFFF"],
+    "secondary_colors": ["#BDE0FE", "#E0F2FE"],
+    "font_families": ["Inter", "Roboto"],
+    "image_style_notes": ["Svijetlo, čisto, klinički", "Prirodno svjetlo"]
+  }
+}
