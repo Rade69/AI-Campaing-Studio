@@ -3,7 +3,7 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **P0-GATE = PASS**, i CI stvarno zeleno na GitHub-u (`95a799f`, potvrđeno uživo preko `gh run watch`). ACS-P0-008 merged u main (`aef1b0d`), svih 8 P0 taskova gotovo. Usput otkriven i popravljen CI bug (heredoc u ci.yml je tiho lomio workflow parsing od trenutka kad je ACS-P0-008 proširio ci.yml — vidi sekciju "Poznati blokatori"). Faza 1 više NIJE blokirana. SPIKE-001 (pywebview) paralelno u toku — MiniMax radi GUI prema mokapu.
+**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Faza 1 zvanično počela.** Prva dva Faza 1 taska otvorena i paralelizovana: ACS-F1-001 (Pi, domain/common+brand+facts) i ACS-F1-002 (Crush, domain/campaign+content+visual) — oba A3 "Common + Domain enums/entities", MEDIUM risk. SPIKE-001 (pywebview GUI) i dalje paralelno u toku, mokap se ponovo doteruje.
 
 ---
 
@@ -36,8 +36,9 @@ puni ciklus, ne nastaviti olakšanim putem tiho.
 
 ## Aktivna faza
 
-Implementation Phase 0 — Foundation. Faza 1 je blokirana dok `artifacts/phase0_foundation_gate.json`
-ne kaže `{"status": "PASS"}`.
+**Faza 1 — Vertical Slice 1.** P0 Foundation je DONE (`P0-GATE = PASS`, 2026-09-02).
+Aktivni plan: `AI_Campaign_Studio_Faza_1_v1_4_Agent_Workflow_Integrated.md`, task A3
+("Common + Domain enums/entities") u toku, paralelizovan kao ACS-F1-001/002.
 
 ## Aktivni dokumenti
 
@@ -159,6 +160,8 @@ protiv pogrešnog koda. Za verifikaciju u worktree-u, eksplicitan
 
 | Task | Status | Implementer | Reviewers | Napomena |
 |---|---|---|---|---|
+| ACS-F1-001 | **OPEN — contract + worktree spremni** | Pi | Claude (MEDIUM) | Scope: A3 dio 1 — `domain/common` extension (typed ID aliasi, nove `DomainError` podklase) + `domain/brand/` + `domain/facts/`. Contract: `agent_reports/ACS-F1-001-task-contract.md`. Worktree: `../ai-campaign-studio-worktrees/ACS-F1-001-domain-common-brand-facts`, branch `task/ACS-F1-001-domain-common-brand-facts`, base `main@a451538`. Prvi Faza 1 task. `domain/common/{ids,errors,timestamps}.py` VEĆ POSTOJE iz P0 — ovaj task PROŠIRUJE, ne duplira (rule 0A.5). ACS-F1-002 zavisi od ovog taska za typed ID aliase. |
+| ACS-F1-002 | **OPEN — contract + worktree spremni** | Crush | Claude (MEDIUM) | Scope: A3 dio 2 — `domain/campaign/` + `domain/content/` + `domain/visual/`. Contract: `agent_reports/ACS-F1-002-task-contract.md`. Worktree: `../ai-campaign-studio-worktrees/ACS-F1-002-domain-campaign-content-visual`, branch `task/ACS-F1-002-domain-campaign-content-visual`, base `main@a451538`. Paralelno sa ACS-F1-001. Zavisnost: `entities.py` fajlovi čekaju ACS-F1-001-ove typed ID aliase; `enums.py`/`roles.py`/`templates.py`/`slots.py` mogu odmah. |
 | ACS-HOTFIX-001 | **DONE — merged u main** | MiniMax | Codex, Claude (HIGH) | Merge commit `bcec979` (`--no-ff`, branch `hotfix/ACS-HOTFIX-001-job-event-ordering` @ `56a67d2`). Fix: `threading.Lock()` → `RLock()`, `CREATED` emit pomjeren unutar `submit()`-ovog lock bloka, `_emit()` sad drži lock kroz cio callback dispatch. Novi deterministički test (slow-callback adversarial probe) — dokazano da je probabilistički pristup propustio bug tri runde zaredom. Koordinator i Codex NEZAVISNO otkrili isti nalaz: fix ima redundantnu zaštitu (bilo koja dva od tri elementa su samostalno dovoljna) — ne defekt. Codex `PASS_WITH_NOTES`, bez blocking findings. Finalni decision packet: `agent_reports/2026-09-01-ACS-HOTFIX-001-final-decision-packet.md`. Human Owner approval: "Odobravam". Post-merge gate PASS na `main` (171 testova, ruff, mypy, health-check, 20x targeted loop čist) — **nakon ručnog ispravljanja `.pth`-a** koji je prvo pokazivao na uklonjeni worktree (vidi napomenu iznad). Worktree uklonjen (clean, bez force-a). |
 | ACS-P0-001 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `def4ea1` (`--no-ff`, task branch `task/ACS-P0-001-repo-foundation` @ `949d18c`). Reviews: Claude PASS, Codex PASS_WITH_NOTES (no blocking findings). Human Owner approval: "Odobravam". Post-merge gate PASS. Worktree uklonjen. |
 | ACS-P0-002 | **DONE — merged u main** | Pi | Codex, Claude | Merge commit `e187a56` (`--no-ff`, task branch `task/ACS-P0-002-config-boundaries` @ `d6dc783`). 5 review rundi: Codex REJECT×4 (BF-1: boundary-checker bypassi pa lexical/class-scope resolution bugovi), svaki fix nezavisno re-verifikovan od koordinatora (kombinovana adversarial reprodukcija do 11 bypass/scope oblika u finalnoj rundi), round 5 `PASS_WITH_NOTES` bez blocking findings. Finalni decision packet: `agent_reports/2026-08-31-ACS-P0-002-final-decision-packet.md` (READY FOR HUMAN APPROVAL, R1–R6 reziduelni rizici). Human Owner approval: "Slažem se". Post-merge gate PASS na `main` (43 testa, ruff, mypy, health-check, Python 3.14.1). Worktree uklonjen (`--force`, samo Pi-jevi već-inkorporirani raw report fajlovi izgubljeni, bez sadržajnog gubitka). |
@@ -292,13 +295,13 @@ ponovo pokrenuti `npx gitnexus analyze --skip-agents-md` pa `npx gitnexus status
 
 ## Sljedeći task
 
-**P0 je gotov — svih 8 taskova (ACS-P0-001–008) su DONE, P0-GATE = PASS.** Faza 1 više nije
-blokirana. Prije formalnog prelaska: pročitati `AI_Campaign_Studio_Faza_1_v1_4_Agent_Workflow_Integrated.md`
-od početka (plan §37/P0.30 STOP kaže da agent ne nastavlja automatski sa Brand/Facts/CampaignPlan/
-ContentPiece/OpenAI generation/GUI/renderer bez eksplicitne Human Owner potvrde prelaska).
+**P0 je gotov.** Faza 1 formalno počela 2026-09-02 — Human Owner eksplicitno potvrdio prelazak
+(plan §37/P0.30 STOP zahtjev ispunjen). Prva dva Faza 1 taska u toku: **ACS-F1-001** (Pi) i
+**ACS-F1-002** (Crush), oba dio A3 "Common + Domain enums/entities", paralelizovana. Poslije A3:
+A4 (boundary schemas + mappers), A5 (business persistence nad postojećim SQLite foundationom),
+A6 (fixture loading — Brand Fixture, prvi stvaran podatak), A7+ (prompts/AI/application pipeline).
 
-Paralelno već u toku, van formalnog P0/Faza 1 task-contract sistema: **SPIKE-001** (pywebview UI
-validacija, `spike/pywebview-content-studio` grana) — MiniMax trenutno proširuje sa jednog
-Content Studio ekrana na punu GUI izradu prema mokapu. Ovo je Human Owner odluka da UI rad počne
-prije formalnog Faza 1 zapisa — pratiti taj rad odvojeno, ne miješati ga sa P0/Faza 1 Task
-Contract disciplinom dok se eksplicitno ne odluči da se uvede u tu disciplinu.
+Paralelno već u toku, van formalnog Faza 1 Task Contract sistema: **SPIKE-001** (pywebview UI
+validacija, `spike/pywebview-content-studio` grana) — MiniMax radi GUI prema mokapu, koji se
+trenutno ponovo doteruje (dva mokap-pokušaja postoje, treba ih pomiriti u jedan kanonski prije
+nego se GUI implementacija smatra finalnom). Pratiti taj rad odvojeno od domain-layer taskova.
