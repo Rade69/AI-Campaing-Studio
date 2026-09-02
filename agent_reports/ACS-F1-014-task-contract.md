@@ -4,7 +4,7 @@ phase: Faza-1
 title: "A10 (plan-numeracija) — Plan editing/versioning/approval"
 risk: MEDIUM
 coordinator: claude
-implementer: TBD (Human Owner assigns)
+implementer: crush
 reviewers: [claude]
 status: "OPEN — contract written before code"
 created_at: 2026-09-02
