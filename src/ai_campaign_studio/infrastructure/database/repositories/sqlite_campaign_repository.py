@@ -33,6 +33,7 @@ from ai_campaign_studio.domain.common.ids import (
     CampaignItemId,
     CampaignPlanId,
 )
+from ai_campaign_studio.domain.content.entities import CampaignTarget
 
 
 class SqliteCampaignRepository:
@@ -122,6 +123,14 @@ class SqliteCampaignRepository:
                 ),
             )
 
+    def get_brief(self, brief_id: str) -> CampaignBrief | None:
+        row = self._connection.execute(
+            "SELECT * FROM campaign_briefs WHERE id = ?", (brief_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return _brief_from_row(row)
+
     def get_campaign(self, campaign_id: CampaignId) -> Campaign | None:
         row = self._connection.execute(
             "SELECT * FROM campaigns WHERE id = ?", (campaign_id,)
@@ -158,6 +167,22 @@ def _campaign_from_row(row: sqlite3.Row) -> Campaign:
         brief_id=row["brief_id"],
         status=CampaignStatus(row["status"]),
         created_at=datetime.fromisoformat(row["created_at"]),
+    )
+
+
+def _brief_from_row(row: sqlite3.Row) -> CampaignBrief:
+    return CampaignBrief(
+        id=row["id"],
+        offer=row["offer"],
+        goal=row["goal"],
+        audience_text=row["audience_text"],
+        targets=tuple(
+            CampaignTarget(**target) for target in json.loads(row["targets_json"])
+        ),
+        content_piece_count=row["content_piece_count"],
+        content_language_context=row["content_language_context"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        special_instructions=tuple(json.loads(row["special_instructions_json"])),
     )
 
 
