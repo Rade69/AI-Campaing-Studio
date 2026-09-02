@@ -4,7 +4,7 @@ phase: Faza-1
 title: "A11 — Allowed Facts + Social Content Generation (GenerateSocialPost)"
 risk: MEDIUM
 coordinator: claude
-implementer: TBD (Human Owner assigns)
+implementer: pi
 reviewers: [claude]
 status: "BLOCKED — čeka ACS-F1-010 merge (payload persistence prerequisite)"
 created_at: 2026-09-02

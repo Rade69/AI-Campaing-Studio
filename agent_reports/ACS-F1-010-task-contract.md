@@ -4,8 +4,11 @@ phase: Faza-1
 title: "SocialPostPayload persistence (ContentPiece.payload + migration)"
 risk: HIGH
 coordinator: claude
-implementer: TBD (Human Owner assigns)
-reviewers: [claude, codex]
+implementer: claude (Human Owner decision, 2026-09-02)
+reviewers: [codex]  # Claude is implementer here -> cannot also be reviewer
+  # (CLAUDE.md: "Implementer != reviewer"). Codex review + explicit Human
+  # Owner merge approval are both still mandatory per HIGH-risk policy --
+  # this task does NOT get a streamlined self-reviewed merge.
 status: "OPEN — contract written before code"
 created_at: 2026-09-02
 dependencies: []
