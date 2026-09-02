@@ -3,7 +3,27 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Human Owner live-pokrenuo pravu
+**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **ACS-F1-009 (A9 — CreateCampaign +
+GenerateCampaignPlan) merged u main.** Prvi task koji stvarno spaja ACS-F1-007 i ACS-F1-008 u
+generation pipeline: `CreateCampaign` (validacija → mapper → atomic persist brief+campaign) i
+`GenerateCampaignPlan` (Campaign→BrandSnapshot→CampaignBrief→prompt→`TextGenerationPort`→
+schema+domain validacija→atomic persist plan + `Campaign.status→PLAN_GENERATED`). `ports/
+repositories.py` diff je striktno aditivan (`get_brief`, ništa drugo promijenjeno — lično
+diff-ovao). Integration test lanči SVA TRI use-case-a zajedno (`LoadBrandFixture` →
+`CreateCampaign` → `GenerateCampaignPlan`) na pravoj SQLite bazi — prvi pravi end-to-end dokaz da
+Faza 1 slojevi rade zajedno, ne samo izolovano. Atomicity (oba use-case-a) i role-diversity/
+duplicate-topic domain provjere nezavisno reprodukovane na pravoj bazi. Koordinator nezavisno
+reprodukovao pytest (439 u izolovanom worktree-u, 452 na `main` post-merge)/mypy/import-boundaries
+čisti. **Napomena:** `main` trenutno ima paralelno, van formalnog task-sistema, MiniMax-ove
+necommit-ovane izmjene (`presentation_webview/__main__.py` window-state persistencija + scratch
+debug fajlovi `diagnose_close.py`/`test_window_close.py` u root-u) — zbog toga
+`scripts/generate_phase0_gate_report.py` i whole-repo `ruff check .` trenutno FAIL lokalno (ruff
+greške su isključivo u ta dva scratch fajla, ne u ičemu iz ACS-F1-009). CI na GitHub-u vidi samo
+pushed/committed stanje pa ostaje zeleno — vidi CI red ispod. Ne dirati ta dva fajla/scratch
+fajlove dok MiniMax ne javi da je gotovo (Human Owner eksplicitno tražio da se sačeka).
+Worktree uklonjen (clean).
+
+Prethodni entry (2026-09-02): **Human Owner live-pokrenuo pravu
 pywebview aplikaciju i podijelio screenshot-e sva 5 sidebar ekrana** (Početna/Brend/Kampanje/
 Kalendar/Podešavanja) na stvarnoj mašini, Edge WebView2, stilizovano (CSS/JS se učitavaju —
 potvrđuje da `d71d84d` static-assets fix stvarno radi u praksi, ne samo u testu). Koordinator
@@ -199,6 +219,7 @@ protiv pogrešnog koda. Za verifikaciju u worktree-u, eksplicitan
 | ACS-F1-007 | **DONE — merged u main** | Pi | Claude (MEDIUM) | Merge commit `5bcbf41` (`--no-ff`, branch `task/ACS-F1-007-load-brand-fixture` @ `70127d2`). A6 `LoadBrandFixture` use-case (`application/brands/load_brand_fixture.py`) orkestrira ACS-F1-003 schema/mapper + ACS-F1-005 repositories: validira JSON kroz `BrandFixtureSchema` PRIJE bilo kakvog repository poziva, mapira, perzistira brand+facts+snapshot u jednoj `SqliteUnitOfWork` transakciji. Zavisi samo od `BrandRepositoryPort`/`FactRepositoryPort` + lokalni duck-typed `_UnitOfWork` Protocol (implementer ga dodao kao treći konstruktor parametar van kontrakt-primjera, opravdano za atomicity — prihvaćeno), bez SQLite importa. Atomicity STVARNO testirana na pravoj SQLite bazi (mid-load failure na 2. `save_fact`, sve 4 tabele COUNT=0 poslije), `fixture://` provenance provjerena čitanjem nazad, invalid-fixture (prazan `facts`) odbijen od `BrandFixtureSchema`-inog `_validate_facts` validatora prije ijednog repo poziva. Implementer sam kreirao worktree na `main @ ed5b8d4` umjesto navedenog `b4b324f` (noviji commit, prihvatljivo, dokumentovano). Koordinator nezavisno reprodukovao pytest (352 u izolovanom worktree-u, 354 na `main` post-merge)/ruff/mypy/import-boundaries (15), pročitao use-case + oba test fajla + `SqliteUnitOfWork.__exit__` semantiku. MEDIUM risk → Claude-only review → odmah merge po §29. Worktree uklonjen (clean). |
 | ACS-F1-008 | **DONE — merged u main** | Crush | Claude (MEDIUM) | Merge commit `2aed9fe` (`--no-ff`, branch `task/ACS-F1-008-prompt-ai-mock` @ `0aaef6d`). A7 — `ports/ai.py` (`AIMessage`/`AIRequest`/`AIResponse`/`AITelemetry` + `TextGenerationPort` Protocol) i `ports/prompts.py` (`PromptDefinition` + `PromptRepositoryPort`), oba framework-neutral (nema yaml/http/SDK importa — verifikovano čitanjem). `YamlPromptRepository` učitava i validira svih 8 metadata polja za svih 5 obaveznih promptova (`campaign_plan`/`post_generation`/`revision`/`visual_direction`/`ab_control`) — nedostajuće/null polje baca `ValueError` pri `get()`, nepostojeća verzija isto (bez silent fallback-a). `ab_control/v1.yaml` provjeren ručno (koordinator čitao fajl) — ne sadrži nijedan CampaignRole naziv, namjerna dizajn granica ispoštovana. `MockAdapter` implementira svih 5 modova (deterministic/error/invalid-schema/rate-limit/telemetry), bez network poziva, bez business logike. `ports/ai_registry.py`/`ai_registry/` netaknuti (potvrđeno `git status`). Proširio `tests/architecture/test_import_boundaries.py` za `infrastructure/ai/` (eksplicitno dozvoljeno acceptance stavkom, isti pattern kao ACS-GUI-001 za `presentation_webview/`) — jedina izmjena van `allowed_paths`. Koordinator nezavisno reprodukovao pytest (362 u izolovanom worktree-u, 370 na `main` post-merge)/ruff/mypy/import-boundaries (16), pročitao sva 4 core fajla + svih 5 YAML promptova (skriptom provjerio da svih 8 polja postoje u sve 5 fajla). MEDIUM risk → Claude-only review → odmah merge po §29. Čist merge, bez konflikta sa ACS-F1-007. Worktree uklonjen (clean). |
 | ACS-GUI-002 | **DONE — merged u main** | MiniMax | Claude (MEDIUM) | Merge commit `af6723d`-predecessor (`--no-ff` u `2aed9fe`, branch `task/ACS-GUI-002-remaining-sidebar-screens` @ `99f3502`). Preostala 4 sidebar ekrana (Brend/Kampanje/Kalendar/Podešavanja) zamijenila ACS-GUI-001 placeholder sadržaj realnim, fixture-driven `render_body()` — isti pattern kao Početna (frozen dataclass fixtures + `html.escape()`). Koordinator uporedio string-po-string protiv `docs/gui-v3/screens/{02,03,06,09}_*/index.html` — Brend markup je bajt-za-bajt identičan referenci; Kampanje ispravno pretvorio SVA tri "Otvori" dugmeta (uključujući referenci-in jedini pravi `<a href="../04_opis_kampanje/...">`) u `data-action="toast"` stub (ekran ne postoji u `presentation_webview`); Kalendar ispravno izostavio `?campaign=` banner/stepper (`data-campaign-only` blokovi u referenci) — samo globalni pogled portovan; Podešavanja bajt-za-bajt identičan. Nijedan `<a href>` ka nepostojećem ekranu, nema remote asset referenci (CSP `default-src 'self'` netaknut), `shell/`/`screens/__init__.py`/`_static_pages.py`/`pocetna/`/`static/`/`__main__.py` svi netaknuti (git diff potvrdio). 55 novih testova (fixture-driven invariant, XSS escaping, CSS klase, no-`<a href>`, no-remote-asset po ekranu). Očekivani test failure (`test_write_all_pages_placeholder_screens_carry_only_their_label`, van implementer-ovog `allowed_paths`) reprodukovan i popravljen od koordinatora nakon merge-a (`af6723d`) — preimenovan u `test_write_all_pages_screens_carry_real_content`, sada provjerava stvaran sadržaj (`BrightSmile Oral Care`/`Proljetna kolekcija`/`queue/retry`/`AI provajderi`) umjesto uklonjenog `"ACS-GUI-002"` placeholder markera. Koordinator nezavisno reprodukovao pytest (393 u izolovanom worktree-u minus gate-report subprocess artefakt, 425 na `main` post-merge)/ruff/mypy/import-boundaries. Live pywebview launch NIJE ponovljen za ovaj task pri merge-u (implementer je test-env bez display/webview modula; prethodni ACS-GUI-001 live-test je tada bio jedina live-launch evidencija). **Praznina zatvorena naknadno (2026-09-02, isti dan): Human Owner je live-pokrenuo aplikaciju i podijelio screenshot-e svih 5 ekrana — koordinator ih uporedio protiv `DEFAULT_FIXTURE`, sve tačno, stilizovano, bez grešaka** (vidi entry na vrhu fajla). MEDIUM risk → Claude-only review → odmah merge po §29. Worktree uklonjen (clean). |
+| ACS-F1-009 | **DONE — merged u main** | Pi | Claude (MEDIUM) | Merge commit `4a7d643` (`--no-ff` u `5134b4c`, branch `task/ACS-F1-009-campaign-brief-plan-generation`). A9 — `CreateCampaign` (validira `CampaignBriefInput` → `map_campaign_brief` → atomic persist brief+DRAFT campaign) + `GenerateCampaignPlan` (učitava Campaign/BrandSnapshot/CampaignBrief → `LEAD_GENERATION_V1` template → `PromptRepositoryPort.get("campaign_plan","1")` → `AIRequest` → `TextGenerationPort.generate` → `validate_campaign_plan_output` + deterministička domain validacija (bez duplikata tema, min. 2 distinktne role kad ima ≥2 itema, implementer dokumentovao prag) → atomic persist plan + `Campaign.status→PLAN_GENERATED`). Oba use-case-a zavise samo od portova + lokalnog `_UnitOfWork` Protocol-a (isti obrazac kao ACS-F1-007). Dodao TAČNO jednu aditivnu metodu `CampaignRepositoryPort.get_brief()` + SQLite implementaciju (`_brief_from_row`) — koordinator line-by-line diff-ovao `ports/repositories.py`, potvrđeno da nijedna postojeća metoda nije dirana. Integration test `test_end_to_end_fixture_to_plan` lanči `LoadBrandFixture` → `CreateCampaign` → `GenerateCampaignPlan` zajedno na pravoj SQLite bazi — prvi pravi cross-task end-to-end dokaz. Atomicity za oba use-case-a testirana mid-failure na pravoj bazi (`save_campaign` failuje nakon uspješnog `save_plan`/`save_brief` → sve rollback-uje). Koordinator nezavisno reprodukovao pytest (439 u izolovanom worktree-u, 452 na `main` post-merge)/mypy/import-boundaries (16) čisti; whole-repo `ruff check .` i `generate_phase0_gate_report.py` trenutno kontaminirani MiniMax-ovim necommit-ovanim scratch fajlovima (van scope-a ovog taska — vidi napomena na vrhu fajla), `ruff check src tests scripts` (tracked-only) čist. MEDIUM risk → Claude-only review → odmah merge po §29. Worktree uklonjen (clean). |
 | ACS-HOTFIX-001 | **DONE — merged u main** | MiniMax | Codex, Claude (HIGH) | Merge commit `bcec979` (`--no-ff`, branch `hotfix/ACS-HOTFIX-001-job-event-ordering` @ `56a67d2`). Fix: `threading.Lock()` → `RLock()`, `CREATED` emit pomjeren unutar `submit()`-ovog lock bloka, `_emit()` sad drži lock kroz cio callback dispatch. Novi deterministički test (slow-callback adversarial probe) — dokazano da je probabilistički pristup propustio bug tri runde zaredom. Koordinator i Codex NEZAVISNO otkrili isti nalaz: fix ima redundantnu zaštitu (bilo koja dva od tri elementa su samostalno dovoljna) — ne defekt. Codex `PASS_WITH_NOTES`, bez blocking findings. Finalni decision packet: `agent_reports/2026-09-01-ACS-HOTFIX-001-final-decision-packet.md`. Human Owner approval: "Odobravam". Post-merge gate PASS na `main` (171 testova, ruff, mypy, health-check, 20x targeted loop čist) — **nakon ručnog ispravljanja `.pth`-a** koji je prvo pokazivao na uklonjeni worktree (vidi napomenu iznad). Worktree uklonjen (clean, bez force-a). |
 | ACS-P0-001 | **DONE — merged u main** | Crush | Codex, Claude | Merge commit `def4ea1` (`--no-ff`, task branch `task/ACS-P0-001-repo-foundation` @ `949d18c`). Reviews: Claude PASS, Codex PASS_WITH_NOTES (no blocking findings). Human Owner approval: "Odobravam". Post-merge gate PASS. Worktree uklonjen. |
 | ACS-P0-002 | **DONE — merged u main** | Pi | Codex, Claude | Merge commit `e187a56` (`--no-ff`, task branch `task/ACS-P0-002-config-boundaries` @ `d6dc783`). 5 review rundi: Codex REJECT×4 (BF-1: boundary-checker bypassi pa lexical/class-scope resolution bugovi), svaki fix nezavisno re-verifikovan od koordinatora (kombinovana adversarial reprodukcija do 11 bypass/scope oblika u finalnoj rundi), round 5 `PASS_WITH_NOTES` bez blocking findings. Finalni decision packet: `agent_reports/2026-08-31-ACS-P0-002-final-decision-packet.md` (READY FOR HUMAN APPROVAL, R1–R6 reziduelni rizici). Human Owner approval: "Slažem se". Post-merge gate PASS na `main` (43 testa, ruff, mypy, health-check, Python 3.14.1). Worktree uklonjen (`--force`, samo Pi-jevi već-inkorporirani raw report fajlovi izgubljeni, bez sadržajnog gubitka). |
@@ -345,20 +366,32 @@ ponovo pokrenuti `npx gitnexus analyze --skip-agents-md` pa `npx gitnexus status
 
 ## Sljedeći task
 
-**A3–A7 su GOTOVI** — domain sloj (ACS-F1-001/002), boundary schemas (ACS-F1-003/004),
+**A3–A9 su GOTOVI** — domain sloj (ACS-F1-001/002), boundary schemas (ACS-F1-003/004),
 business persistence (ACS-F1-005/006), fixture load use-case (ACS-F1-007), prompt
-repository + AI port + mock adapter (ACS-F1-008) svi merged u main (2026-09-02), 425
-testova, sve zeleno. GUI paralelno: svih 5 sidebar ekrana (Početna + Brend/Kampanje/
-Kalendar/Podešavanja) takođe merged. Contract za sljedeći task nije napisan. Kandidati:
-**A8 — live provider adapter** (prvi pravi `TextGenerationPort` implementator nad
-OpenAI/Anthropic/itd., `ai_registry/` provider config + `infrastructure/ai/`) ili prvi
-application-layer generation use-case (campaign plan ili post generation) koji spaja
-ACS-F1-007 (loaded `BrandSnapshot`) i ACS-F1-008 (`PromptRepositoryPort` +
-`TextGenerationPort`, mock adapter za sad) — plan §17–20 pokriva oboje, redoslijed
-zavisi od Human Owner prioriteta. **ACS-GUI-003** (campaign workflow ekrani — Opis/Plan
-kampanje, Studio sadržaja, Pregled i izvoz) ostaje kandidat kad se odgovarajući
-application use-caseovi pojave da ih GUI može stvarno pozivati (fixture-only GUI bez
-backing use-casea ima ograničenu vrijednost dalje od vizuelnog pregleda).
+repository + AI port + mock adapter (ACS-F1-008), CreateCampaign + GenerateCampaignPlan
+(ACS-F1-009) svi merged u main (2026-09-02), 452 testova, sve zeleno. GUI paralelno: svih 5
+sidebar ekrana (Početna + Brend/Kampanje/Kalendar/Podešavanja) takođe merged i **live-
+verifikovano od Human Owner-a**. Contract za sljedeći task nije napisan. Kandidati: **A10 —
+Plan editing/versioning/approval** (edit/reorder/approve nad `CampaignPlan`, plan sekcija
+"A10"), **A8 — live provider adapter** (i dalje odgođen po Human Owner odluci, 2026-09-02),
+**A11 — Allowed Facts + Social Content Generation** (post generation use-case, sljedeći korak
+u istom generation pipeline-u kao A9), ili GUI dizajn iteracija (vidi ispod — Human Owner nije
+zadovoljan trenutnim izgledom, čeka se MiniMax-ov trenutni popravak prije nastavka).
+**ACS-GUI-003** (campaign workflow ekrani) i dalje čeka da application use-caseovi budu
+dovoljno razvijeni da ih GUI stvarno poziva.
+
+## GUI dizajn — otvoreno pitanje (Human Owner feedback, 2026-09-02)
+
+Human Owner nije zadovoljan trenutnim izgledom uprkos tome što je live-verifikacija (screenshot-i,
+vidi gore) potvrdila da render radi ispravno: **paneli su nekonzistentni, pojavljuje se skrol
+(cilj je "jedan pogled" bez skrolovanja), blizu smo mokapa ali ne na zamišljenom nivou.**
+Dogovoreni pristup: **prvo iterirati na `docs/gui-v3` mokapima** (brzo, vizuelno, bez re-wiring
+troška), tek onda prenijeti odobreni dizajn u `presentation_webview/`. **Trenutno na čekanju:**
+MiniMax radi necommit-ovane popravke direktno u `presentation_webview/__main__.py` (window-state
+persistencija, van formalnog task-sistema — vidi napomena na vrhu fajla) — koordinator čeka da
+MiniMax završi prije nego što dirne bilo šta u `docs/gui-v3`/`presentation_webview/`, po
+eksplicitnom zahtjevu Human Owner-a. Target veličina prozora za "bez skrola" cilj NIJE utvrđena
+(pitanje ostalo otvoreno kad je razgovor skrenuo na "sačekajmo MiniMax-a").
 
 Paralelno već u toku, van formalnog Faza 1 Task Contract sistema: **SPIKE-001** (pywebview UI,
 `spike/pywebview-content-studio` grana) — MiniMax radi GUI prema mokapu.
