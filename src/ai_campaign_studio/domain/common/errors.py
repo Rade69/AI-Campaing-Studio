@@ -23,6 +23,9 @@ class ErrorCode(StrEnum):
     PROVIDER_ERROR = "PROVIDER_ERROR"
     INVALID_API_KEY = "INVALID_API_KEY"
     UI_BRIDGE_ERROR = "UI_BRIDGE_ERROR"
+    INVALID_STATE_TRANSITION = "INVALID_STATE_TRANSITION"
+    INVARIANT_VIOLATION = "INVARIANT_VIOLATION"
+    ENTITY_NOT_FOUND = "ENTITY_NOT_FOUND"
     UNKNOWN_ERROR = "UNKNOWN_ERROR"
 
 
@@ -51,6 +54,24 @@ class AppError(Exception):
 
 class DomainError(AppError):
     """Error originating in the domain layer."""
+
+
+class InvalidStateTransition(DomainError):
+    """A state transition was attempted that the domain rules disallow."""
+
+    default_code: ErrorCode = ErrorCode.INVALID_STATE_TRANSITION
+
+
+class InvariantViolation(DomainError):
+    """A domain invariant was violated."""
+
+    default_code: ErrorCode = ErrorCode.INVARIANT_VIOLATION
+
+
+class EntityNotFound(DomainError):
+    """A requested entity does not exist."""
+
+    default_code: ErrorCode = ErrorCode.ENTITY_NOT_FOUND
 
 
 class ApplicationError(AppError):
