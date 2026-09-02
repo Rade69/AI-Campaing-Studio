@@ -11,7 +11,12 @@ import sys
 from playwright.async_api import async_playwright
 
 BASE = pathlib.Path(__file__).resolve().parent
-SCREENS = ["brand", "brief", "plan", "pregled", "settings", "studio", "language"]
+SCREENS = [
+    "brand", "brief", "plan", "pregled", "studio", "language", "kalendar",
+    "settings",
+    "settings/profil", "settings/tim", "settings/brend", "settings/language",
+    "settings/integracije", "settings/fakturisanje", "settings/preferencije",
+]
 WIDTH, HEIGHT = 1440, 900
 
 
