@@ -20,7 +20,11 @@ from ai_campaign_studio.domain.campaign.enums import (
 from ai_campaign_studio.domain.campaign.roles import CampaignRole
 from ai_campaign_studio.domain.common.ids import CampaignId, CampaignPlanId
 from ai_campaign_studio.domain.content.claims import ContentClaim
-from ai_campaign_studio.domain.content.entities import CampaignTarget, ContentPiece
+from ai_campaign_studio.domain.content.entities import (
+    CampaignTarget,
+    ContentPiece,
+    SocialPostPayload,
+)
 from ai_campaign_studio.domain.content.enums import (
     ClaimStatus,
     ClaimType,
@@ -176,4 +180,103 @@ def test_get_unknown_returns_none(tmp_path: Path) -> None:
     connection = _setup_db(tmp_path)
     repo = SqliteContentRepository(connection)
     assert repo.get_content_piece("missing") is None  # type: ignore[arg-type]
+    connection.close()
+
+
+def test_round_trip_content_piece_with_payload(tmp_path: Path) -> None:
+    """ACS-F1-010: a populated SocialPostPayload survives save -> get."""
+    connection = _setup_db(tmp_path)
+    _seed_campaign(connection, "campaign-1", "item-1")
+    repo = SqliteContentRepository(connection)
+
+    payload = SocialPostPayload(
+        headline="Implants without hidden costs",
+        caption="Transparent pricing, expert care.",
+        hook="Ever wondered what implants really cost?",
+        body="A clear breakdown of the full process and price.",
+        cta="Book a consultation",
+        hashtags=["implants", "dentalcare"],
+        visual_direction="clean, clinical, calm",
+    )
+    piece = _piece("campaign-1", "item-1")
+    piece_with_payload = ContentPiece(
+        id=piece.id,
+        campaign_item_id=piece.campaign_item_id,
+        target=piece.target,
+        payload_type=piece.payload_type,
+        status=piece.status,
+        brand_snapshot_id=piece.brand_snapshot_id,
+        created_at=piece.created_at,
+        updated_at=piece.updated_at,
+        facts_allowed=piece.facts_allowed,
+        claims=piece.claims,
+        revision_ids=piece.revision_ids,
+        payload=payload,
+    )
+
+    repo.save_content_piece(piece_with_payload)
+    loaded = repo.get_content_piece(piece.id)
+
+    assert loaded == piece_with_payload
+    assert loaded is not None
+    assert loaded.payload == payload
+    assert loaded.payload.hashtags == ("implants", "dentalcare")
+    connection.close()
+
+
+def test_round_trip_content_piece_without_payload_stays_none(tmp_path: Path) -> None:
+    """ACS-F1-010: payload=None must round-trip as None, not an empty payload."""
+    connection = _setup_db(tmp_path)
+    _seed_campaign(connection, "campaign-1", "item-1")
+    repo = SqliteContentRepository(connection)
+
+    piece = _piece("campaign-1", "item-1")  # payload defaults to None
+    repo.save_content_piece(piece)
+
+    loaded = repo.get_content_piece(piece.id)
+    assert loaded is not None
+    assert loaded.payload is None
+    connection.close()
+
+
+def test_save_content_piece_payload_update_is_idempotent(tmp_path: Path) -> None:
+    """Re-saving with a changed payload updates the row, no duplicate."""
+    connection = _setup_db(tmp_path)
+    _seed_campaign(connection, "campaign-1", "item-1")
+    repo = SqliteContentRepository(connection)
+
+    piece = _piece("campaign-1", "item-1")
+    repo.save_content_piece(piece)
+
+    updated_payload = SocialPostPayload(
+        headline="New headline",
+        caption="New caption",
+        hook="New hook",
+        body="New body",
+        cta="New cta",
+    )
+    piece_v2 = ContentPiece(
+        id=piece.id,
+        campaign_item_id=piece.campaign_item_id,
+        target=piece.target,
+        payload_type=piece.payload_type,
+        status=piece.status,
+        brand_snapshot_id=piece.brand_snapshot_id,
+        created_at=piece.created_at,
+        updated_at=piece.updated_at,
+        facts_allowed=piece.facts_allowed,
+        claims=piece.claims,
+        revision_ids=piece.revision_ids,
+        payload=updated_payload,
+    )
+    repo.save_content_piece(piece_v2)
+
+    count = connection.execute(
+        "SELECT COUNT(*) FROM content_pieces WHERE id = ?", (piece.id,)
+    ).fetchone()[0]
+    assert count == 1
+
+    loaded = repo.get_content_piece(piece.id)
+    assert loaded is not None
+    assert loaded.payload == updated_payload
     connection.close()

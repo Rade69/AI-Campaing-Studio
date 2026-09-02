@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from dataclasses import asdict
 from datetime import datetime
 
 from ai_campaign_studio.domain.common.ids import (
@@ -22,7 +23,11 @@ from ai_campaign_studio.domain.common.ids import (
     RevisionId,
 )
 from ai_campaign_studio.domain.content.claims import ContentClaim
-from ai_campaign_studio.domain.content.entities import CampaignTarget, ContentPiece
+from ai_campaign_studio.domain.content.entities import (
+    CampaignTarget,
+    ContentPiece,
+    SocialPostPayload,
+)
 from ai_campaign_studio.domain.content.enums import (
     ClaimStatus,
     ClaimType,
@@ -42,8 +47,8 @@ class SqliteContentRepository:
             "INSERT INTO content_pieces (id, campaign_item_id, target_channel,"
             " target_platform_code, target_format_code, payload_type, status,"
             " brand_snapshot_id, facts_allowed_json, revision_ids_json,"
-            " created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            " created_at, updated_at, payload_json)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             " ON CONFLICT(id) DO UPDATE SET"
             " campaign_item_id=excluded.campaign_item_id,"
             " target_channel=excluded.target_channel,"
@@ -53,7 +58,8 @@ class SqliteContentRepository:
             " brand_snapshot_id=excluded.brand_snapshot_id,"
             " facts_allowed_json=excluded.facts_allowed_json,"
             " revision_ids_json=excluded.revision_ids_json,"
-            " created_at=excluded.created_at, updated_at=excluded.updated_at",
+            " created_at=excluded.created_at, updated_at=excluded.updated_at,"
+            " payload_json=excluded.payload_json",
             (
                 content_piece.id,
                 content_piece.campaign_item_id,
@@ -67,6 +73,11 @@ class SqliteContentRepository:
                 json.dumps(list(content_piece.revision_ids)),
                 content_piece.created_at.isoformat(),
                 content_piece.updated_at.isoformat(),
+                (
+                    json.dumps(asdict(content_piece.payload))
+                    if content_piece.payload is not None
+                    else None
+                ),
             ),
         )
         # Replace the claim rows so a re-save is idempotent.
@@ -138,6 +149,11 @@ def _content_piece_from_row(
             RevisionId(x) for x in json.loads(row["revision_ids_json"])
         ),
         claims=tuple(_claim_from_row(claim_row) for claim_row in claim_rows),
+        payload=(
+            SocialPostPayload(**json.loads(row["payload_json"]))
+            if row["payload_json"] is not None
+            else None
+        ),
     )
 
 
