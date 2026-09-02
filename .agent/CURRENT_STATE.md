@@ -3,7 +3,18 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Dva nova kontrakta napisana: ACS-F1-012
+**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **VAŽNO za sve buduće taskove: Task-ID
+šema promijenjena (Human Owner odluka, `docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md` §31).**
+`ACS-<FAZA>-NNN` (npr. `ACS-F1-014`) je zamijenjen sa **`FLOW-NNNN — <opisan naslov>`** za SVE
+NOVE taskove, počevši od `FLOW-1000`. Broj je globalni sekvencijalni brojač (ne resetuje se po
+fazi), i NIKAD se ne pominje sam bez naslova ("FLOW-1000 — SocialPostPayload persistence", ne
+samo "FLOW-1000"). **Postojećih 14 taskova (ACS-P0-001..008, ACS-F1-001..014, ACS-GUI-001/002,
+ACS-HOTFIX-001) OSTAJU pod starim imenima** — retroaktivno preimenovanje nije urađeno (već
+DONE/merged, nema koristi od diranja branch/worktree/istorije). ACS-F1-012 i ACS-F1-014 (kontrakti
+ispod, napisani PRIJE ove odluke) takođe zadržavaju stara imena. **Sljedeći task koji se otvori
+dobija `FLOW-1000`, ne `ACS-F1-015`.**
+
+Prethodni entry (2026-09-02): **Dva nova kontrakta napisana: ACS-F1-012
 i ACS-F1-014.**
 
 - **ACS-F1-012** ("A12 dio 1" — Claim linter + final `ContentStatus` derivacija, plan sekcije
