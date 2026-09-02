@@ -1,0 +1,1 @@
+"""AI adapters (A7)."""

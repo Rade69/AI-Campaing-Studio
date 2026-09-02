@@ -1,0 +1,34 @@
+name: campaign_plan
+version: "1"
+purpose: Generate an ordered campaign plan from a campaign brief.
+input_contract: |
+  BrandSnapshot summary, CampaignBrief, CampaignRole definitions,
+  campaign template candidate, fact categories available.
+output_contract: |
+  CampaignPlanOutputSchema (application/schemas/campaign_plan_output.py)
+language_support: EN or BHS_LATIN (NEUTRAL/BS/SR/HR) via ContentLanguageContext
+instructions: |
+  You are planning a content campaign. Given the brand snapshot summary,
+  campaign brief, the allowed campaign roles and a candidate role template,
+  produce an ordered plan of campaign items.
+
+  Each item must declare its role, topic, goal and the semantic facts it
+  needs. The number of items must equal the brief's content_piece_count.
+  Roles must be drawn from the provided campaign role definitions only.
+  Every topic must be concrete and non-empty.
+
+  Respect the provided language context: language_family, regional_variant,
+  locale, script, preferred_terms, forbidden_terms, regional_vocabulary and
+  tone_examples. Never use a forbidden term. For BHS output, use local
+  examples rather than English-only few-shot with a "translate" instruction.
+examples:
+  - |
+    role: PROBLEM
+    topic: "Visoki troškovi implantata"
+    goal: "Pokrenuti svijest o cijeni"
+    facts_needed: ["cijena implantata", "lokacija ordinacije"]
+  - |
+    role: ACTION
+    topic: "Zakažite besplatnu konsultaciju"
+    goal: "Pretvoriti interes u termin"
+    facts_needed: ["kontakt telefon", "radno vrijeme"]
