@@ -1,0 +1,11 @@
+prohibited_terms:
+  - najbolji
+  - vodeći
+  - garantujemo
+  - "100%"
+  - bez rizika
+  - potpuno sigurno
+  - najjeftiniji
+  - jedini
+  - certifikovan
+currency_symbols: ["KM", "BAM", "EUR", "€", "RSD"]

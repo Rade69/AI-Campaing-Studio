@@ -180,7 +180,7 @@ def test_end_to_end_fixture_to_post(tmp_path: Path) -> None:
         ),
     )
 
-    assert piece.status is ContentStatus.GENERATING
+    assert piece.status is ContentStatus.DRAFT
     assert piece.payload is not None
     assert piece.facts_allowed == (fact_id,)
     assert content_repo.get_content_piece(piece.id) == piece
