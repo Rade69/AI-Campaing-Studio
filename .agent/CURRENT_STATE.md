@@ -3,7 +3,7 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Task A4 GOTOV.** A5 (business persistence) kontrakti napisani i OPEN: **ACS-F1-005** (Pi — `ports/repositories.py` svih 7 protokola + Brand/Facts SQLite persistence) i **ACS-F1-006** (Crush — Campaign/Content/Visual/Revision SQLite persistence, sekvenciran na ACS-F1-005 za Protocol definicije). Oba MEDIUM risk (repository adapter je eksplicitan MEDIUM primjer u workflow §3; §4-ov pojačan SQLite standard važi samo za P0, ne Faza 1; migracije su čisto additivne, nema postojećih poslovnih podataka). Base `main @ 940d963`. `docs/gui-v3/` kanonski GUI izvor, `docs/PYWEBVIEW_SECURITY.md` hardening politika, G9 gate zatvoren (pywebview zaključan). **ACS-GUI-001** (MiniMax, GUI-BASE) OPEN, u toku — vidi "Poznati blokatori" za nalaz koji treba MiniMax-ova pažnja.
+**Zadnje ažurirano:** 2026-09-02 (coordinator: claude) — **Task A4 GOTOV.** A5 (business persistence) kontrakti napisani i OPEN: **ACS-F1-005** (Pi — `ports/repositories.py` svih 7 protokola + Brand/Facts SQLite persistence) i **ACS-F1-006** (Crush — Campaign/Content/Visual/Revision SQLite persistence, sekvenciran na ACS-F1-005 za Protocol definicije). Oba MEDIUM risk (repository adapter je eksplicitan MEDIUM primjer u workflow §3; §4-ov pojačan SQLite standard važi samo za P0, ne Faza 1; migracije su čisto additivne, nema postojećih poslovnih podataka). Base `main @ 940d963`. `docs/gui-v3/` kanonski GUI izvor, `docs/PYWEBVIEW_SECURITY.md` hardening politika, G9 gate zatvoren (pywebview zaključan). **ACS-GUI-001** (MiniMax, GUI-BASE) — implementacija dostavljena, Claude review round 1 završen: **PASS WITH REQUIRED FIXES, NIJE merged.** Vidi `agent_reports/2026-09-02-ACS-GUI-001-review-claude-round1.md`. Sigurnosni dio (edgechromium/debug/WebView2 fail-loud) je odličan i bez primjedbi. Tri nalaza traže fix round: (1) `static/app.css`/`app.js` nisu doslovna kopija `docs/gui-v3/shared/` kako kontrakt traži — nezavisno prepisani, nedostaju klase za preostalih 8 ekrana, dva razdvojena design sistema; (2) shell dodaje neatražen `.lang-toggle` UI element koji ne postoji u zaključanom V3 dizajnu; (3) sidebar/topbar markup nije stvarno DRY — 4 od 5 ekrana ga duplira van `render_shell()`. Raniji proces-nalaz (MiniMax editovao main checkout direktno) je RIJEŠEN — `test_import_boundaries.py` proširenje je ovaj put ispravno urađeno u worktree-u. Čeka MiniMax-ov fix round pa Claude round 2.
 
 ---
 
@@ -185,23 +185,6 @@ ACS-P0-007 je sada jedini kandidat — nema drugog unblocked P0 taska za paralel
 
 ## Poznati blokatori
 
-- **MiniMax (ACS-GUI-001) je direktno izmijenio fajl u GLAVNOM checkout-u
-  (`H:\AI Campaing Studio`), ne u svom worktree-u (2026-09-02).** Prilikom A4
-  post-merge provjere koordinator je zatekao necommit-ovanu izmjenu
-  `tests/architecture/test_import_boundaries.py` direktno u main working tree-u
-  — dodaje `presentation_webview` boundary pravila (zabranjuje domain/application/
-  ports/infrastructure/presentation importe, dozvoljava samo pywebview kao GUI
-  lib). Sadržaj je legitiman i tačno u duhu ACS-GUI-001 kontrakta (acceptance
-  eksplicitno traži proširenje tog testa), ali je napisan na pogrešnom mjestu —
-  MiniMax-ov vlastiti worktree (`ACS-GUI-001-gui-base-shell`) NIJE imao ovu
-  izmjenu kad je koordinator provjerio (samo `artifacts/phase0_foundation_gate.json`
-  modifikovan tamo, plus očekivani novi `presentation_webview/` fajlovi). Da ne
-  bi kontaminirao A4 merge, koordinator je izmjenu **stash-ovao** iz main-a
-  (`git stash` poruka: `found-uncommitted-in-main-2026-09-02-import-boundaries-presentation_webview`)
-  — main je čist, ništa nije izgubljeno. **Treba se javiti MiniMax-u**: raditi
-  isključivo u dodijeljenom worktree-u (`H:\ai-campaign-studio-worktrees\ACS-GUI-001-gui-base-shell`),
-  ne u glavnom checkout-u. Sadržaj stash-a se može primijeniti (`git stash apply`)
-  u ACS-GUI-001 worktree kad MiniMax nastavi, umjesto da se ponovo piše od nule.
 - **PROCES-GREŠKA (koordinator, 2026-09-02): CI status na task branch push-ovima
   nije bio redovno provjeravan tokom review ciklusa, pa je slomljen `ci.yml` prošao
   nezapaženo kroz cijeli ACS-P0-008 review (Claude, Codex x3 runde) i merge.**
