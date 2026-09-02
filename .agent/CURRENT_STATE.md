@@ -319,15 +319,18 @@ Paket je premješten iz untracked `GUI-architecture/` u trackovan **`docs/gui-v3
 `phase0_foundation_gate.json` kopiju sam izbacio pri premještanju — originalni
 `GUI-architecture/` direktorijum obrisan).
 
-Dva gapa nađena nezavisnom provjerom HTML-a (nisu bila u README-u), treba popraviti prilikom
-wiring-a u `presentation_webview/`, ne prije:
-1. Stepper elementi (`.step` divovi u ekranima 04–08) nemaju `href` — nisu klikabilni unazad,
-   iako `V3_PLAN.md` tvrdi da stepper omogućava povratak. Trenutno povratak radi samo kroz
-   eksplicitno `←` dugme.
-2. `screens/06_kalendar/index.html` služi dvostruko (globalni Kalendar iz sidebar-a I korak 3
-   campaign workflow-a — link iz `05_plan_kampanje` vodi baš tu), ali nema breadcrumb konteksta
-   kampanje, stepper, niti dugme "Nastavi →" ka Studiju sadržaja. Klik-kroz demo se tu prekida;
-   treba dodati campaign-context varijantu (banner + continue dugme) pri wiring-u.
+Dva gapa nađena nezavisnom provjerom HTML-a (nisu bila u README-u) su **POPRAVLJENA
+(2026-09-02, commit `9f744ac`)** direktno u `docs/gui-v3/`, prije wiring-a:
+1. Stepper "done" koraci (ekrani 04–08) su sada pravi `<a class="step done">` linkovi ka
+   odgovarajućem ekranu, umjesto inertnih divova — usklađeno sa `V3_PLAN.md` tvrdnjom da
+   stepper omogućava povratak. Dodano `[hidden]{display:none!important}` i
+   `text-decoration:none` za `.step` u `shared/app.css`.
+2. `screens/06_kalendar/index.html` (dvostruka uloga: globalni Kalendar iz sidebar-a I korak 3
+   campaign workflow-a) sada ima query-param-driven campaign banner (`?campaign=...` iz
+   `05_plan_kampanje` linka) — breadcrumb + stepper + "Nastavi → Studio sadržaja" dugme se
+   pojave samo kad se stranica otvori sa tim parametrom; direktan pristup iz sidebar-a ostaje
+   nepromijenjen (čist globalni pogled). Toggle logika je čisto prezentaciona (čita URL param,
+   ne poziva business logiku) u `shared/app.js`.
 
 Sljedeći koraci za GUI: kad se A4+ application/use-case slojevi za Brand/Campaign pojave, otvoriti
 formalni lightweight task (van Task Contract sistema, po uzoru na SPIKE-001, ili kao pravi F1
