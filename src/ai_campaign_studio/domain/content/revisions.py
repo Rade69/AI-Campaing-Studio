@@ -21,6 +21,21 @@ class RevisionOrigin(StrEnum):
     SYSTEM = "SYSTEM"
 
 
+class RevisionType(StrEnum):
+    """The kind of revision a user/agent requests (plan section 38)."""
+
+    SHORTER = "SHORTER"
+    LONGER = "LONGER"
+    STRONGER_HOOK = "STRONGER_HOOK"
+    MORE_PROFESSIONAL = "MORE_PROFESSIONAL"
+    MORE_FRIENDLY = "MORE_FRIENDLY"
+    LESS_PROMOTIONAL = "LESS_PROMOTIONAL"
+    NEW_CTA = "NEW_CTA"
+    NEW_HEADLINE = "NEW_HEADLINE"
+    NEW_VISUAL_DIRECTION = "NEW_VISUAL_DIRECTION"
+    CUSTOM = "CUSTOM"
+
+
 @dataclass(frozen=True)
 class Revision:
     """An immutable record of one content change."""
