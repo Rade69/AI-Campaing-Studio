@@ -3,7 +3,36 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **ACS-F1-016 (OpenAI adapter, HIGH) — Pi
+**Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **ACS-GUI-004 (real tab-panel switching,
+Brend + Podešavanja, MEDIUM) merged u main** (`e534d0f`, merge commit `7246dd6`). Implementer Crush
+(kontrakt je originalno pisao "minimax" — koordinator uskladio polje sa stvarnim stanjem).
+Portovano iz `docs/gui-v3`: button-style tabovi + stvaran `data-tab-target`→`data-tab-panel`
+switching (prije: samo kozmetički `.active` toggle, sav sadržaj stackovan i vidljiv istovremeno).
+Brend: 4 panela. Podešavanja: 3 vertikalna panela. Dvije scope-izmjene, obje naknadno odobrene od
+Human Owner-a tokom koordinator review-a (nisu bile u originalnom kontraktu): (1) globalni CSS
+density/spacing rewrite (manje paddinga na `.nav`/`.topbar`/`.content`/`.card`/`.provider`/
+kalendar `.day` itd. — cilj: manje skrolovanja), (2) content-language picker (SR/HR/BS/EN) u
+Podešavanja→Jezik (čisto UI, toast + active state, ne veže se još na `PresentationFacade`).
+Kontraktom propisana vizuelna provjera (7 screenshot-ova) NIJE bila urađena od implementera
+(pywebview zahtijeva display/WebView2) — koordinator je umjesto toga pokrenuo app uživo na Human
+Owner-ovom ekranu; potvrđeno da tab-switching radi na oba ekrana, mali preostali skrol u
+Podešavanja prihvaćen kao manji ostatak (nije blocking). **Otkriven i riješen realan merge
+konflikt**: MiniMax/Codex su nezavisno, necommit-ovano, radili SVOJU verziju istog density
+rewrite-a + `.brand-logo` sidebar blok direktno u main working tree-u — `app.css` je jedan
+minifikovan red pa je svaka razlika pun konflikt. Riješeno: `git stash` samo tog fajla → merge →
+`stash pop` (očekivan konflikt) → zadržana Crush-ova (merge-ovana, odobrena) verzija density-a +
+ponovo primijenjen MiniMax-ov `.brand`/`.brand-logo` override blok na kraju (aditivan, nije se
+sudarao sa density brojevima). Njihovi ostali necommit-ovani fajlovi (`shell/__init__.py`,
+`__main__.py`, `_static_pages.py`, `docs/gui-v3/*`, `test_static_pages_generator.py`) NISU
+dirani — i dalje čekaju njihov commit, ali će morati rebase-ovati svoje density brojeve preko
+verzije koja je sada u main-u (njihovi brojevi su superseded). Nezavisna verifikacija: otkrivena i
+ispravljena poznata ".pth zamka" u worktree-u (editable install je pokazivao na main, ne na sebe),
+zatim 525 passed u worktree-u / 553 passed na main-u post-merge, `ruff check src tests scripts` i
+`mypy src` čisti (whole-repo `ruff check .` i dalje pada zbog MiniMax/Codex scratch fajlova, kao i
+inače — nepovezano), `test_import_boundaries.py` 16 passed. Pun review:
+`agent_reports/2026-09-03-ACS-GUI-004-review-claude.md`.
+
+Prethodni entry (2026-09-03): **ACS-F1-016 (OpenAI adapter, HIGH) — Pi
 predao, Claude arhitektonski review URAĐEN, U FIX RUNDI.** `PASS_WITH_NOTES` — arhitektura jaka
 (implementer ispravio grešku iz kontrakta: `TestProviderConnection`/`DiscoverModels` primaju
 adapter kroz lokalni Protocol/DI umjesto interne konstrukcije `OpenAIAdapter`, izbjegavajući
@@ -637,6 +666,15 @@ je paralelan, nezavisan trak — čeka MiniMax-ov trenutni popravak (u toku, dir
 scratch probe skripte u root-u — koordinator i dalje ne dira ništa od toga dok se ne javi da je
 gotovo). **ACS-GUI-003** (campaign workflow ekrani) sad ima kompletan application-layer pipeline
 da ga stvarno poziva — realan kandidat čim GUI dizajn iteracija završi.
+
+**VAŽNO za MiniMax/Codex (2026-09-03)**: `static/app.css` je upravo promijenjen u main-u kroz
+ACS-GUI-004 merge (vidi "Zadnje ažurirano" gore) — sadrži NOVI density/spacing rewrite (odobren od
+Human Owner-a). Vaš necommit-ovani `app.css` diff (isti tip density prepravke, ali drugačiji
+brojevi) je superseded — kad nastavite rad, **pull-ujte main PRIJE nego što nastavite na
+`app.css`** i rebase-ujte preko nove verzije, ne obrnuto. Vaš `.brand`/`.brand-logo` blok je već
+ručno prenesen u merge-ovanu verziju (aditivan, nije se sudarao) — ne treba ga ponovo dodavati.
+Ostali vaši necommit-ovani fajlovi (`shell/__init__.py`, `__main__.py`, `_static_pages.py`,
+`docs/gui-v3/*`, `test_static_pages_generator.py`) nisu dirani i ostaju kako jesu.
 
 ## GUI dizajn — otvoreno pitanje (Human Owner feedback, 2026-09-02)
 
