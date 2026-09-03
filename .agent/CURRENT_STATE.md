@@ -3,7 +3,22 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **ACS-F1-016 (OpenAI adapter, HIGH) — F1
+**Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **ACS-F1-016 (OpenAI adapter, HIGH) —
+Codex adversarial review vraćen `REJECT`, dva nalaza, oba nezavisno potvrđena, fix runda 2 u
+toku.** `agent_reports/2026-09-03-ACS-F1-016-review-codex.md`:
+- **BF-1**: `OpenAIAdapter.generate()` čita `finish_reason` sa `message` objekta umjesto sa
+  `choice` — sa pravim OpenAI response-om uvijek vraća `None` (test fixture je slučajno maskirao
+  bug). Koordinator provjerio stvaran SDK model (`Choice`/`ChatCompletionMessage` pydantic polja)
+  — potvrđeno realan bug.
+- **BF-2**: `ConfigureProvider.execute()` ne provjerava `provider.requires_api_key` prije upisa
+  secreta — upisao bi credential referencu i za provider koji ne treba API ključ. Koordinator
+  potvrdio da je `requires_api_key` stvarno postojeće polje na `AIProviderDefinition` — realan bug.
+
+Fix brief poslat Crush-u: `agent_reports/2026-09-03-ACS-F1-016-fix-brief-2-za-crush.md` (uzak
+scope, samo BF-1/BF-2). Nakon fixa ide nazad Codex-u na re-review — treća runda ako i tu nešto
+iskrsne. F1 (httpx, prethodna runda) ostaje zatvoren, nije ponovo otvoren.
+
+Prethodni entry (2026-09-03): **ACS-F1-016 — F1
 zatvoren, čeka Codex adversarial review.** Crush dodao `"httpx>=0.27"` u `[project.optional-
 dependencies].dev` (`pyproject.toml`). Koordinator nezavisno reprodukovao Crush-ovu fresh-
 environment verifikaciju (uninstall/reinstall `httpx` preko `dev` extras) — `pip install
