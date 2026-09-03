@@ -3,6 +3,33 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
+**Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **ACS-GUI-003 (campaign workflow ekrani)
+merged u main** (`000c97c`, merge commit prije njega). Implementer Pi. Portovana sva 4 preostala
+`docs/gui-v3` ekrana u `presentation_webview`: Opis kampanje, Plan kampanje, Studio sadržaja
+(STVARAN `data-tab-target`/`data-tab-panel` tab switching, ne kozmetički mokap markup — namjerna
+zamka iz kontrakta, Pi ispravno primijenio ACS-GUI-004 pattern), Pregled i izvoz. Zajednički
+5-koračni stepper (`shell.stepper_html`). Kampanje "Otvori" postao stvaran link.
+
+Koordinator dodao TRI izmjene preko Pi implementacije, sve live-verifikovane na Human Owner-ovom
+ekranu (implementer nije mogao — harness bez UI-automatizacije):
+1. **Kalendar dobio `?campaign=`-gated stepper + forward banner** — kontrakt je pogrešno stavio
+   `kalendar/__init__.py` u `forbidden_paths`, iako je postojeći kod već najavljivao da ACS-GUI-003
+   treba to dodati (koordinatorova greška u pisanju kontrakta, dokumentovano u post-hoc scope
+   napomeni). Bez ovoga: workflow je bio dead-end na koraku 3.
+2. **Jezik sadržaja (Opis kampanje)** — dvije iteracije do finalne verzije: pravi `<select>`
+   dropdown, SR/HR/BS/EN, bez "BHS" prefiksa, bez "neutralno" opcije.
+3. **Studio sadržaja** — dodat stvaran forward link ka Pregled i izvoz (bio je i to dead-end —
+   "nema mogućnosti da se izveze") + smanjena visina textarea-e (180→120px) za manje skrolovanja.
+
+Nezavisna verifikacija: 618 passed, `ruff check .` (whole-repo) i `mypy src` i
+`test_import_boundaries.py` svi čisti. Pun trag odluka:
+`agent_reports/ACS-GUI-003-task-contract.md` (post-hoc scope napomena),
+`agent_reports/2026-09-03-ACS-GUI-003-review-claude.md`.
+
+**Poznat, namjerno odgođen item**: Podešavanja ekran ima manji vertikalni skrol (postojeći, od
+ACS-GUI-004, izraženiji na trenutno sačuvanoj 830px visini prozora nego na 900px baseline-u).
+Human Owner eksplicitno odlučio da se odgodi za zaseban budući task.
+
 **Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **Preostali necommit-ovani GUI rad
 (window-state persistencija, logo wiring, mokap sync) merged u main** (`3eb4636`). Human Owner
 potvrdio da niko trenutno aktivno ne radi na tim fajlovima (bio parkiran/napušten rad, ne
