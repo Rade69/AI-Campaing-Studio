@@ -3,7 +3,22 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **FLOW-1000 — Plan-approved guard u
+**Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **FLOW-1001 — Content revisions
+(ReviseContentPiece) kontrakt napisan, OPEN, implementer TBD.** Poslednji preostali komad A12
+plan-grupe (dio 1 = ACS-F1-012, mergovano). Dodaje `RevisionType` enum (aditivno u
+`domain/content/revisions.py`, GitNexus potvrdio LOW impact) + `ReviseContentPiece` use-case koji
+koristi VEĆ postojeći `RevisionOutput` schema (ACS-F1-004, partial-update preko
+`changed_fields`), VEĆ postojeći `RevisionRepositoryPort`/`SqliteRevisionRepository` (ACS-F1-006,
+prva stvarna upotreba), i reuse-uje `claim_validator`/`claim_linter`/`derive_content_status`
+(ACS-F1-011/012). Dvije namjerne scope granice dokumentovane u kontraktu:
+`NEW_VISUAL_DIRECTION` odbijen (RevisionOutput nema `visual_direction` polje, čeka Visual System
+pipeline A13+), claims se ponovo lintuju ali NE regenerišu (RevisionOutput nema `claims` polje).
+Kodifikuje postojeću `ContentPiece` docstring invarijantu: revizija prethodno-APPROVED sadržaja
+UVIJEK vraća `NEEDS_REVIEW`. Worktree spreman:
+`../ai-campaign-studio-worktrees/FLOW-1001-content-revisions`. Detalji:
+`agent_reports/FLOW-1001-task-contract.md`.
+
+Prethodni entry (2026-09-03): **FLOW-1000 — Plan-approved guard u
 GenerateSocialPost merged u main.** `GenerateSocialPost.execute()` sad odbija bilo koji plan koji
 nije `CampaignPlanStatus.APPROVED` (`InvariantViolation`, bačeno PRIJE `campaign_item` pretrage i
 PRIJE bilo kakvog AI poziva/perzistencije) — zatvara poznat gap iz ACS-F1-014 (plan sekcija 32:
