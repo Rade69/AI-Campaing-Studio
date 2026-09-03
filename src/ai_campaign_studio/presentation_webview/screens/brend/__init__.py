@@ -1,8 +1,8 @@
 """Brend screen — fixture-driven body, slots into the shared shell.
 
 Visual port of ``docs/gui-v3/screens/02_brend/index.html`` translated
-into Python: tabs row (4 tabs, first active), 2-column grid
-(brand-info card + approved-facts card), 3-column brend-resursi grid.
+into Python: tabs row (4 tabs, first active) driving four tab panels
+(brand-info, approved-facts, brand-voice placeholder, brand-resources).
 All link/button stubs use ``data-action="toast"`` so the existing
 ``static/app.js`` handler can pick them up — no ``<a href>`` to
 non-existent pages (campaign workflow screens land in ACS-GUI-003).
@@ -85,12 +85,13 @@ DEFAULT_FIXTURE = BrendFixture(
 )
 
 
-def _tabs_row(active: int, labels: list[str]) -> str:
+def _tabs_row(active: int, labels: list[str], panel_ids: list[str]) -> str:
     parts: list[str] = ['<div class="tabs" data-tabs>']
     for idx, label in enumerate(labels):
         cls = "tab active" if idx == active else "tab"
+        target = html.escape(panel_ids[idx]) if idx < len(panel_ids) else ""
         parts.append(
-            f'<div class="{cls}" data-action="tab">'
+            f'<div class="{cls}" data-action="tab" data-tab-target="{target}">'
             f"{html.escape(label)}</div>"
         )
     parts.append("</div>")
@@ -121,7 +122,14 @@ def _resource_card(r: BrandResource) -> str:
 
 
 def render_body(fixture: BrendFixture | None = None) -> str:
-    """Return the Brend body HTML driven by the supplied fixture."""
+    """Return the Brend body HTML driven by the supplied fixture.
+
+    Layout (ACS-GUI-004): four tab panels. Tab labels carry
+    ``data-tab-target="<panel-id>"``; each panel is a top-level
+    ``<div data-tab-panel id="<panel-id>">`` with ``hidden`` for the
+    non-default panels. The JS handler in ``static/app.js`` shows only
+    the matching panel on click.
+    """
     fx = fixture or DEFAULT_FIXTURE
     fact_html = "".join(_fact_row(f) for f in fx.facts)
     resource_html = "".join(_resource_card(r) for r in fx.resources)
@@ -130,6 +138,18 @@ def render_body(fixture: BrendFixture | None = None) -> str:
         if fx.status_checked
         else '<span class="tick">·</span>'
     )
+    _labels = [
+        "Osnovni podaci",
+        "Odobrene činjenice",
+        "Glas brenda",
+        "Brend resursi",
+    ]
+    _panel_ids = [
+        "panel-osnovni",
+        "panel-cinjenice",
+        "panel-glas",
+        "panel-resursi",
+    ]
     return (
         '<div class="page-head">'
         "<div>"
@@ -147,16 +167,9 @@ def render_body(fixture: BrendFixture | None = None) -> str:
         "Osvježi podatke"
         "</button>"
         "</div>"
-        + _tabs_row(
-            0,
-            [
-                "Osnovni podaci",
-                "Odobrene činjenice",
-                "Glas brenda",
-                "Brend resursi",
-            ],
-        )
-        + '<div class="grid g2">'
+        + _tabs_row(0, _labels, _panel_ids)
+        # Panel 1 (default-active): Osnovni podaci — brand info kartica
+        + '<div data-tab-panel id="panel-osnovni">'
         '<div class="card">'
         f"<h3>{html.escape(fx.brand.name)}</h3>"
         '<div class="field"><label>Opis brenda</label>'
@@ -169,6 +182,9 @@ def render_body(fixture: BrendFixture | None = None) -> str:
         f'<div class="statusline">{_voice_badges(fx.brand.voice)}</div>'
         "</div>"
         "</div>"
+        "</div>"
+        # Panel 2: Odobrene činjenice
+        + '<div data-tab-panel id="panel-cinjenice" hidden>'
         '<div class="card">'
         "<h3>Odobrene činjenice</h3>"
         f"{fact_html}"
@@ -180,6 +196,18 @@ def render_body(fixture: BrendFixture | None = None) -> str:
         "</div>"
         "</div>"
         "</div>"
+        # Panel 3: Glas brenda (placeholder — voice workspace tek dolazi)
+        + '<div data-tab-panel id="panel-glas" hidden>'
+        '<div class="card">'
+        "<h3>Glas brenda</h3>"
+        '<div class="callout">'
+        "Editor glasa brenda — dostupno u narednoj verziji. "
+        "Trenutno se badge-ovi iz Osnovnih podataka koriste kao referenca."
+        "</div>"
+        "</div>"
+        "</div>"
+        # Panel 4: Brend resursi
+        + '<div data-tab-panel id="panel-resursi" hidden>'
         '<div class="section-title">'
         "<h3>Brend resursi</h3>"
         '<button class="btn" data-action="toast" '
@@ -188,6 +216,7 @@ def render_body(fixture: BrendFixture | None = None) -> str:
         "</button>"
         "</div>"
         f'<div class="grid g3">{resource_html}</div>'
+        "</div>"
     )
 
 

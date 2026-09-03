@@ -123,7 +123,6 @@ def test_render_body_uses_v3_css_classes() -> None:
     for cls in (
         "tabs",
         "tab active",
-        "grid g2",
         "card",
         "fact",
         "section-title",
@@ -138,6 +137,78 @@ def test_render_body_uses_v3_css_classes() -> None:
         "actions",
     ):
         assert cls in body, f"missing V3 class in body: {cls!r}"
+    # ACS-GUI-004: tab/panel structure
+    for marker in (
+        'data-tabs',
+        'data-tab-panel',
+        'id="panel-osnovni"',
+        'id="panel-cinjenice"',
+        'id="panel-glas"',
+        'id="panel-resursi"',
+    ):
+        assert marker in body, f"missing ACS-GUI-004 marker: {marker!r}"
+
+
+def test_all_four_tabs_have_data_tab_target() -> None:
+    """Every tab label carries the matching panel id in data-tab-target."""
+    body = render_body()
+    for panel_id in (
+        "panel-osnovni",
+        "panel-cinjenice",
+        "panel-glas",
+        "panel-resursi",
+    ):
+        assert f'data-tab-target="{panel_id}"' in body, (
+            f"missing data-tab-target for {panel_id!r}"
+        )
+
+
+def test_only_default_active_panel_is_visible() -> None:
+    """The default-active panel (panel-osnovni) has no ``hidden`` attr.
+
+    All other panels (``panel-cinjenice``, ``panel-glas``,
+    ``panel-resursi``) MUST carry the ``hidden`` attribute so the JS
+    starts with exactly one panel visible.
+    """
+    import re
+    body = render_body()
+    # Regex: capture the full opening <div ...> of each data-tab-panel
+    panel_open_re = re.compile(
+        r'<div\b[^>]*data-tab-panel[^>]*id="(panel-[a-z]+)"([^>]*)>'
+    )
+    panels = {pid: attrs for pid, attrs in panel_open_re.findall(body)}
+    assert set(panels) == {
+        "panel-osnovni",
+        "panel-cinjenice",
+        "panel-glas",
+        "panel-resursi",
+    }, f"unexpected panel ids: {set(panels)}"
+    assert "hidden" not in panels["panel-osnovni"], (
+        f"panel-osnovni is default-active; attrs: {panels['panel-osnovni']!r}"
+    )
+    for pid in ("panel-cinjenice", "panel-glas", "panel-resursi"):
+        assert "hidden" in panels[pid], (
+            f"{pid} should start hidden; attrs: {panels[pid]!r}"
+        )
+
+
+def test_first_tab_is_default_active() -> None:
+    """Only the first tab (``Osnovni podaci``) starts with ``active`` class."""
+    body = render_body()
+    active_open = (
+        '<div class="tab active" data-action="tab" '
+        'data-tab-target="panel-osnovni">'
+    )
+    assert active_open in body
+    for label in ("Odobrene činjenice", "Glas brenda", "Brend resursi"):
+        idx = body.find(label)
+        assert idx > 0
+        # Look back to nearest <div class="tab" ... opener
+        prefix = body[:idx].rsplit("<div", 1)[-1]
+        assert "active" not in prefix, (
+            f"only the first tab should be active, but {label!r} also is: "
+            f"{prefix!r}"
+        )
 
 
 def test_render_body_escapes_xss_in_fixture() -> None:
