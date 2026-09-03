@@ -58,7 +58,7 @@ def test_write_all_pages_relative_links_resolve_to_real_files(
 
 
 def test_write_all_pages_materialises_static_assets_on_disk(tmp_path: Path) -> None:
-    """Regression: generated pages link '../static/app.css'/'app.js' relative
+    """Regression: generated pages link static assets relative
     to screens/{key}/index.html -- those files must actually exist in
     target_dir/static/, not just be referenced by path in the HTML string.
     A prior version only asserted the href/src text and missed that the
@@ -67,10 +67,24 @@ def test_write_all_pages_materialises_static_assets_on_disk(tmp_path: Path) -> N
     write_all_pages(tmp_path)
     css_path = tmp_path / "static" / "app.css"
     js_path = tmp_path / "static" / "app.js"
+    logo_path = tmp_path / "static" / "brand-logo.png"
     assert css_path.is_file(), f"missing {css_path}"
     assert js_path.is_file(), f"missing {js_path}"
+    assert logo_path.is_file(), f"missing {logo_path}"
     assert css_path.stat().st_size > 0
     assert js_path.stat().st_size > 0
+    assert logo_path.stat().st_size > 0
+
+
+def test_write_all_pages_use_canonical_logo_asset(tmp_path: Path) -> None:
+    """Sidebar brand must render the canonical PNG logo, not text recreation."""
+    pages = write_all_pages(tmp_path)
+    for key, path in pages.items():
+        html = path.read_text(encoding="utf-8")
+        assert '<img class="brand-logo" src="../../static/brand-logo.png"' in html
+        assert "<h1>AI Campaign Studio</h1>" not in html, (
+            f"{key} page still renders text instead of the canonical logo asset"
+        )
 
 
 def _active_a(html: str) -> str:

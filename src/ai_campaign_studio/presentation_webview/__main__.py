@@ -23,9 +23,96 @@ and re-raise as ``WebView2MissingError`` with installation guidance.
 from __future__ import annotations
 
 import argparse
+import atexit
+import json
+import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
+
+# --- User data dir (cross-platform) -----------------------------------------
+# A small, dependency-free replacement for ``platformdirs`` so the GUI has a
+# stable place to remember window geometry across launches. Deliberately
+# kept here (not in some utility module) so the GUI entry point stays a
+# self-contained composition root.
+
+_WINDOW_STATE_FILE = "window-state.json"
+
+
+def _user_data_dir() -> Path:
+    """Return the OS-conventional per-user data dir for AI Campaign Studio.
+
+    * Windows: ``%LOCALAPPDATA%\\ai-campaign-studio`` (falls back to ``~``)
+    * macOS:   ``~/Library/Application Support/ai-campaign-studio``
+    * Linux:   ``$XDG_DATA_HOME/ai-campaign-studio`` (falls back to
+      ``~/.local/share/ai-campaign-studio``)
+    """
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        return Path(base) / "ai-campaign-studio"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "ai-campaign-studio"
+    xdg = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    return Path(xdg) / "ai-campaign-studio"
+
+
+def _load_window_state() -> dict[str, int]:
+    """Return the last-saved window size, or empty dict on miss/corrupt.
+
+    Anything outside the sane range 640..4096 is ignored — protects
+    against a corrupted file with absurd values crashing the next launch.
+    """
+    p = _user_data_dir() / _WINDOW_STATE_FILE
+    try:
+        raw = p.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
+        return {}
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    out: dict[str, int] = {}
+    for key in ("width", "height"):
+        v = data.get(key)
+        if isinstance(v, int) and not isinstance(v, bool) and 640 <= v <= 4096:
+            out[key] = v
+    return out
+
+
+def _save_window_state(width: int, height: int) -> None:
+    """Persist current window size to user data dir (best-effort).
+
+    Disk errors are swallowed — the worst case is that the next launch
+    falls back to defaults, which is a strictly better outcome than
+    refusing to start the app.
+    """
+    try:
+        d = _user_data_dir()
+        d.mkdir(parents=True, exist_ok=True)
+        (d / _WINDOW_STATE_FILE).write_text(
+            json.dumps({"width": int(width), "height": int(height)}),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def _cleanup_temp_dir(d: Path) -> None:
+    """Best-effort removal of the per-launch generated-pages dir.
+
+    Registered with :mod:`atexit` so it fires on normal interpreter
+    shutdown (i.e. when ``webview.start()`` returns because the user
+    closed the window). On hard crashes the dir leaks — that is the
+    well-known cost of ``tempfile.mkdtemp``; periodic disk cleanup
+    picks those up.
+    """
+    try:
+        shutil.rmtree(d, ignore_errors=True)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 class WebView2MissingError(RuntimeError):
@@ -82,13 +169,35 @@ def _open_window(html_path: Path, *, width: int, height: int) -> None:
     import webview  # type: ignore[import-not-found,import-untyped]  # noqa: PLC0415
 
     _probe_webview2()
-    webview.create_window(
+    window = webview.create_window(
         title="AI Campaign Studio",
         url=html_path.resolve().as_uri(),
         width=width,
         height=height,
         resizable=True,
     )
+
+    # Persist window size on every resize. We use ``resized`` rather
+    # than ``closed`` because the WinForms edgechromium backend's
+    # ``closed`` event fires *after* ``gui.get_size`` starts returning
+    # ``None`` (the GUI is being torn down), so accessing
+    # ``window.width`` / ``window.height`` from a ``closed`` handler
+    # raises ``TypeError`` before we can save. ``resized`` fires while
+    # the window is still alive, so the size is reliable. State
+    # persistence is therefore continuous — by the time the user
+    # closes the window, the last-saved size already reflects their
+    # final choice.
+    def _on_resized() -> None:
+        try:
+            _save_window_state(
+                window.width,  # type: ignore[union-attr]
+                window.height,  # type: ignore[union-attr]
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+    window.events.resized += _on_resized  # type: ignore[union-attr]
+
     # ``gui='edgechromium'`` + ``debug=False`` are mandatory per the
     # security policy. Anything else is a regression.
     webview.start(gui="edgechromium", debug=False)
@@ -110,17 +219,26 @@ def _materialise_pages(out_dir: Path) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Last-saved window size becomes the default. CLI --width/--height
+    # still override the saved value.
+    state = _load_window_state()
+    default_width = state.get("width", 1440)
+    default_height = state.get("height", 900)
+
     parser = argparse.ArgumentParser(
         prog="ai_campaign_studio.presentation_webview",
         description="AI Campaign Studio — pywebview GUI entry point (GUI-BASE).",
     )
-    parser.add_argument("--width", type=int, default=1440)
-    parser.add_argument("--height", type=int, default=900)
+    parser.add_argument("--width", type=int, default=default_width)
+    parser.add_argument("--height", type=int, default=default_height)
     args = parser.parse_args(argv)
 
-    # Per-launch working dir for generated pages. The dir lives in the
-    # system temp area; we own it for the duration of this process.
+    # Per-launch working dir for generated pages. We register a cleanup
+    # hook so the dir is removed on normal interpreter shutdown (which
+    # is what happens when the user closes the window — ``webview.start``
+    # returns and ``main`` returns).
     out_dir = Path(tempfile.mkdtemp(prefix="ai_campaign_studio_gui_"))
+    atexit.register(_cleanup_temp_dir, out_dir)
 
     try:
         html_path = _materialise_pages(out_dir)

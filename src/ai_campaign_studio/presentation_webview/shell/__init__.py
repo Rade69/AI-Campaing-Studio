@@ -129,8 +129,9 @@ def render_shell(
         "connect-src 'self'; font-src 'self'\">"
         "<link rel=\"stylesheet\" href=\"../../static/app.css\">"
         "</head><body><div class=\"app\">"
-        f"<aside class=\"sidebar\"><div class=\"brand\"><h1>AI Campaign Studio</h1>"
-        "<small>v1.0</small></div>"
+        '<aside class="sidebar"><div class="brand">'
+        '<img class="brand-logo" src="../../static/brand-logo.png" '
+        'alt="AI Campaign Studio"></div>'
         f'<nav class="nav">{nav}</nav>'
         '<div class="local"><span class="dot"></span>Lokalno</div>'
         "</aside>"
