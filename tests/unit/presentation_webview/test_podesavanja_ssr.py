@@ -16,6 +16,8 @@ import re
 from ai_campaign_studio.presentation_webview.screens.podesavanja import (
     ACTIVE_TAB_INDEX,
     DEFAULT_FIXTURE,
+    DEFAULT_LANGUAGE,
+    LANGUAGES,
     SETTINGS_TABS,
     PodesavanjaFixture,
     Provider,
@@ -77,7 +79,11 @@ def test_render_body_renders_three_settings_tabs() -> None:
         assert tab in body, f"missing settings tab: {tab!r}"
     # AI provajderi is the active tab (and only the active one).
     assert body.count("tab active") == 1
-    assert "tab active\">AI provajderi</div>" in body
+    # ACS-GUI-004: tab now carries data-tab-target
+    assert (
+        'class="tab active" data-action="tab" data-tab-target="panel-provajderi">'
+        "AI provajderi</div>" in body
+    )
 
 
 def test_render_body_renders_six_provider_rows() -> None:
@@ -119,7 +125,7 @@ def test_render_body_uses_v3_classes() -> None:
     for needle in (
         "grid",
         "card",
-        "tabs",
+        "tabs tabs-vertical",
         "tab active",
         "provider",
         "left",
@@ -128,6 +134,119 @@ def test_render_body_uses_v3_classes() -> None:
         "callout",
     ):
         assert needle in body, f"missing V3 class: {needle!r}"
+    # ACS-GUI-004: tab/panel structure markers
+    for marker in (
+        'data-tabs',
+        'data-tab-panel',
+        'id="panel-opste"',
+        'id="panel-jezik"',
+        'id="panel-provajderi"',
+    ):
+        assert marker in body, f"missing ACS-GUI-004 marker: {marker!r}"
+
+
+def test_all_three_settings_tabs_have_data_tab_target() -> None:
+    body = render_body()
+    for panel_id in ("panel-opste", "panel-jezik", "panel-provajderi"):
+        assert f'data-tab-target="{panel_id}"' in body, (
+            f"missing data-tab-target for {panel_id!r}"
+        )
+
+
+def test_only_default_active_panel_is_visible() -> None:
+    """panel-provajderi is default-active (no hidden); Opšte/Jezik start hidden."""
+    import re
+    body = render_body()
+    panel_open_re = re.compile(
+        r'<div\b[^>]*data-tab-panel[^>]*id="(panel-[a-z]+)"([^>]*)>'
+    )
+    panels = {pid: attrs for pid, attrs in panel_open_re.findall(body)}
+    assert set(panels) == {
+        "panel-opste",
+        "panel-jezik",
+        "panel-provajderi",
+    }, f"unexpected panel ids: {set(panels)}"
+    assert "hidden" not in panels["panel-provajderi"], (
+        f"panel-provajderi is default-active; attrs: {panels['panel-provajderi']!r}"
+    )
+    for pid in ("panel-opste", "panel-jezik"):
+        assert "hidden" in panels[pid], (
+            f"{pid} should start hidden; attrs: {panels[pid]!r}"
+        )
+
+
+def test_settings_tabs_use_tabs_vertical_class_not_inline_style() -> None:
+    """The old inline `style="display:block;..."` on the tabs div is gone
+    — the layout must be driven by the ``tabs-vertical`` CSS class only.
+    """
+    body = render_body()
+    # The tabs wrapper carries the class
+    assert 'class="tabs tabs-vertical"' in body
+    # No inline style on the tabs wrapper anymore
+    assert 'class="tabs" style=' not in body
+    assert 'class="tabs tabs-vertical" style=' not in body
+
+
+def test_opste_and_jezik_are_placeholder_callouts() -> None:
+    """The Opšte panel is a placeholder; the Jezik panel is a real picker."""
+    body = render_body()
+    # Opšte is still a placeholder callout
+    assert "Op\u0161te postavke aplikacije" in body
+    # The Jezik panel now contains the language picker (no longer a callout)
+    assert "Jezik sadr\u017eaja" in body
+    assert "lang-picker" in body
+
+
+def test_languages_constant_is_locked_order_sr_hr_bs_en() -> None:
+    """User-locked order (2026-09-03): Srpski, Hrvatski, Bosanski, Engleski."""
+    assert LANGUAGES == (
+        ("SR", "Srpski"),
+        ("HR", "Hrvatski"),
+        ("BS", "Bosanski"),
+        ("EN", "Engleski"),
+    )
+    assert DEFAULT_LANGUAGE == "SR"
+
+
+def test_language_picker_renders_four_buttons_in_locked_order() -> None:
+    body = render_body()
+    # 4 rows, each data-action="lang-pick" with the right code + visible name
+    for code, name in LANGUAGES:
+        marker = (
+            f'data-action="lang-pick" data-lang="{code}">'
+            f'<span class="lang-name">{name}</span>'
+        )
+        assert marker in body, f"missing lang row: {code} ({name!r})"
+    # Order check: position of each code in the body matches LANGUAGES order
+    positions = [body.index(f'data-lang="{c}"') for c, _ in LANGUAGES]
+    assert positions == sorted(positions), (
+        f"language rows not in locked order, positions: {positions}"
+    )
+
+
+def test_default_language_is_pre_marked_active() -> None:
+    body = render_body()
+    # SR is DEFAULT_LANGUAGE; its row carries lang-active class + a check mark
+    sr_idx = body.index('data-lang="SR"')
+    # Back up to the <button ...> opening tag
+    open_tag = body[:sr_idx].rsplit("<button", 1)[-1]
+    assert 'class="lang-row lang-active"' in open_tag
+    # The check mark glyph is present in the SR row
+    sr_block_end = body.index("</button>", sr_idx)
+    sr_block = body[sr_idx:sr_block_end]
+    assert "\u2713" in sr_block
+    # No other row carries lang-active or the check glyph
+    for code, _ in LANGUAGES:
+        if code == "SR":
+            continue
+        idx = body.index(f'data-lang="{code}"')
+        open_tag = body[:idx].rsplit("<button", 1)[-1]
+        assert "lang-active" not in open_tag, (
+            f"{code} should not be lang-active by default"
+        )
+        block_end = body.index("</button>", idx)
+        block = body[idx:block_end]
+        assert "\u2713" not in block, f"{code} should not have a checkmark by default"
 
 
 def test_changing_fixture_changes_rendered_body() -> None:
