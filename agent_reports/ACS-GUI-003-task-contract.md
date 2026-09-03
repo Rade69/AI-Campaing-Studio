@@ -6,7 +6,7 @@ risk: MEDIUM
 coordinator: claude
 implementer: pi
 reviewers: [claude]
-status: "OPEN — contract written before code"
+status: "DONE — merged"
 created_at: 2026-09-03
 dependencies:
   - ACS-GUI-001 (merged, main @ cad003e) — shell + Početna
@@ -310,3 +310,35 @@ Worktree: ../ai-campaign-studio-worktrees/ACS-GUI-003-campaign-workflow-screens
 Branch:   task/ACS-GUI-003-campaign-workflow-screens
 Base:     main @ c416a58
 ```
+
+# Post-hoc scope napomena (2026-09-03, koordinator dodao nakon Pi implementacije)
+
+Pi je implementirao sve 4 ekrana tačno po kontraktu (vidi `agent_reports/2026-09-03-ACS-GUI-003-pi.md`).
+Koordinator je, tokom live vizuelne provjere sa Human Owner-om, dodao četiri izmjene van/pored
+originalnog kontrakta:
+
+1. **`kalendar/__init__.py` dirano, iako je bio forbidden path.** Kod kalendara je već imao
+   docstring koji je EKSPLICITNO najavljivao da `?campaign=` banner (stepper + "Nastavi na Studio
+   sadržaja →") "lands together with that workflow in ACS-GUI-003" — kontrakt je ovo previdio i
+   pogrešno stavio `kalendar/__init__.py` u `forbidden_paths`. Koordinator je ovo prepoznao kao
+   sopstvenu grešku u pisanju kontrakta (ne kao implementer scope creep) i dodao banner: skriven
+   po defaultu (`data-campaign-only hidden`), otkriva ga POSTOJEĆI generički `?campaign=` handler
+   u `static/app.js` (nedirano). Bez ovoga, Kalendar je bio dead-end u toku (nema puta naprijed ka
+   koraku 4/5).
+2. **Jezik sadržaja (Opis kampanje) — tri iteracije prema Human Owner live feedback-u.** Kontrakt
+   nije precizirao ovo polje. Prva verzija implementera (Pi) je bila single-option `<select>` (kopija
+   mokapa) — Human Owner je uočio da nema stvarnog izbora. Koordinator prvi pokušaj: vidljiva
+   `.lang-picker` lista (5 opcija sa "neutralno" varijantom, isti stil kao Podešavanja). Human Owner
+   je tražio finalnu verziju: **pravi `<select>` dropdown**, bez "neutralno" opcije, bez "BHS" prefiksa
+   na labelama, redoslijed **SR/HR/BS/EN**. Finalna verzija implementirana i testirana.
+3. **Studio sadržaja — dodat stvaran forward link.** Mokap i originalna Pi implementacija nisu imali
+   način da se sa Studio sadržaja (korak 4) stigne do Pregled i izvoz (korak 5) — dead end, uočeno
+   od Human Owner-a ("nema mogućnosti da se izveze"). Dodat `<a class="btn primary" href="../
+   pregled_izvoz/index.html">Pregled i izvoz →</a>` u actions red; "Pošalji na reviziju" spušten
+   sa `btn primary` na `btn` (samo jedan primary CTA po redu).
+4. **Studio sadržaja — smanjena visina textarea-e** (180px → 120px) da se smanji vertikalni skrol,
+   po Human Owner feedback-u ("ima skrolove i nije skaliran").
+
+Sve izmjene nezavisno testirane (618 passed, ruff/mypy/import-boundaries čisti) i live-verifikovane
+na Human Owner-ovom ekranu prije merge-a. Podešavanja skrol (postojeći, poznat od ACS-GUI-004)
+namjerno OSTAVLJEN netaknut — eksplicitno odgođen za zaseban budući task, van scope-a ovog merge-a.
