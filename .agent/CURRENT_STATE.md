@@ -3,6 +3,19 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
+**Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **ACS-F1-016 (OpenAI adapter, HIGH) — F1
+zatvoren, čeka Codex adversarial review.** Crush dodao `"httpx>=0.27"` u `[project.optional-
+dependencies].dev` (`pyproject.toml`). Koordinator nezavisno reprodukovao Crush-ovu fresh-
+environment verifikaciju (uninstall/reinstall `httpx` preko `dev` extras) — `pip install
+-e ".[dev]"` sad sam, deterministički, povlači `httpx`. 643 passed, `ruff check .`/`mypy src`/
+`test_import_boundaries.py` (18)/`check_no_secrets.py` svi čisti. Review izvještaj ažuriran
+(`tests: REJECT`→`PASS`, `blocking_findings` prazan) u worktree-u
+(`agent_reports/2026-09-03-ACS-F1-016-review-claude.md`, necommit-ovan po ustaljenom obrascu za
+HIGH risk — pun izvještaj ostaje u worktree-u dok se ne zatvori cijeli ciklus). Brief poslat
+Codex-u: `agent_reports/2026-09-03-ACS-F1-016-brief-za-codex.md`. **Codex adversarial review i
+dalje NIJE pokrenut** — HIGH-risk politika (§3/§29) zahtijeva punu proceduru bez izuzetka; moj
+PASS_WITH_NOTES sam po sebi ne otvara put ka merge-u.
+
 **Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **ACS-GUI-003 (campaign workflow ekrani)
 merged u main** (`000c97c`, merge commit prije njega). Implementer Pi. Portovana sva 4 preostala
 `docs/gui-v3` ekrana u `presentation_webview`: Opis kampanje, Plan kampanje, Studio sadržaja
