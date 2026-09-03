@@ -3,7 +3,24 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **ACS-F1-015 (A8 dio 1 — provider config
+**Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **ACS-F1-016 (OpenAI adapter, HIGH) — Pi
+predao, Claude arhitektonski review URAĐEN, U FIX RUNDI.** `PASS_WITH_NOTES` — arhitektura jaka
+(implementer ispravio grešku iz kontrakta: `TestProviderConnection`/`DiscoverModels` primaju
+adapter kroz lokalni Protocol/DI umjesto interne konstrukcije `OpenAIAdapter`, izbjegavajući
+`application→infrastructure` kršenje koje bi moj skicirani potpis izazvao). **Jedan BLOCKING nalaz
+(F1), reprodukovan uživo**: `tests/unit/infrastructure/ai/test_openai_adapter.py` radi `import
+httpx`, ali `httpx` nigdje nije deklarisan kao zavisnost — oslanja se na tranzitivnu zavisnost
+preko `openai` paketa čiji se stvaran resolve u međuvremenu promijenio na `httpx2` (novi paket).
+Čist `pip install "openai>=1.30"` danas NE povlači `httpx` → test fajl se ne kolekcioniše →
+CI rizik. Implementer-ov "554 passed" je stvaran ali samo zato što je environment već imao
+`httpx` od ranije ("radi kod mene"). Pun review: `agent_reports/2026-09-03-ACS-F1-016-review-
+claude.md` (u worktree-u, necommit-ovano dok se ne zatvori F1). Fix brief poslat Crush-u:
+`agent_reports/2026-09-03-ACS-F1-016-fix-brief-za-crush.md` — predložen fix: dodati `httpx` u
+`pyproject.toml` dev extras, verifikovati iz GENUINELY svježeg environment-a. **Codex adversarial
+review i dalje NIJE pokrenut** — HIGH-risk politika (§3/§29) zahtijeva punu proceduru čak i nakon
+F1 fixa, moj PASS_WITH_NOTES sam po sebi ne otvara put ka merge-u.
+
+Prethodni entry (2026-09-03): **ACS-F1-015 (A8 dio 1 — provider config
 + model selection persistence) merged u main.** `ProviderConfig`/`ModelSelection` dataclass-e +
 `ProviderConfigRepositoryPort`/`ModelSelectionRepositoryPort` (`@runtime_checkable`) u
 `ports/provider_config.py` + `SqliteProviderConfigRepository`/`SqliteModelSelectionRepository`
