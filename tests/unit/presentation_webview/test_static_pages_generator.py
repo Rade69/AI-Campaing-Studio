@@ -11,10 +11,13 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 from urllib.request import url2pathname
 
 from ai_campaign_studio.presentation_webview.screens import write_all_pages
+from ai_campaign_studio.presentation_webview.screens._static_pages import (
+    WORKFLOW_ITEMS,
+)
 from ai_campaign_studio.presentation_webview.shell import SIDEBAR_ITEMS
 
 
@@ -48,7 +51,9 @@ def test_write_all_pages_relative_links_resolve_to_real_files(
             if link.startswith("#") or "://" in link:
                 continue  # in-page anchors / any future absolute URL
             resolved_uri = urljoin(base_uri, link)
-            resolved_path = Path(url2pathname(resolved_uri[len("file://") :]))
+            # A ``?campaign=...`` query param changes the page state, not the
+            # file path — resolve only the path portion against the disk.
+            resolved_path = Path(url2pathname(urlsplit(resolved_uri).path))
             assert resolved_path.is_file(), (
                 f"{key} page ({page_path}) links {link!r}, which resolves "
                 f"to {resolved_path}, but that file does not exist"
@@ -94,9 +99,15 @@ def _active_a(html: str) -> str:
     return m.group(1)
 
 
-def test_write_all_pages_creates_one_file_per_sidebar_item(tmp_path: Path) -> None:
+def test_write_all_pages_creates_one_file_per_screen(tmp_path: Path) -> None:
     pages = write_all_pages(tmp_path)
-    assert set(pages) == {key for key, *_ in SIDEBAR_ITEMS}
+    expected = {key for key, *_ in SIDEBAR_ITEMS} | {
+        key for key, _ in WORKFLOW_ITEMS
+    }
+    assert set(pages) == expected
+    assert len(pages) == 9, (
+        f"expected 9 screens (5 sidebar + 4 workflow), got {len(pages)}"
+    )
     for key, path in pages.items():
         assert path.exists(), f"{key} file missing: {path}"
         assert path.parent == tmp_path / "screens" / key
@@ -105,11 +116,13 @@ def test_write_all_pages_creates_one_file_per_sidebar_item(tmp_path: Path) -> No
 
 def test_write_all_pages_mark_correct_active_per_screen(tmp_path: Path) -> None:
     pages = write_all_pages(tmp_path)
+    workflow_keys = {key for key, _ in WORKFLOW_ITEMS}
     for key, path in pages.items():
         html = path.read_text(encoding="utf-8")
-        assert _active_a(html) == key, (
+        expected_active = "kampanje" if key in workflow_keys else key
+        assert _active_a(html) == expected_active, (
             f"active sidebar mismatch for {key!r}: page has "
-            f"{_active_a(html)!r} as active"
+            f"{_active_a(html)!r} as active, expected {expected_active!r}"
         )
 
 
@@ -193,6 +206,10 @@ def test_write_all_pages_screens_carry_real_content(tmp_path: Path) -> None:
         "kampanje": ("Kampanje", "Proljetna kolekcija"),
         "kalendar": ("Kalendar", "queue/retry"),
         "podesavanja": ("Podešavanja", "AI provajderi"),
+        "opis_kampanje": ("Opis kampanje", "Generisanje interesovanja i upita"),
+        "plan_kampanje": ("Plan kampanje", "Najčešća frustracija korisnika"),
+        "studio_sadrzaja": ("Studio sadržaja", "Uredi sadržaj"),
+        "pregled_izvoz": ("Pregled i izvoz", "Izvezi ZIP paket"),
     }
     for key, path in pages.items():
         html = path.read_text(encoding="utf-8")

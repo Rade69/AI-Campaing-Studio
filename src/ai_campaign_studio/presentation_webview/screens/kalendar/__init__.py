@@ -4,18 +4,22 @@ Visual port of ``docs/gui-v3/screens/06_kalendar/index.html`` (the
 *global* view). 28-day grid, 3 weekday headers (Pon–Ned) and 3 events
 on the same days as the V3 reference.
 
-The V3 reference carries a ``?campaign=`` query-param banner with
-"Plan kampanje" / "Studio sadržaja" affordances. That banner is
-**deliberately omitted** here: the screens it would link to are part
-of the campaign workflow (ACS-GUI-003) and do not exist in
-``presentation_webview`` yet. The banner lands together with that
-workflow in ACS-GUI-003.
+The V3 reference carries a ``?campaign=`` query-param banner (the
+workflow stepper, step 3 active, plus "← Plan kampanje" /
+"Nastavi na Studio sadržaja →" actions) that only appears when Kalendar
+is reached from inside the campaign workflow. Both blocks render with
+``data-campaign-only hidden`` -- the existing generic handler in
+``static/app.js`` (reads ``?campaign=`` from ``location.search``) un-hides
+them; nothing screen-specific was added to app.js. Landed with the rest
+of the campaign workflow, ACS-GUI-003.
 """
 
 from __future__ import annotations
 
 import html
 from dataclasses import dataclass
+
+from ...shell import stepper_html
 
 # Weekday header order locked by the V3 reference.
 WEEKDAYS: tuple[str, ...] = ("Pon", "Uto", "Sri", "Čet", "Pet", "Sub", "Ned")
@@ -92,8 +96,27 @@ def render_body(fixture: KalendarFixture | None = None) -> str:
         _day_cell(d, by_day[d]) for d in range(1, fx.total_days + 1)
     )
     heads = "".join(f'<div class="cal-head">{w}</div>' for w in WEEKDAYS)
+    # Campaign-workflow banner: hidden by default, un-hidden by the
+    # existing generic ``?campaign=`` handler in static/app.js when
+    # Kalendar is reached from Plan kampanje's "Odobri plan i nastavi →"
+    # link. ``stepper_html``'s campaign_name arg is unused for the
+    # active step (step 3 renders as a plain <div>, no href), so an
+    # empty string is safe here -- Kalendar's own fixture has no
+    # campaign_name field to pass instead.
+    campaign_stepper = (
+        f'<div data-campaign-only hidden>{stepper_html(3, "")}</div>'
+    )
+    campaign_actions = (
+        '<div class="actions" data-campaign-only hidden>'
+        '<a class="btn" href="../plan_kampanje/index.html">'
+        "← Plan kampanje</a>"
+        '<a class="btn primary" href="../studio_sadrzaja/index.html">'
+        "Nastavi na Studio sadržaja →</a>"
+        "</div>"
+    )
     return (
-        '<div class="page-head">'
+        campaign_stepper
+        + '<div class="page-head">'
         "<div>"
         "<h2>Kalendar</h2>"
         "<p>Globalni pregled planiranih objava. Ovo nije social "
@@ -110,6 +133,7 @@ def render_body(fixture: KalendarFixture | None = None) -> str:
         f'<div class="callout" style="margin-top:18px">'
         f"<b>Napomena:</b> {html.escape(fx.callout)}"
         "</div>"
+        + campaign_actions
     )
 
 

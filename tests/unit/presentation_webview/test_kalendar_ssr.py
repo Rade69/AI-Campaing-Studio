@@ -82,26 +82,24 @@ def test_render_body_uses_v3_calendar_classes() -> None:
         assert needle in body
 
 
-def test_render_body_no_campaign_banner() -> None:
-    """Contract: the ``?campaign=`` banner / stepper is **out of scope**.
-
-    Asserting absence is stronger than just not asserting presence:
-    the V3 reference used ``data-campaign-only`` and explicit
-    ``<a href>`` to ``../05_plan_kampanje/index.html`` and
-    ``../07_studio_sadrzaja/index.html``. None of that ships in
-    ACS-GUI-002.
-    """
+def test_render_body_campaign_banner_hidden_by_default() -> None:
+    """ACS-GUI-003: the workflow stepper + back/forward actions render but
+    stay ``hidden`` -- the generic ``?campaign=`` handler in app.js
+    (untouched by this task) un-hides ``[data-campaign-only]`` elements
+    when Kalendar is reached from inside the campaign workflow. Nothing
+    Kalendar-specific was added to app.js."""
     body = render_body()
-    assert "data-campaign-only" not in body
-    assert "data-campaign-hide" not in body
-    assert "data-campaign-name" not in body
-    assert "?campaign=" not in body
-    # The two screens the banner would link to:
-    assert "05_plan_kampanje" not in body
-    assert "07_studio_sadrzaja" not in body
-    # And no <a href> at all (same reason as Kampanje test).
-    hrefs = re.findall(r'<a[^>]*\bhref="([^"]+)"', body)
-    assert hrefs == [], f"unexpected <a href> in Kalendar body: {hrefs}"
+    assert body.count("data-campaign-only") == 2  # stepper wrapper + actions
+    assert '<div data-campaign-only hidden><div class="stepper">' in body
+    assert '<div class="step active"><span class="num">3</span>Kalendar</div>' in body
+    assert (
+        '<div class="actions" data-campaign-only hidden>'
+        '<a class="btn" href="../plan_kampanje/index.html">'
+        "← Plan kampanje</a>"
+        '<a class="btn primary" href="../studio_sadrzaja/index.html">'
+        "Nastavi na Studio sadržaja →</a>"
+        "</div>"
+    ) in body
 
 
 def test_render_body_danas_button_is_toast_stub() -> None:

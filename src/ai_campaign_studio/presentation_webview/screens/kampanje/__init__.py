@@ -1,11 +1,10 @@
 """Kampanje screen — fixture-driven body, slots into the shared shell.
 
 Visual port of ``docs/gui-v3/screens/03_kampanje/index.html``. Renders
-a campaigns table with the same 3 rows as the V3 reference. Every
-"Otvori" affordance and the "+ Nova kampanja" button use
-``data-action="toast"`` — the campaign workflow screens
-(Opis / Plan / Studio sadržaja / Pregled) do not exist in
-``presentation_webview`` yet and land in ACS-GUI-003.
+a campaigns table with the same 3 rows as the V3 reference. "Otvori" is
+now a real ``<a href="../opis_kampanje/index.html">`` into the campaign
+workflow (ACS-GUI-003); "+ Nova kampanja" remains a
+``data-action="toast"`` stub.
 """
 
 from __future__ import annotations
@@ -61,12 +60,15 @@ DEFAULT_FIXTURE = KampanjeFixture(
 )
 
 
-def _campaign_row(c: Campaign, open_toast: str) -> str:
+def _campaign_row(c: Campaign) -> str:
     """One ``<tr>`` for the campaigns table.
 
-    The "Otvori" cell is a ``<button data-action="toast">`` — NOT an
-    ``<a href>`` — because the campaign workflow screen it would link
-    to does not exist yet (ACS-GUI-003 scope).
+    "Otvori" is a real ``<a href>`` to the first workflow step
+    (``../opis_kampanje/index.html``). A plain static link (no
+    ``?campaign=`` query param) is deliberate for this GUI-BASE tier:
+    the Opis kampanje screen renders its own DEFAULT_FIXTURE and has no
+    handler that would read a campaign query param — parametrizing by
+    campaign id is a future bridge task.
     """
     return (
         "<tr>"
@@ -77,10 +79,9 @@ def _campaign_row(c: Campaign, open_toast: str) -> str:
         f"<td>{c.planned_count} objava</td>"
         f"<td>{html.escape(c.last_modified)}</td>"
         '<td class="right">'
-        f'<button class="btn" data-action="toast" '
-        f'data-message="{html.escape(open_toast)}">'
+        '<a class="btn" href="../opis_kampanje/index.html">'
         "Otvori"
-        "</button>"
+        "</a>"
         "</td>"
         "</tr>"
     )
@@ -89,8 +90,7 @@ def _campaign_row(c: Campaign, open_toast: str) -> str:
 def render_body(fixture: KampanjeFixture | None = None) -> str:
     """Return the Kampanje body HTML driven by the supplied fixture."""
     fx = fixture or DEFAULT_FIXTURE
-    open_toast = "Kampanja workflow ekran dolazi u ACS-GUI-003."
-    rows = "".join(_campaign_row(c, open_toast) for c in fx.campaigns)
+    rows = "".join(_campaign_row(c) for c in fx.campaigns)
     return (
         '<div class="page-head">'
         "<div>"
