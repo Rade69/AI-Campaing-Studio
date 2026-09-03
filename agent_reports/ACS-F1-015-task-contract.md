@@ -1,5 +1,5 @@
 ---
-task_id: FLOW-1002
+task_id: ACS-F1-015
 title: "Provider config + model selection persistence"
 phase: Faza-1
 risk: MEDIUM
@@ -63,8 +63,8 @@ gitnexus:
 
 **Prvi od dva taska za A8** (plan sekcija "A8 — Live AI adapters + prompt/model execution nad
 postojećim P0 registryjem"). A8 je prevelik za jedan kontrakt (6 provajdera × 4 use-case-a + retry
-policy) — podijeljen je po istom principu kao A9→(F1-010+011): **ovaj task (FLOW-1002) je čist
-persistence sloj, bez SecretStore-a, bez mrežnih poziva, MEDIUM risk. Drugi task (FLOW-1003,
+policy) — podijeljen je po istom principu kao A9→(F1-010+011): **ovaj task (ACS-F1-015) je čist
+persistence sloj, bez SecretStore-a, bez mrežnih poziva, MEDIUM risk. Drugi task (ACS-F1-016,
 BLOCKED na ovom) je OpenAI live adapter + 4 use-case-a koji stvarno dodiruju SecretStore i prave
 vanjski API poziv — HIGH risk, puni Codex+Human Owner ciklus.** Human Owner je eksplicitno
 odlučio (2026-09-03) da se A8 radi provajder-po-provajder počevši od OpenAI — Anthropic/Google/
@@ -243,12 +243,13 @@ istoj branch bez proširenja scope-a.
 
 # Coordination
 
-Blokira **FLOW-1003** (OpenAI adapter + ConfigureProvider/TestProviderConnection/DiscoverModels/
-SelectDefaultModel use-cases, HIGH). FLOW-1003 kontrakt će biti napisan/dostupan poslije ovog
-merge-a. Nezavisan od svega ostalog trenutno otvorenog.
+Blokira **ACS-F1-016** (OpenAI adapter + ConfigureProvider/TestProviderConnection/DiscoverModels/
+SelectDefaultModel use-cases, HIGH). ACS-F1-016 kontrakt je već napisan i dostupan
+(`agent_reports/ACS-F1-016-task-contract.md`), status `BLOCKED` dok ovaj task ne merguje. Nezavisan
+od svega ostalog trenutno otvorenog.
 
 ```text
-Worktree: ../ai-campaign-studio-worktrees/FLOW-1002-provider-config-persistence
-Branch:   task/FLOW-1002-provider-config-persistence
+Worktree: ../ai-campaign-studio-worktrees/ACS-F1-015-provider-config-persistence
+Branch:   task/ACS-F1-015-provider-config-persistence
 Base:     main @ 550d8b6
 ```

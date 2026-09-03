@@ -1,14 +1,14 @@
 ---
-task_id: FLOW-1003
+task_id: ACS-F1-016
 title: "OpenAI live adapter + provider setup use-cases"
 phase: Faza-1
 risk: HIGH
 coordinator: claude
 implementer: TBD (Human Owner assigns)
 reviewers: [codex, claude]
-status: "BLOCKED — čeka FLOW-1002 merge (provider config persistence prerequisite)"
+status: "BLOCKED — čeka ACS-F1-015 merge (provider config persistence prerequisite)"
 created_at: 2026-09-03
-dependencies: [FLOW-1002]
+dependencies: [ACS-F1-015]
 allowed_paths:
   - src/ai_campaign_studio/infrastructure/ai/openai_adapter.py
   - src/ai_campaign_studio/application/ai_provider/__init__.py
@@ -51,7 +51,7 @@ gitnexus:
   worktree: main (pre-branch pre-impact)
   branch: main
   head: 550d8b6
-  index_status: "fresh at contract-write time — RE-CHECK required after FLOW-1002 merges, since
+  index_status: "fresh at contract-write time — RE-CHECK required after ACS-F1-015 merges, since
     this task's base commit moves"
   targets:
     - symbol: "new infrastructure/ai/openai_adapter.py + application/ai_provider/ package"
@@ -61,8 +61,8 @@ gitnexus:
       affected_processes: []
   scope_fit: PASS
   unknowns:
-    - "FLOW-1002 nije još mergovan u trenutku pisanja ovog kontrakta — implementer MORA raditi
-      na main-u NAKON FLOW-1002 merge-a (rebase/re-branch ako je worktree kreiran ranije), ne na
+    - "ACS-F1-015 nije još mergovan u trenutku pisanja ovog kontrakta — implementer MORA raditi
+      na main-u NAKON ACS-F1-015 merge-a (rebase/re-branch ako je worktree kreiran ranije), ne na
       main @ 550d8b6 koji nema ProviderConfigRepositoryPort/ModelSelectionRepositoryPort."
     - "Tačan OpenAI API mehanizam za structured output (json_schema) zavisi od trenutne OpenAI
       API/SDK verzije u vrijeme implementacije — implementer istražuje i dokumentuje tačan poziv
@@ -72,7 +72,7 @@ gitnexus:
 
 # Kontekst
 
-**Drugi od dva taska za A8** (prvi = FLOW-1002, provider config/model selection persistence).
+**Drugi od dva taska za A8** (prvi = ACS-F1-015, provider config/model selection persistence).
 Human Owner je eksplicitno odlučio (2026-09-03) da se A8 radi provajder-po-provajder počevši od
 **OpenAI** — Anthropic/Google/DeepSeek/OpenRouter/OpenAI-compatible dolaze kao odvojeni budući
 taskovi kad se ovaj obrazac dokaže, ne odjednom.
@@ -101,7 +101,7 @@ ai_registry/ — AIProviderRegistry (implementira prva dva porta), resources/ai_
 ports/secrets.py + infrastructure/secrets/ — SecretStorePort, KeyringSecretStore/
   EnvironmentSecretStore, canonical credential name format `provider/<PROVIDER_CODE>/api_key`
   (regex `^provider/([A-Za-z0-9_]+)/api_key$`)
-FLOW-1002 — ProviderConfigRepositoryPort/ModelSelectionRepositoryPort + SQLite adapter
+ACS-F1-015 — ProviderConfigRepositoryPort/ModelSelectionRepositoryPort + SQLite adapter
 ```
 
 **`AIProviderConnectionPort` (test_connection/discover_models) SE NE IMPLEMENTIRA u ovom tasku.**
@@ -153,7 +153,7 @@ src/ai_campaign_studio/ai_registry/model_profiles.py (ModelProfile — provider_
 src/ai_campaign_studio/ai_registry/provider_models.py (AIProviderDefinition)
 src/ai_campaign_studio/ports/secrets.py (SecretStorePort — get_secret vraća None za nepostojeći,
   ne grešku)
-src/ai_campaign_studio/ports/provider_config.py (FLOW-1002 — ProviderConfig, ModelSelection,
+src/ai_campaign_studio/ports/provider_config.py (ACS-F1-015 — ProviderConfig, ModelSelection,
   ProviderConfigRepositoryPort, ModelSelectionRepositoryPort — PROČITATI NAKON tog merge-a)
 ```
 
@@ -352,13 +352,13 @@ eksplicitnog Human Owner odobrenja. Ako implementer zaključi da treba dirati `b
 
 # Coordination
 
-**BLOCKED dok FLOW-1002 ne merguje.** Nakon merge-a, implementer mora `git merge main` u svoj
+**BLOCKED dok ACS-F1-015 ne merguje.** Nakon merge-a, implementer mora `git merge main` u svoj
 worktree PRIJE početka koda, da dobije `ProviderConfigRepositoryPort`/
 `ModelSelectionRepositoryPort`. Prvi od 6 provajdera — Anthropic/Google/DeepSeek/OpenRouter/
 OpenAI-compatible dolaze kao odvojeni budući taskovi.
 
 ```text
-Worktree: ../ai-campaign-studio-worktrees/FLOW-1003-openai-adapter
-Branch:   task/FLOW-1003-openai-adapter
-Base:     main @ 550d8b6 (implementer MORA merge-ovati main nakon FLOW-1002 prije rada)
+Worktree: ../ai-campaign-studio-worktrees/ACS-F1-016-openai-adapter
+Branch:   task/ACS-F1-016-openai-adapter
+Base:     main @ 550d8b6 (implementer MORA merge-ovati main nakon ACS-F1-015 prije rada)
 ```

@@ -1340,58 +1340,55 @@ Ne mijenjati sve fajlove odjednom. Postupno:
 
 ---
 
-# 31. Task-ID šema — `FLOW-NNNN` zamjenjuje `ACS-<FAZA>-NNN` (Human Owner odluka, 2026-09-02)
+# 31. Task-ID šema — `ACS-F1-NNN` + obavezan opis (Human Owner odluka, 2026-09-01, revidirano 2026-09-03)
 
-## Zašto
+## Istorijat (za buduću sesiju da ne pomiješa dvije odluke)
 
-`ACS-F1-009→010/011` stil obilježavanja (task-ID sam po sebi ne nosi značenje, faza-skopiran
-brojač, razdvojen split notacijom) je nerazumljiv na prvi pogled — Human Owner mora otvoriti
-kontrakt/CURRENT_STATE da shvati o čemu se radi. Cilj nove šeme: **naslov nosi značenje, ID je
-samo stabilan identifikator za granu/putanju/reference — ID se NIKAD ne pominje sam bez naslova.**
+2026-09-02: Human Owner je tražio čitljiviji task-ID i kratko pokušan `FLOW-NNNN` prefiks (globalni
+brojač, zamjenjuje `ACS-P0-`/`ACS-F1-`/`ACS-GUI-`/`ACS-HOTFIX-`). Korišten za tri taska:
+`FLOW-1000` (SocialPostPayload persistence — plan-approved guard, DONE/merged) i `FLOW-1001`
+(Content revisions, DONE/merged).
 
-## Obim promjene — SAMO NAPRIJED
+**2026-09-03: Human Owner je odlučio vratiti se na `ACS-F1-NNN` prefiks** — `FLOW` je zbunjivalo
+(prekida kontinuitet sa poznatom numeracijom), ne rješava suštinski problem. **Stvaran zahtjev
+nije bio o prefiksu, nego o tome da se uz identifikator UVIJEK piše kratak opis šta task radi.**
 
-**Postojećih 14 taskova (ACS-P0-001..008, ACS-F1-001..014, ACS-GUI-001/002, ACS-HOTFIX-001) SE NE
-PREIMENUJU.** Već su DONE/merged; retroaktivno preimenovanje bi značilo diranje git branch imena,
-worktree putanja i desetina već-tačnih referenci u `agent_reports/`/`CURRENT_STATE.md` bez stvarne
-koristi — čista istorija ostaje čista. Nova šema važi za **sljedeći task pa nadalje.**
-
-## Nova šema
+## Šema (aktivna od 2026-09-03)
 
 ```text
-FLOW-NNNN — <kratak, opisan naslov>
+ACS-F1-NNN — <kratak opis šta task radi, jedna rečenica>
 ```
 
-- `FLOW` je fiksan prefiks za sve buduće taskove (zamjenjuje `ACS-P0-`/`ACS-F1-`/`ACS-GUI-`/
-  `ACS-HOTFIX-` prefikse — jedan prefiks, ne više paralelnih).
-- `NNNN` je **globalni, sekvencijalni brojač** (NE resetuje se po fazi/tipu, za razliku od stare
-  `F1-`/`GUI-`/`P0-` faza-skopirane numeracije). Počinje od **`FLOW-1000`** za prvi novi task
-  poslije ove odluke — okrugao broj, jasno odvojen od stare `ACS-*-0XX` numeracije da se dvije
-  šeme nikad ne pomiješaju slučajno.
-- **Naslov ide UZ broj svaki put kad se task pominje u prozi, commit porukama, chat odgovorima —
-  nikad goli `FLOW-1000` bez konteksta.** Fajlovi (`agent_reports/FLOW-1000-task-contract.md`,
-  branch `task/FLOW-1000-<slug>`, worktree `../ai-campaign-studio-worktrees/FLOW-1000-<slug>`)
-  i dalje koriste kratak slug za putanje (praktična nužnost), ali prozni tekst uvijek piše puni
-  oblik: "FLOW-1000 — SocialPostPayload persistence", ne samo "FLOW-1000".
-- Split-kontrakta obrazac (§6) se ne mijenja — prerequisite i glavni task i dalje dobijaju
-  odvojene, sekvencijalne `FLOW-NNNN` brojeve, svaki sa svojim jasnim naslovom, isto kao što je
-  ACS-F1-010/011 split radio pod starom šemom.
+- Prefiks: `ACS-F1-` nastavlja postojeći, faza-skopiran, sekvencijalni brojač (NE `FLOW`). Sljedeći
+  broj poslije `ACS-F1-014` je `ACS-F1-015`, itd. — `FLOW-1000`/`FLOW-1001` ostaju kako jesu (već
+  DONE/merged, ne preimenovati — vidi "Obim promjene" ispod), ali brojevi poslije njih se NE
+  nastavljaju od `FLOW-1002` — vraćamo se na `ACS-F1-015`.
+- **ID se NIKAD ne pominje sam bez kratkog opisa** — ovo je nepromijenjen dio zahtjeva iz obje
+  odluke (2026-09-02 i 2026-09-03). Primjer: "ACS-F1-015 — provider config + model selection
+  persistencija", ne samo "ACS-F1-015".
+- Ostali prefiksi (`ACS-P0-`, `ACS-GUI-`, `ACS-HOTFIX-`) ostaju za svoju kategoriju kad je
+  primjenjivo (GUI task → `ACS-GUI-`, itd.) — `ACS-F1-` je default za Faza 1 application-layer
+  taskove, što je bila i velika većina dosadašnjih.
+
+## Obim promjene — SAMO NAPRIJED, oba pravca
+
+**`FLOW-1000`/`FLOW-1001` (DONE/merged) SE NE PREIMENUJU** — isti princip kao 2026-09-02 odluka:
+retroaktivno diranje git branch imena/worktree putanja/istorije bez stvarne koristi. Ostaju trajno
+zabilježeni pod `FLOW-` imenom u `CURRENT_STATE.md`/`agent_reports/`.
+
+**`FLOW-1002`/`FLOW-1003` (kontrakti napisani 2026-09-03, NIJEDAN implementiran) SU
+PREIMENOVANI** u `ACS-F1-015`/`ACS-F1-016` istog dana — dovoljno jeftino (prazni worktree-ovi,
+implementer nije počeo) da se odmah ispravi umjesto da ostanu kao inkonzistentan izuzetak.
 
 ## Primjer
 
-Umjesto:
-
 ```text
-ACS-F1-010 (HIGH, payload persistence prerequisite)
-```
-
-piše se:
-
-```text
-FLOW-1000 — SocialPostPayload persistence (HIGH, prerequisite za FLOW-1001)
+ACS-F1-015 — Provider config + model selection persistencija (MEDIUM)
+ACS-F1-016 — OpenAI live adapter + provider setup use-case-i (HIGH, zavisi od ACS-F1-015)
 ```
 
 ## Gdje se ovo primjenjuje
 
 Task Contract `task_id` polje, worktree/branch imena, commit poruke, `CURRENT_STATE.md` tabela
-"Aktivni taskovi", chat komunikacija — svugdje gdje se identifikator pojavljuje, prati ga naslov.
+"Aktivni taskovi", chat komunikacija — svugdje gdje se identifikator pojavljuje, prati ga kratak
+opis.

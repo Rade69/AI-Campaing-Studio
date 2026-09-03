@@ -3,16 +3,24 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **A8 (live AI adapters) kreće — dva
+**Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **Task-ID šema VRAĆENA na `ACS-F1-NNN`**
+(`docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md` §31, revidirano). `FLOW-NNNN` (uveden dan ranije,
+2026-09-02) je zbunjivao — Human Owner je tražio nazad `ACS-F1-` prefiks, uz i dalje obavezan
+kratak opis uz svaki ID. `FLOW-1000`/`FLOW-1001` ostaju kako jesu (već DONE/merged, ne
+preimenovati). `FLOW-1002`/`FLOW-1003` (kontrakti napisani isti dan, ništa implementirano) su
+preimenovani u **ACS-F1-015**/**ACS-F1-016** — stari worktree-ovi/branch-evi obrisani, novi
+kreirani pod ispravnim imenima, sadržaj kontrakata ažuriran.
+
+Prethodni entry (2026-09-03): **A8 (live AI adapters) kreće — dva
 kontrakta napisana.** Human Owner odlučio (2026-09-03) da se A8 radi provajder-po-provajder,
 počevši od OpenAI — Anthropic/Google/DeepSeek/OpenRouter/OpenAI-compatible dolaze kao odvojeni
 budući taskovi. Podijeljeno na dva kontrakta (isti princip kao ACS-F1-009→010/011):
 
-- **FLOW-1002** (MEDIUM, OPEN, implementer TBD) — `ProviderConfigRepositoryPort`/
+- **ACS-F1-015** (MEDIUM, OPEN, implementer TBD) — `ProviderConfigRepositoryPort`/
   `ModelSelectionRepositoryPort` + SQLite adapter nad `provider_configs`/`model_selections`
   tabelama (postoje od P0 migracije 0000, nula koda ih do sad koristilo — potvrđeno repo-wide
   grep-om). Nema nove migracije, nema SecretStore-a, nema mrežnih poziva.
-- **FLOW-1003** (HIGH, BLOCKED na FLOW-1002, implementer TBD) — `OpenAIAdapter`
+- **ACS-F1-016** (HIGH, BLOCKED na ACS-F1-015, implementer TBD) — `OpenAIAdapter`
   (`TextGenerationPort` + VLASTITE `test_connection()`/`discover_models()` metode — namjerno NE
   implementira generički `AIProviderConnectionPort`, čiji multi-provider-dispatch potpis je
   preuranjen dok postoji samo jedan provajder) + `ConfigureProvider`/`TestProviderConnection`/
@@ -23,8 +31,8 @@ budući taskovi. Podijeljeno na dva kontrakta (isti princip kao ACS-F1-009→010
   nije obavezan dio review-a. `bootstrap.py` se NE dira (čuva postojeću "fully offline by design"
   invarijantu).
 
-Oba worktree-a kreirana. Detalji: `agent_reports/FLOW-1002-task-contract.md`,
-`agent_reports/FLOW-1003-task-contract.md`.
+Oba worktree-a kreirana. Detalji: `agent_reports/ACS-F1-015-task-contract.md`,
+`agent_reports/ACS-F1-016-task-contract.md`.
 
 Prethodni entry (2026-09-03): **FLOW-1001 — Content revisions
 (ReviseContentPiece) merged u main.** `RevisionType` (10 vrijednosti, aditivno u `domain/content/
@@ -586,8 +594,8 @@ testiran, lančano integration-testiran preko pravih SQLite baza. Nema poznatih 
 u ovom pipeline-u. **A12 plan-grupa (Claim validator + linter + revisions) je time u potpunosti
 gotova** — sekcije 35/36-37/38 sve implementirane preko tri odvojena taska.
 
-**A8 je sad AKTIVAN** (vidi entry na vrhu fajla) — **FLOW-1002 OPEN, implementer TBD** (počinje
-odmah, ništa ga ne blokira); **FLOW-1003 BLOCKED** dok FLOW-1002 ne merguje. Ostali kandidati, bez
+**A8 je sad AKTIVAN** (vidi entry na vrhu fajla) — **ACS-F1-015 OPEN, implementer TBD** (počinje
+odmah, ništa ga ne blokira); **ACS-F1-016 BLOCKED** dok ACS-F1-015 ne merguje. Ostali kandidati, bez
 kontrakta: **A13 — Visual System** (plan sekcije 39-41, `CampaignVisualSystem`/`LayoutSpec` —
 otvorilo bi i `NEW_VISUAL_DIRECTION` revision tip koji FLOW-1001 namjerno odbija), **A15+ — ZIP
 export/telemetry summary/A16 eval harness** (dalje niz plana). GUI dizajn iteracija (vidi ispod)
