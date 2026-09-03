@@ -3,6 +3,18 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
+**Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **Kanonski sidebar logo asset dodat u
+main** (`8d1cc00`). Human Owner dostavio koncept ("Koncept C — Emerald", navy+emerald mrežna
+ikonica + "AI Campaign Studio" wordmark). Koordinator izrezao caption tekst ("Koncept C —
+Emerald") iz slike (Pillow, band-detekcija redova sa "mastilom" da se nađe tačan bounding box
+logo lockup-a) i sačuvao na obje putanje koje MiniMax/Codex-ov necommit-ovani `shell/__init__.py`
+`.brand-logo` `<img>` tag i već-mergovano `.brand-logo` CSS pravilo (iz ACS-GUI-004 merge
+konflikt rezolucije) očekuju: `docs/gui-v3/shared/brand-logo.png`,
+`presentation_webview/static/brand-logo.png`. Commit-ovan SAMO asset (binary PNG), NE i
+`shell/__init__.py` wiring — to ostaje MiniMax/Codex-ov necommit-ovani kod, njihov za commit kad
+završe. Live-verifikovano od Human Owner-a (screenshot Početna ekrana, logo se ispravno renderuje
+u sidebar-u, bez caption teksta, dobra veličina/pozicija).
+
 **Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **ACS-GUI-004 (real tab-panel switching,
 Brend + Podešavanja, MEDIUM) merged u main** (`e534d0f`, merge commit `7246dd6`). Implementer Crush
 (kontrakt je originalno pisao "minimax" — koordinator uskladio polje sa stvarnim stanjem).
