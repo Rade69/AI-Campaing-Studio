@@ -29,7 +29,7 @@ from ai_campaign_studio.domain.campaign.enums import (
     CampaignStatus,
 )
 from ai_campaign_studio.domain.campaign.roles import CampaignRole
-from ai_campaign_studio.domain.common.errors import EntityNotFound
+from ai_campaign_studio.domain.common.errors import EntityNotFound, InvariantViolation
 from ai_campaign_studio.domain.common.ids import (
     BrandId,
     BrandSnapshotId,
@@ -148,9 +148,10 @@ class _FakePromptRepository:
 class _FakeAiPort:
     def __init__(self, payload: dict | None) -> None:
         self._payload = payload
+        self.calls: list[AIRequest] = []
 
     def generate(self, request: AIRequest) -> AIResponse:
-        del request
+        self.calls.append(request)
         return AIResponse(
             provider="fake",
             model="fake",
@@ -200,12 +201,14 @@ def _item() -> CampaignItem:
     )
 
 
-def _plan() -> CampaignPlan:
+def _plan(
+    status: CampaignPlanStatus = CampaignPlanStatus.APPROVED,
+) -> CampaignPlan:
     return CampaignPlan(
         id=CampaignPlanId("plan-1"),
         campaign_id=CampaignId("campaign-1"),
         version=1,
-        status=CampaignPlanStatus.DRAFT,
+        status=status,
         created_at=_CREATED_AT,
         items=[_item()],
     )
@@ -244,14 +247,14 @@ def _valid_output() -> dict:
     }
 
 
-def _make_use_case(ai_payload: dict | None, content_repo=None):
+def _make_use_case(ai_payload: dict | None, content_repo=None, plan=None, ai_port=None):
     return GenerateSocialPost(
-        _FakeCampaignRepository(_campaign(), _plan()),
+        _FakeCampaignRepository(_campaign(), plan if plan is not None else _plan()),
         _FakeBrandRepository(_snapshot()),
         _FakeFactRepository((_fact(),)),
         content_repo if content_repo is not None else _FakeContentRepository(),
         _FakePromptRepository(),
-        _FakeAiPort(ai_payload),
+        ai_port if ai_port is not None else _FakeAiPort(ai_payload),
         _FakeUnitOfWork(),
     )
 
@@ -272,6 +275,44 @@ def test_happy_path_generates_and_persists() -> None:
     assert piece.payload.headline == "H"
     assert len(piece.claims) == 2
     assert content_repo.saved == [piece]
+
+
+def test_draft_plan_rejected_before_ai_call() -> None:
+    ai_port = _FakeAiPort(_valid_output())
+    use_case = _make_use_case(
+        _valid_output(),
+        plan=_plan(CampaignPlanStatus.DRAFT),
+        ai_port=ai_port,
+    )
+
+    with pytest.raises(InvariantViolation):
+        use_case.execute(
+            CampaignId("campaign-1"),
+            CampaignPlanId("plan-1"),
+            CampaignItemId("item-1"),
+            _target(),
+        )
+
+    assert ai_port.calls == []
+
+
+def test_superseded_plan_rejected_before_ai_call() -> None:
+    ai_port = _FakeAiPort(_valid_output())
+    use_case = _make_use_case(
+        _valid_output(),
+        plan=_plan(CampaignPlanStatus.SUPERSEDED),
+        ai_port=ai_port,
+    )
+
+    with pytest.raises(InvariantViolation):
+        use_case.execute(
+            CampaignId("campaign-1"),
+            CampaignPlanId("plan-1"),
+            CampaignItemId("item-1"),
+            _target(),
+        )
+
+    assert ai_port.calls == []
 
 
 def test_prohibited_claim_yields_needs_review() -> None:
