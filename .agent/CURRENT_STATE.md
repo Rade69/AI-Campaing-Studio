@@ -3,6 +3,23 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
+**Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **Preostali necommit-ovani GUI rad
+(window-state persistencija, logo wiring, mokap sync) merged u main** (`3eb4636`). Human Owner
+potvrdio da niko trenutno aktivno ne radi na tim fajlovima (bio parkiran/napušten rad, ne
+work-in-progress) — koordinator preuzeo, nezavisno pregledao i verifikovao prije commit-a (nije
+imao implementer evidence izvještaj, jer je rad rađen van formalnog task-sistema). Sadržaj:
+`__main__.py` pamti veličinu prozora između pokretanja (per-user data dir, JSON, brani se od
+korumpiranog fajla/out-of-range vrijednosti/bool-kao-int trika) + atexit cleanup per-launch temp
+foldera; `shell/__init__.py`/`_static_pages.py` sidebar sad renderuje kanonski `brand-logo.png`
+umjesto `<h1>` teksta, PNG se kopira u svaki generisani `target_dir`; `docs/gui-v3/*` mokapi
+resinhronizovani sa production stanjem (logo + ACS-GUI-004 tab/lang-picker CSS/JS). Dodat i
+`run_ai_campaign_studio.bat` (dupli-klik launcher). Obrisan `test_window_close.py` (root-level
+ručni debug skript sa hardkodovanom apsolutnom putanjom, nije pytest test, nije trebao u repo-u).
+Nezavisna verifikacija: 553 passed, `ruff check src tests scripts`/`mypy src`/
+`test_import_boundaries.py` čisti; whole-repo `ruff check .` (koji je prije ovog commit-a padao
+baš zbog `test_window_close.py`) sad takođe čist nakon brisanja tog fajla. MEDIUM risk, isti
+razred kao ACS-GUI-001/002/004 — Claude-only review, merge po §29.
+
 **Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **Kanonski sidebar logo asset dodat u
 main** (`8d1cc00`). Human Owner dostavio koncept ("Koncept C — Emerald", navy+emerald mrežna
 ikonica + "AI Campaign Studio" wordmark). Koordinator izrezao caption tekst ("Koncept C —
