@@ -4,9 +4,9 @@ title: "OpenAI live adapter + provider setup use-cases"
 phase: Faza-1
 risk: HIGH
 coordinator: claude
-implementer: TBD (Human Owner assigns)
+implementer: crush
 reviewers: [codex, claude]
-status: "BLOCKED — čeka ACS-F1-015 merge (provider config persistence prerequisite)"
+status: "OPEN — ACS-F1-015 merged 2026-09-03, no longer blocked"
 created_at: 2026-09-03
 dependencies: [ACS-F1-015]
 allowed_paths:
@@ -50,9 +50,12 @@ gitnexus:
   repository: "H:\\AI Campaing Studio"
   worktree: main (pre-branch pre-impact)
   branch: main
-  head: 550d8b6
-  index_status: "fresh at contract-write time — RE-CHECK required after ACS-F1-015 merges, since
-    this task's base commit moves"
+  head: b666432
+  index_status: "RE-CHECKED 2026-09-03 post ACS-F1-015 merge — TextGenerationPort upstream impact
+    re-run: 5 importers, all pre-existing (mock_adapter.py, generate_social_post.py,
+    generate_campaign_plan.py, revise_content_piece.py — all consume the Protocol via dependency
+    injection). Adding a new OpenAIAdapter class does not change the Protocol itself; none of
+    these are affected. Confirms original NONE/LOW assessment."
   targets:
     - symbol: "new infrastructure/ai/openai_adapter.py + application/ai_provider/ package"
       upstream_risk: NONE
