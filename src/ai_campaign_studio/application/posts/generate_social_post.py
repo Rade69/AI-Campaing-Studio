@@ -28,6 +28,7 @@ from ai_campaign_studio.application.schemas.social_post_generation_output import
 )
 from ai_campaign_studio.domain.brand.entities import BrandSnapshot
 from ai_campaign_studio.domain.campaign.entities import CampaignItem
+from ai_campaign_studio.domain.campaign.enums import CampaignPlanStatus
 from ai_campaign_studio.domain.common.errors import EntityNotFound, InvariantViolation
 from ai_campaign_studio.domain.common.ids import (
     CampaignId,
@@ -110,6 +111,12 @@ class GenerateSocialPost:
         plan = self._campaign_repo.get_plan(plan_id)
         if plan is None:
             raise EntityNotFound(f"campaign plan {plan_id} not found")
+
+        if plan.status is not CampaignPlanStatus.APPROVED:
+            raise InvariantViolation(
+                f"campaign plan {plan_id} is {plan.status.value}; only an "
+                "APPROVED plan can be used to generate posts"
+            )
 
         campaign_item = next(
             (item for item in plan.items if item.id == campaign_item_id), None

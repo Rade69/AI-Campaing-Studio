@@ -21,6 +21,7 @@ from ai_campaign_studio.domain.campaign.enums import (
     CampaignPlanStatus,
 )
 from ai_campaign_studio.domain.campaign.roles import CampaignRole
+from ai_campaign_studio.domain.common.errors import InvariantViolation
 from ai_campaign_studio.domain.common.ids import CampaignItemId, CampaignPlanId
 from ai_campaign_studio.domain.content.entities import CampaignTarget
 from ai_campaign_studio.domain.content.enums import ContentStatus
@@ -151,7 +152,7 @@ def test_end_to_end_fixture_to_post(tmp_path: Path) -> None:
         id=CampaignPlanId("plan-1"),
         campaign_id=campaign.id,
         version=1,
-        status=CampaignPlanStatus.DRAFT,
+        status=CampaignPlanStatus.APPROVED,
         created_at=datetime.now(UTC),
         items=[item],
     )
@@ -204,7 +205,7 @@ def test_generate_post_is_atomic_on_failure(tmp_path: Path) -> None:
         id=CampaignPlanId("plan-1"),
         campaign_id=campaign.id,
         version=1,
-        status=CampaignPlanStatus.DRAFT,
+        status=CampaignPlanStatus.APPROVED,
         created_at=datetime.now(UTC),
         items=[item],
     )
@@ -224,6 +225,53 @@ def test_generate_post_is_atomic_on_failure(tmp_path: Path) -> None:
     )
 
     with pytest.raises(RuntimeError):
+        generate.execute(
+            campaign.id,
+            plan.id,
+            item.id,
+            CampaignTarget(
+                channel="SOCIAL", platform_code="INSTAGRAM", format_code="FEED_POST"
+            ),
+        )
+
+    assert connection.execute("SELECT COUNT(*) FROM content_pieces").fetchone()[0] == 0
+    connection.close()
+
+
+def test_draft_plan_rejected_before_generation(tmp_path: Path) -> None:
+    connection = _setup_db(tmp_path)
+    brand_repo = SqliteBrandRepository(connection)
+    fact_repo = SqliteFactRepository(connection)
+    campaign_repo = SqliteCampaignRepository(connection)
+    content_repo = SqliteContentRepository(connection)
+    uow = SqliteUnitOfWork(connection)
+
+    snapshot = LoadBrandFixture(brand_repo, fact_repo, uow).execute(_FIXTURE_PATH)
+    campaign = CreateCampaign(campaign_repo, uow).execute(
+        snapshot.brand_id, snapshot.id, _valid_brief()
+    )
+    item = _item()
+    plan = CampaignPlan(
+        id=CampaignPlanId("plan-1"),
+        campaign_id=campaign.id,
+        version=1,
+        status=CampaignPlanStatus.DRAFT,
+        created_at=datetime.now(UTC),
+        items=[item],
+    )
+    campaign_repo.save_plan(plan)
+
+    generate = GenerateSocialPost(
+        campaign_repo,
+        brand_repo,
+        fact_repo,
+        content_repo,
+        _FakePromptRepository(),
+        _FakeAiPort(_post_payload("unused")),
+        uow,
+    )
+
+    with pytest.raises(InvariantViolation):
         generate.execute(
             campaign.id,
             plan.id,
