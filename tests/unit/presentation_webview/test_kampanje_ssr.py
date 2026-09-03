@@ -1,13 +1,10 @@
 """Tests for the Kampanje screen body renderer.
 
-Acceptance for ACS-GUI-002: the campaigns table mirrors the V3
-reference (3 rows, same names, same status variants, same planned
-counts). Critically — *every* navigation away from this screen lands
-on a screen that does not exist yet (Opis / Plan / Studio sadržaja /
-Pregled). The "Otvori" affordance and the "+ Nova kampanja" button
-must therefore be ``data-action="toast"`` stubs, NOT ``<a href>``
-links. A real ``<a href>`` would render as a 404 / dead link in the
-pywebview window.
+Acceptance for ACS-GUI-002 + ACS-GUI-003: the campaigns table mirrors
+the V3 reference (3 rows, same names, same status variants, same planned
+counts). As of ACS-GUI-003, "Otvori" is a real ``<a href>`` into the
+first campaign-workflow step (``../opis_kampanje/index.html``); only
+"+ Nova kampanja" remains a ``data-action="toast"`` stub.
 """
 
 from __future__ import annotations
@@ -83,35 +80,29 @@ def test_render_body_uses_v3_table_classes() -> None:
         assert needle in body, f"missing V3 class/markup: {needle!r}"
 
 
-def test_render_body_no_anchor_href_to_nonexistent_screens() -> None:
-    """Contract: no ``<a href>`` to the 4 not-yet-built campaign workflow screens.
+def test_render_body_otvori_links_to_opis_kampanje() -> None:
+    """ACS-GUI-003: "Otvori" is a real link to the first workflow step.
 
-    The V3 reference had ``<a href="../04_opis_kampanje/index.html">``
-    on the first row. In this task that link becomes a
-    ``data-action="toast"`` stub on a ``<button>`` — never an
-    ``<a href>`` to a page that does not exist in
-    ``presentation_webview`` yet.
+    Only ``../opis_kampanje/index.html`` (which now exists as a generated
+    screen) — no dead hrefs to any other path.
     """
     body = render_body()
-    # No anchors with hrefs at all — every navigation away from this
-    # page is a toast stub.
     hrefs = re.findall(r'<a[^>]*\bhref="([^"]+)"', body)
-    assert hrefs == [], (
-        f"unexpected <a href> in Kampanje body (would 404 in pywebview): {hrefs}"
+    assert hrefs == ["../opis_kampanje/index.html"] * 3, (
+        f"unexpected hrefs in Kampanje body: {hrefs}"
     )
 
 
-def test_render_body_otvori_buttons_use_toast_stub() -> None:
+def test_render_body_otvori_is_anchor_link() -> None:
     body = render_body()
     # The page renders one "Otvori" per campaign row.
     assert body.count(">Otvori<") == 3
-    # Each "Otvori" lives inside a button[data-action="toast"].
-    open_buttons = re.findall(
-        r'<button class="btn" data-action="toast"[^>]*>Otvori</button>',
+    open_links = re.findall(
+        r'<a class="btn" href="../opis_kampanje/index.html">Otvori</a>',
         body,
     )
-    assert len(open_buttons) == 3, (
-        f"expected 3 toast-stub Otvori buttons, got {len(open_buttons)}"
+    assert len(open_links) == 3, (
+        f"expected 3 Otvori anchor links, got {len(open_links)}"
     )
 
 

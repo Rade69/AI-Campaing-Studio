@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import html
 from dataclasses import dataclass
+from urllib.parse import quote
 
 _ICON_POCETNA = "M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"
 _ICON_BREND = "M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 5.5v15"
@@ -101,6 +102,52 @@ def _crumbs_html(crumbs: list[Breadcrumb]) -> str:
             )
         else:
             parts.append(f"<b>{html.escape(c.label)}</b>")
+    return "".join(parts)
+
+
+def stepper_html(active_step: int, campaign_name: str) -> str:
+    """Render the 5-step campaign workflow stepper.
+
+    Steps before ``active_step`` are ``<a class="step done">`` links,
+    the active step is a ``<div class="step active">`` (no link), and
+    upcoming steps are plain ``<div class="step">``. Step 3 (Kalendar)
+    always links to ``../kalendar/index.html?campaign=<url-encoded>``
+    because the Kalendar screen exists as its own sidebar page — it is
+    never the ``active`` step, but can be a ``done`` link from steps
+    4/5. All five screens live side-by-side under ``screens/``, so the
+    relative links are ``../<key>/index.html`` from every workflow page.
+    """
+    steps: tuple[tuple[int, str, str], ...] = (
+        (1, "Opis kampanje", "../opis_kampanje/index.html"),
+        (2, "Plan kampanje", "../plan_kampanje/index.html"),
+        (
+            3,
+            "Kalendar",
+            f"../kalendar/index.html?campaign={quote(campaign_name)}",
+        ),
+        (4, "Studio sadržaja", "../studio_sadrzaja/index.html"),
+        (5, "Pregled i izvoz", "../pregled_izvoz/index.html"),
+    )
+    parts: list[str] = ['<div class="stepper">']
+    for idx, (num, label, href) in enumerate(steps):
+        if idx:
+            parts.append('<div class="sep"></div>')
+        if num < active_step:
+            parts.append(
+                f'<a class="step done" href="{html.escape(href)}">'
+                f'<span class="num">{num}</span>{html.escape(label)}</a>'
+            )
+        elif num == active_step:
+            parts.append(
+                f'<div class="step active">'
+                f'<span class="num">{num}</span>{html.escape(label)}</div>'
+            )
+        else:
+            parts.append(
+                f'<div class="step">'
+                f'<span class="num">{num}</span>{html.escape(label)}</div>'
+            )
+    parts.append("</div>")
     return "".join(parts)
 
 
