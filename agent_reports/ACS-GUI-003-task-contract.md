@@ -4,7 +4,7 @@ phase: Faza-1 (post G9, post ACS-GUI-004)
 title: "GUI-BASE: campaign workflow ekrani (Opis / Plan / Studio sadržaja / Pregled i izvoz) iz docs/gui-v3 u presentation_webview"
 risk: MEDIUM
 coordinator: claude
-implementer: TBD
+implementer: pi
 reviewers: [claude]
 status: "OPEN — contract written before code"
 created_at: 2026-09-03
