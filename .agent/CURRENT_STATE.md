@@ -3,7 +3,30 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **FLOW-1001 — Content revisions
+**Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **A8 (live AI adapters) kreće — dva
+kontrakta napisana.** Human Owner odlučio (2026-09-03) da se A8 radi provajder-po-provajder,
+počevši od OpenAI — Anthropic/Google/DeepSeek/OpenRouter/OpenAI-compatible dolaze kao odvojeni
+budući taskovi. Podijeljeno na dva kontrakta (isti princip kao ACS-F1-009→010/011):
+
+- **FLOW-1002** (MEDIUM, OPEN, implementer TBD) — `ProviderConfigRepositoryPort`/
+  `ModelSelectionRepositoryPort` + SQLite adapter nad `provider_configs`/`model_selections`
+  tabelama (postoje od P0 migracije 0000, nula koda ih do sad koristilo — potvrđeno repo-wide
+  grep-om). Nema nove migracije, nema SecretStore-a, nema mrežnih poziva.
+- **FLOW-1003** (HIGH, BLOCKED na FLOW-1002, implementer TBD) — `OpenAIAdapter`
+  (`TextGenerationPort` + VLASTITE `test_connection()`/`discover_models()` metode — namjerno NE
+  implementira generički `AIProviderConnectionPort`, čiji multi-provider-dispatch potpis je
+  preuranjen dok postoji samo jedan provajder) + `ConfigureProvider`/`TestProviderConnection`/
+  `DiscoverModels`/`SelectDefaultModel` use-case-i. Prvi task koji dodiruje `SecretStorePort` i
+  pravi stvaran vanjski API poziv → puni Codex+Claude+Human Owner ciklus. **Human Owner odluka:
+  cijeli automatski test suite mora proći BEZ pravog API ključa** (mock-ovan HTTP/SDK transport u
+  potpunosti) — implementer smije ručno probati sa pravim ključem kao DODATNU evidenciju, ali to
+  nije obavezan dio review-a. `bootstrap.py` se NE dira (čuva postojeću "fully offline by design"
+  invarijantu).
+
+Oba worktree-a kreirana. Detalji: `agent_reports/FLOW-1002-task-contract.md`,
+`agent_reports/FLOW-1003-task-contract.md`.
+
+Prethodni entry (2026-09-03): **FLOW-1001 — Content revisions
 (ReviseContentPiece) merged u main.** `RevisionType` (10 vrijednosti, aditivno u `domain/content/
 revisions.py`) + `ReviseContentPiece`: učitava post → odbija `NEW_VISUAL_DIRECTION`/post bez
 payload-a odmah → AI poziv sa eksplicitnom "immutable fields" listom → `RevisionOutput.
@@ -563,18 +586,16 @@ testiran, lančano integration-testiran preko pravih SQLite baza. Nema poznatih 
 u ovom pipeline-u. **A12 plan-grupa (Claim validator + linter + revisions) je time u potpunosti
 gotova** — sekcije 35/36-37/38 sve implementirane preko tri odvojena taska.
 
-Nijedan kontrakt trenutno OPEN. Kandidati za sljedeći **`FLOW-NNNN`** task (broj nastavlja od
-`FLOW-1002`): **A8 — live provider adapter** (i dalje odgođen po Human Owner odluci, 2026-09-02
-— sad je jedini preostali veći application-layer komad iz plana prije nego što pipeline prestane
-raditi isključivo nad mock adapterom), **A13 — Visual System** (plan sekcije 39-41,
-`CampaignVisualSystem`/`LayoutSpec` — otvorilo bi i `NEW_VISUAL_DIRECTION` revision tip koji
-FLOW-1001 namjerno odbija), **A15+ — ZIP export/telemetry summary/A16 eval harness** (dalje niz
-plana). GUI dizajn iteracija (vidi ispod) je paralelan, nezavisan trak — čeka MiniMax-ov trenutni
-popravak (u toku, dira `shared/`, `screens/_static_pages.py`, `shell/__init__.py`, `static/`,
-novi `brand-logo.png` asset, Codex-ove scratch probe skripte u root-u — koordinator i dalje ne
-dira ništa od toga dok se ne javi da je gotovo). **ACS-GUI-003** (campaign workflow ekrani) sad
-ima kompletan application-layer pipeline da ga stvarno poziva — realan kandidat čim GUI dizajn
-iteracija završi.
+**A8 je sad AKTIVAN** (vidi entry na vrhu fajla) — **FLOW-1002 OPEN, implementer TBD** (počinje
+odmah, ništa ga ne blokira); **FLOW-1003 BLOCKED** dok FLOW-1002 ne merguje. Ostali kandidati, bez
+kontrakta: **A13 — Visual System** (plan sekcije 39-41, `CampaignVisualSystem`/`LayoutSpec` —
+otvorilo bi i `NEW_VISUAL_DIRECTION` revision tip koji FLOW-1001 namjerno odbija), **A15+ — ZIP
+export/telemetry summary/A16 eval harness** (dalje niz plana). GUI dizajn iteracija (vidi ispod)
+je paralelan, nezavisan trak — čeka MiniMax-ov trenutni popravak (u toku, dira `shared/`,
+`screens/_static_pages.py`, `shell/__init__.py`, `static/`, novi `brand-logo.png` asset, Codex-ove
+scratch probe skripte u root-u — koordinator i dalje ne dira ništa od toga dok se ne javi da je
+gotovo). **ACS-GUI-003** (campaign workflow ekrani) sad ima kompletan application-layer pipeline
+da ga stvarno poziva — realan kandidat čim GUI dizajn iteracija završi.
 
 ## GUI dizajn — otvoreno pitanje (Human Owner feedback, 2026-09-02)
 
