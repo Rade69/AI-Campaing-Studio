@@ -3,8 +3,20 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **ACS-F1-016 (OpenAI adapter, HIGH) —
-BF-1/BF-2 popravljeni i nezavisno potvrđeni, čeka Codex re-review.** Crush popravio oba nalaza iz
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-016 (OpenAI adapter, HIGH) —
+OBA review-a PASS (Claude + Codex, dvije runde svaki), čeka SAMO Human Owner eksplicitno
+odobrenje.** Codex re-review: `PASS_WITH_NOTES`
+(`agent_reports/2026-09-04-ACS-F1-016-review-codex-rereview.md`) — BF-1/BF-2 nezavisno
+reprodukovani kao zatvoreni vlastitom repro probom (`finish_reason='stop'`,
+`noauth_rejected=InvariantViolation` sa praznim secret_store/config_repo). Jedina napomena (full
+pytest 1 failure) je poznat phase0 gate-report Windows sandbox/permission problem, ne F1-016 kod
+defekt. Claude review ažuriran na finalni `PASS`
+(`agent_reports/2026-09-03-ACS-F1-016-review-claude.md`, u worktree-u). Ovo je posljednji korak
+prije merge-a — HIGH risk politika (§3/§29) zahtijeva eksplicitno "odobravam" bez izuzetka, čak i
+kad su oba review-a čista.
+
+Prethodni entry (2026-09-03): **ACS-F1-016 — BF-1/BF-2 popravljeni i nezavisno potvrđeni, čeka
+Codex re-review.** Crush popravio oba nalaza iz
 Codex REJECT-a: `openai_adapter.py` sad čita `finish_reason=getattr(choice, "finish_reason",
 None)` (bilo sa `message`), `configure_provider.py` dobio `if not provider.requires_api_key: raise
 InvariantViolation(...)` guard prije `set_secret`/`save_provider_config`. Oba regresiona testa
