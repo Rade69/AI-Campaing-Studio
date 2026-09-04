@@ -3,7 +3,20 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **A8 status: ACS-F1-017 REJECT (R2-BF-1),
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-019 (Google/Gemini adapter, A8
+dio 5) merged u main** (`be8964e`). Human Owner odobrio nakon oba review-a (Claude+Codex, oba
+PASS) i pune live end-to-end validacije protiv pravog Gemini API-ja (plan tačno 3 stavke od prvog
+poziva, claim linter uhvatio i blokirao neutemeljenu FACT tvrdnju u PROOF stavci — ista garancija
+kao kod OpenAI/DeepSeek, potvrđeno provider-agnostic). Nezavisna post-merge verifikacija: 654
+passed, `ruff check src tests scripts`/`mypy src`/`test_import_boundaries.py`(18)/
+`check_no_secrets.py` svi čisti (whole-repo `ruff check .` i dalje pada zbog Codex-ovih scratch
+fajlova u root-u, nepovezano). Worktree uklonjen.
+
+**A8 status nakon ovog merge-a**: ACS-F1-016 (OpenAI) i ACS-F1-019 (Google) merged. ACS-F1-017
+(DeepSeek/OpenRouter/OpenAI-kompatibilan, Pi) čeka finalni Codex re-review (R2-BF-1 fix poslat).
+ACS-F1-018 (Anthropic, MiniMax) čeka Codex adversarial review (prvi put).
+
+Prethodni entry (2026-09-04): **A8 status: ACS-F1-017 REJECT (R2-BF-1),
 ACS-F1-018 poslat Codex-u, ACS-F1-019 čeka Human Owner odobrenje.**
 
 - **ACS-F1-017 (DeepSeek/OpenRouter/OpenAI-kompatibilan, Pi)**: Codex re-review nakon BF-1 fixa —
