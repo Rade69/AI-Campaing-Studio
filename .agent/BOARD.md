@@ -10,7 +10,7 @@ ili task merguje. Kad task merguje, briše se iz ove tabele (ne ostaje
 
 | Task | Implementer | Status | Šta radi |
 |---|---|---|---|
-| ACS-F1-020 (BF-2) | Pi | Čeka evidence | Glued number+unit u claim_linter-u ("30KM", "3dana") dobija generički umjesto specifičnog reason_code |
-| ACS-F1-025 (BF-1) | Crush | Fix runda u toku | Jaccard sličnost — interpunkcija zalijepljena za riječi vještački snižavala skor, poslat fix brief |
+| ACS-F1-020 (BF-2) | Pi | **Brief NIJE stigao do Pi-ja** — treba ručno proslijediti [agent_reports/2026-09-04-ACS-F1-020-fix-brief-2-za-pi.md](../agent_reports/2026-09-04-ACS-F1-020-fix-brief-2-za-pi.md) | Glued number+unit u claim_linter-u ("30KM", "3dana") dobija generički umjesto specifičnog reason_code |
+| ACS-F1-025 (BF-1) | Crush | Fix još nije primijenjen (provjereno u kodu) | Jaccard sličnost — interpunkcija zalijepljena za riječi vještački snižavala skor |
 
 Kad je tabela prazna: "Nema aktivnih taskova trenutno."
