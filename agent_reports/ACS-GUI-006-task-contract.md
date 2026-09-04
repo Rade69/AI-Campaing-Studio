@@ -4,9 +4,9 @@ phase: Faza-1 (post ACS-GUI-005)
 title: "Bridge: kompenzaciono brisanje orphan DRAFT kampanje kad GenerateCampaignPlan padne"
 risk: MEDIUM
 coordinator: claude
-implementer: TBD (queued — dodijeliti kad se Pi/MiniMax/Crush oslobodi)
+implementer: minimax
 reviewers: [claude]
-status: "QUEUED — contract written, not yet dispatched (allowed_paths dijeli fajl sa ACS-F1-024, sekvencirati poslije njega)"
+status: "OPEN — dispatched 2026-09-04, ACS-F1-024 merged (main @ 4cbb67d), sequencing dependency satisfied"
 created_at: 2026-09-04
 dependencies:
   - ACS-F1-024 (mora merge-ovati prije ovog — isti bridge fajl, izbjeći
@@ -185,5 +185,5 @@ merge-a (ne na `e1177cc`, taj head će biti zastario do tada — koordinator
 ```text
 Worktree: ../ai-campaign-studio-worktrees/ACS-GUI-006-orphan-campaign-cleanup
 Branch:   task/ACS-GUI-006-orphan-campaign-cleanup
-Base:     TBD (main nakon ACS-F1-024 merge-a)
+Base:     main @ 4cbb67d
 ```
