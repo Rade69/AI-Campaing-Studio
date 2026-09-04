@@ -58,6 +58,27 @@ def load_claim_rules(path: Path) -> ClaimRules:
     )
 
 
+def _contains_word(text_folded: str, term: str) -> bool:
+    """Match a term either as a whole word or as a literal substring.
+
+    Terms whose both edges are word characters (``"jedini"``, ``"dan"``,
+    ``"BAM"``, multi-word ``"bez rizika"``) use ``\b`` word boundaries so a
+    term does not match inside a longer word (``"jedinice"`` must not trigger
+    ``"jedini"``). Terms that start or end with a non-word character (``"€"``,
+    ``"100%"``) fall back to a plain substring match: ``\b`` cannot anchor
+    around a non-word character, and a symbol/percent sign cannot be "inside"
+    a larger alphanumeric word, so plain substring is safe there.
+    ``re.escape`` keeps multi-word terms and terms with regex-special
+    characters working as literals.
+    """
+    folded_term = term.casefold()
+    starts_word = re.match(r"\w", folded_term) is not None
+    ends_word = re.search(r"\w$", folded_term) is not None
+    if starts_word and ends_word:
+        return re.search(rf"\b{re.escape(folded_term)}\b", text_folded) is not None
+    return folded_term in text_folded
+
+
 def lint_claim(claim: ContentClaim, rules: ClaimRules) -> ContentClaim:
     """Apply linter rules to one claim, possibly escalating its status.
 
@@ -69,7 +90,7 @@ def lint_claim(claim: ContentClaim, rules: ClaimRules) -> ContentClaim:
     text_folded = claim.text.casefold()
 
     for term in rules.prohibited_terms:
-        if term.casefold() in text_folded:
+        if _contains_word(text_folded, term):
             return replace(
                 claim,
                 status=ClaimStatus.PROHIBITED,
@@ -98,14 +119,14 @@ def _numeric_reason_code(text_folded: str, rules: ClaimRules) -> str | None:
     has_digit = re.search(r"\d", text_folded) is not None
 
     for symbol in rules.currency_symbols:
-        if symbol.casefold() in text_folded and has_digit:
+        if _contains_word(text_folded, symbol) and has_digit:
             return "unsupported-price"
 
     if re.search(r"\d+\s*%", text_folded):
         return "unsupported-percent"
 
     for unit in _DURATION_UNITS:
-        if unit in text_folded and has_digit:
+        if _contains_word(text_folded, unit) and has_digit:
             return "unsupported-duration"
 
     if re.search(r"\d{1,2}\.\d{1,2}\.\d{2,4}", text_folded):
