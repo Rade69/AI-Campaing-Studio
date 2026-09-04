@@ -3,6 +3,20 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-019 (Google, Crush) — oba
+review-a PASS, live-verifikovano protiv pravog Gemini API-ja, spremno za Human Owner odobrenje.**
+Codex adversarial review: `PASS_WITH_NOTES` (jedan non-blocking nalaz — adapter ne validira
+lokalno protiv `json_schema`, ali application sloj to već radi kroz Pydantic, isti obrazac kao
+OpenAI). Koordinator zatim pokrenuo pun end-to-end tok protiv PRAVOG Gemini API-ja (Human Owner-ov
+ključ, BrightSmile Dental fixture) — nijedan bug, plan tačno 3 stavke od prvog poziva (server-side
+`response_json_schema` enforcement radi besprijekorno, bez DeepSeek-ovog "exact count" problema).
+PROOF stavka (najkritičniji test) — Gemini generisao 3 uvjerljive ali neutemeljene FACT tvrdnje,
+claim linter sve uhvatio i post vratio u `NEEDS_REVIEW` — ista sigurnosna garancija kao kod
+DeepSeek-a, potvrđeno provider-agnostic. Nema zabranjenih termina. Review upgrade-ovan na finalni
+`PASS`: `H:\ai-campaign-studio-worktrees\ACS-F1-019-google-adapter\agent_reports\2026-09-04-ACS-F1-019-review-claude.md`.
+**Ovo je prvi task gdje su OBA review-a (Claude+Codex) gotova I live-verifikovana prije Human
+Owner odobrenja.**
+
 **Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-017 BF-1 fix potvrđen i
 LIVE-verifikovan, čeka Codex.** Pi dodao `structured_output_mode` parametar na `OpenAIAdapter`
 (`json_schema` default netaknut, `json_object` za DeepSeek — schema + exact-count instrukcija iz
