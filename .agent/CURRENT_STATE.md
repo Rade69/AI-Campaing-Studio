@@ -3,7 +3,21 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **Human Owner uradio ručnu end-to-end
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-018 (Anthropic, MiniMax) —
+evidence predata, REJECT (BF-1), fix runda u toku.** MiniMax-ovo istraživanje SDK-a (protiv
+`anthropic 0.105.2`, u SISTEMSKOM Python-u, ne projektnom `.venv`-u — otkriveno i ispravljeno od
+koordinatora) je bilo tačno u trenutku istraživanja: "nema native structured output". Ali
+`pyproject.toml` ima `anthropic>=0.30` bez gornje granice — fresh install danas povlači
+`anthropic 1.3.0`, koja JE dobila native `output_config`/`json_schema` mehanizam (potvrđeno
+koordinator protiv stvarno instaliranog paketa). Isti razred rizika kao DeepSeek BF-1 (schema
+enforcement vs. prompt-only compliance). Human Owner odlučio: nadograditi sada, ne odgađati. Kod
+inače solidan — 671 passed, F1-lekcija nezavisno reprodukovana (MiniMax je otvoreno priznao da to
+nije sam uradio), ruff/mypy/boundaries/secrets čisti, scope čist. Fix brief poslat MiniMax-u
+(`agent_reports/2026-09-04-ACS-F1-018-fix-brief-za-minimax.md`). Human Owner nema Anthropic ključ
+za live probu (za razliku od DeepSeek slučaja) — ostaje neverifikovano protiv pravog API-ja dok
+neko sa pristupom to ne uradi.
+
+Prethodni entry (2026-09-04): **Human Owner uradio ručnu end-to-end
 validaciju sa pravim DeepSeek ključem (van formalnog review-a) — ACS-F1-017 review downgrade-ovan
 na REJECT, stvaran blocking bug pronađen.** Puna kampanja (LoadBrandFixture → CreateCampaign →
 GenerateCampaignPlan → ApproveCampaignPlan → GenerateSocialPost) pokrenuta uživo protiv pravog
