@@ -3,7 +3,17 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-024 (bridge provider
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-022 (role_sequence
+enforcement + duplicate-topic normalizacija) merged u main** (`80c5d54`, merge `a46cb3a`).
+`_validate_plan_domain` sada odbacuje plan ako BILO KOJA generisana uloga NIJE član
+`template.role_sequence` (subset provjera, ne order/count-sensitive) — do sada je jedina role
+provjera bila "bar 2 različite od bilo koje od 17", template se šalje modelu samo kao tekst u
+promptu, ništa nije stvarno garantovalo da AI poštuje strukturu. Dopuna 2 (poslana nakon što je
+prvobitna dopuna propuštena) dodala i `casefold().strip()` normalizaciju za duplicate-topics
+provjeru. Post-merge: 742 passed, ruff/mypy(139)/boundaries(18)/secrets svi čisti. Worktree
+uklonjen.
+
+Prethodni entry (2026-09-04): **ACS-F1-024 (bridge provider
 fallback) merged u main** (`e483a87`, merge `591cdbd`). Pi je samostalno pokrenuo i predao ovaj
 task BEZ eksplicitnog kickoff briefa od koordinatora — očigledno njegov alat prati nove kontrakte
 dodijeljene njemu na main-u i sam kreira worktree/počinje rad (korisna operativna informacija za
