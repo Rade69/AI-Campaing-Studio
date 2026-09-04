@@ -3,7 +3,27 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-GUI-005 (prvi GUI→backend
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-021 (GenerateSocialPost
+initial Revision) merged u main** (`66dbd5a`, merge `e7cff39`). Spoljni code review je našao
+(koordinator nezavisno reprodukovao) da `GenerateSocialPost.execute()` nikad nije kreirao
+`Revision` zapis za AI-jevu originalnu generaciju — `revision_ids` je ostajao prazan tuple za
+najčešći slučaj (nikad editovan post), što direktno pogađa `content_revision_id` identitet
+zaključan kao potreban prije G10 Analytics/Slice 1.5. Fix (Crush): sada se kreira i snima
+`Revision(version=1, origin=AI, previous_value=json.dumps(None))` u istoj UoW transakciji kao
+`ContentPiece`; `ReviseContentPiece` nedirana, njegov `next_version = len(existing) + 1` sada
+prirodno daje `version=2` prvoj pravoj izmjeni — dokazano novim end-to-end regresionim testom
+(generate pa revise → verzije `[1, 2]`). §29 MEDIUM put — Claude-only review PASS, odmah merge.
+Post-merge: 724 passed, ruff/mypy(139 files)/boundaries/secrets svi čisti. Worktree uklonjen.
+
+**ACS-F1-020 (claim_linter word-boundary, Pi) — u fix rundi (BF-1)**: koordinator nezavisno
+testirao Pi-jevu word-boundary implementaciju i našao STVARAN regres — `\b€\b` nikad ne matchuje
+(€ nije `\w` karakter, word-boundary se ne može usidriti oko čistog simbola), pa cijena sa €
+simbolom više nikad nije flagovana kao `unsupported-price` (bezbjednosna mreža OSLABLJENA za taj
+slučaj, ne samo popravljena). Nijedan Pi-jev test nije pokrivao € kao pozitivan slučaj (samo
+"KM"). Fix brief poslat:
+[agent_reports/2026-09-04-ACS-F1-020-fix-brief-za-pi.md](agent_reports/2026-09-04-ACS-F1-020-fix-brief-za-pi.md).
+
+Prethodni entry (2026-09-04): **ACS-GUI-005 (prvi GUI→backend
 pywebview bridge) merged u main** (`fcf1dcc`, merge `33dd144`) — **prvi klik u GUI-ju sada
 stvarno kreira kampanju i generiše plan.** "Sačuvaj i napravi plan →" na Opis kampanje ekranu
 zove nov `js_api` bridge (`presentation_webview/bridge/CampaignBridgeApi`) koji poziva pravi
