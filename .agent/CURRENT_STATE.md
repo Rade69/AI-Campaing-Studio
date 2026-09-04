@@ -4,14 +4,16 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **A8 nastavak, tri paralelna HIGH-risk
-taska otvorena.** ACS-F1-017 (DeepSeek+OpenRouter+OpenAI-kompatibilan, implementer Pi) — evidence
-predata, Claude arhitektonski review `PASS_WITH_NOTES` (parametrizacija `OpenAIAdapter`-a sa
-`provider_code`/`provider_display`, novi `openai_compatible_providers.py` fabrike, base URL-ovi
-nezavisno potvrđeni protiv dokumentacije, 652 passed, ruff/mypy/scope čisti), čeka Codex adversarial
-review (`agent_reports/2026-09-04-ACS-F1-017-brief-za-codex.md`). ACS-F1-018 (Anthropic, implementer
-MiniMax) i ACS-F1-019 (Google, implementer Crush) su pokrenuti paralelno, još čekaju evidenciju —
-oba kontrakta namjerno ostavljaju tačan SDK/API mehanizam kao istraživački korak implementeru (ne
-propisuju možda-zastarjele pretpostavke o strukturisanom izlazu/models-list API-ju).
+taska otvorena, dva čekaju Codex.** ACS-F1-017 (DeepSeek+OpenRouter+OpenAI-kompatibilan,
+implementer Pi) — Claude review `PASS_WITH_NOTES`, čeka Codex. ACS-F1-019 (Google/Gemini,
+implementer Crush) — evidence predata, Claude review `PASS_WITH_NOTES` (SDK: `google-genai`,
+obrazložen izbor nad deprecated `google-generativeai`; koordinator nezavisno instalirao paket i
+provjerio SVAKI korišten SDK tip protiv stvarnog paketa — sve se poklapa; 655 passed, F1-lekcija
+fresh-environment provjera reprodukovana, ruff/mypy/boundaries/secrets čisti), čeka Codex
+adversarial review (`agent_reports/2026-09-04-ACS-F1-019-brief-za-codex.md`). ACS-F1-018
+(Anthropic, implementer MiniMax) i dalje čeka evidenciju.
+
+Prethodni entry (2026-09-04): **A8 nastavak, tri paralelna HIGH-risk taska otvorena.**
 
 Prethodni entry (2026-09-04): **ACS-F1-016 (OpenAI adapter, A8 dio 2,
 HIGH) merged u main** (`1b7a71f`). Human Owner eksplicitno odobrio ("Odobravam") nakon dvije pune
