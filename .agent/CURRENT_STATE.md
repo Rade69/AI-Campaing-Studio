@@ -3,7 +3,19 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-018 (Anthropic, MiniMax) — oba
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-018 (Anthropic adapter, A8 dio 4)
+merged u main** (`6c0287e`). Human Owner odobrio nakon oba review-a (Claude+Codex, oba
+PASS/PASS_WITH_NOTES, nema blocking nalaza, dva prihvaćena non-blocking zapažanja — N1 kozmetički
+timeout error message, N2 buduć temperature-param razmatranje). Nezavisna post-merge verifikacija:
+684 passed, `ruff check src tests scripts`/`mypy src`/`test_import_boundaries.py`(18)/
+`check_no_secrets.py` svi čisti. Nije live-testirano protiv pravog Anthropic API-ja (nema ključa)
+— otvoren item za budući smoke-test. Worktree uklonjen.
+
+**A8 status nakon ovog merge-a**: OpenAI, Google i Anthropic (3 od 5 provajdera) merged u main.
+Preostalo: ACS-F1-017 (DeepSeek/OpenRouter/OpenAI-kompatibilan, Pi) čeka finalni Codex re-review
+nakon R2-BF-1 fixa — posljednji preostali A8 task.
+
+Prethodni entry (2026-09-04): **ACS-F1-018 (Anthropic, MiniMax) — oba
 review-a PASS_WITH_NOTES, spremno za Human Owner odobrenje.** Codex adversarial review: nema
 blocking nalaza. Dva non-blocking zapažanja (N1: `_map_error()` isinstance redoslijed čini timeout
 granu nedostupnom — kozmetički, `ErrorCode` ostaje ispravan; N2: buduć rizik ako neko postavi
