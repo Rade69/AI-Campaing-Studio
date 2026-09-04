@@ -4,7 +4,7 @@ phase: Faza-1 (A8, dio 5 — Google (Gemini) adapter)
 title: "A8: Google (Gemini) live adapter — TextGenerationPort implementacija"
 risk: HIGH
 coordinator: claude
-implementer: TBD
+implementer: crush
 reviewers: [codex, claude]
 status: "OPEN — contract written before code"
 created_at: 2026-09-04

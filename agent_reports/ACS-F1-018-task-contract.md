@@ -4,7 +4,7 @@ phase: Faza-1 (A8, dio 4 — Anthropic adapter)
 title: "A8: Anthropic (Claude) live adapter — TextGenerationPort implementacija"
 risk: HIGH
 coordinator: claude
-implementer: TBD
+implementer: minimax
 reviewers: [codex, claude]
 status: "OPEN — contract written before code"
 created_at: 2026-09-04
