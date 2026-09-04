@@ -53,10 +53,11 @@ _FORBIDDEN_PREFIXES: dict[str, tuple[str, ...]] = {
         "ai_campaign_studio.application",
         "ai_campaign_studio.ports",
     ),
-    # infrastructure/ai/ (ACS-F1-008) holds the mock text-generation
-    # adapter. It must not import provider SDKs or make network calls;
-    # live provider adapters arrive in a later task (A8) and will need to
-    # carve out an exception for their own subpackage then.
+    # infrastructure/ai/ holds the mock adapter (ACS-F1-008) and live
+    # provider adapters (ACS-F1-016). Live adapters MAY import provider SDKs
+    # (that is their job); browsers/web clients remain forbidden here.
+    # mock_adapter.py specifically must not import provider SDKs — enforced
+    # by a dedicated test below.
     "infrastructure/ai": (),
 }
 
@@ -73,7 +74,7 @@ _FORBIDDEN_TOP_LEVEL: dict[str, set[str]] = {
         | _WEB_MODULES
         | {"PySide6", "PyQt6"},
     ),
-    "infrastructure/ai": _PROVIDER_SDK_MODULES | _BROWSER_MODULES | _WEB_MODULES,
+    "infrastructure/ai": _BROWSER_MODULES | _WEB_MODULES,
 }
 
 
@@ -467,15 +468,33 @@ def test_checker_resolves_module_alias_across_function_scopes(
     )
 
 
-def test_checker_flags_provider_sdk_in_infrastructure_ai(tmp_path: Path) -> None:
+def test_checker_flags_web_module_in_infrastructure_ai(tmp_path: Path) -> None:
     (tmp_path / "infrastructure" / "ai").mkdir(parents=True)
     (tmp_path / "infrastructure" / "ai" / "evil.py").write_text(
-        "import openai\n", encoding="utf-8"
+        "import requests\n", encoding="utf-8"
     )
     violations = find_violations(tmp_path)
     assert any(
-        "infrastructure/ai/evil.py" in v and "openai" in v for v in violations
+        "infrastructure/ai/evil.py" in v and "requests" in v for v in violations
     )
+
+
+def test_checker_allows_provider_sdk_in_infrastructure_ai(tmp_path: Path) -> None:
+    (tmp_path / "infrastructure" / "ai").mkdir(parents=True)
+    (tmp_path / "infrastructure" / "ai" / "live.py").write_text(
+        "import openai\n", encoding="utf-8"
+    )
+    assert find_violations(tmp_path) == []
+
+
+def test_mock_adapter_does_not_import_provider_sdk() -> None:
+    mock_path = SRC_ROOT / "infrastructure" / "ai" / "mock_adapter.py"
+    for module, _ in _iter_imports(
+        mock_path, "ai_campaign_studio.infrastructure.ai"
+    ):
+        assert module.split(".")[0] not in _PROVIDER_SDK_MODULES, (
+            f"mock_adapter.py must not import provider SDK: {module}"
+        )
 
 
 def test_checker_method_resolution_skips_class_scope(tmp_path: Path) -> None:
