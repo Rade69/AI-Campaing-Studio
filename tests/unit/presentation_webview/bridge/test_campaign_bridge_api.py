@@ -357,3 +357,140 @@ def test_unexpected_exception_in_bridge_returns_internal_error(tmp_path) -> None
     assert result["error_code"] == "INTERNAL_ERROR"
     # No raw exception text in the user-facing message.
     assert "oops" not in result["error_message"]
+
+
+# --- ACS-GUI-006: compensating delete of orphan DRAFT campaign ------------
+
+
+def _failing_ai_factory(exception: Exception):
+    """Return a factory whose adapter raises ``exception`` on every call.
+
+    Used to force the ``GenerateCampaignPlan`` path to throw after
+    ``CreateCampaign`` has already committed.
+    """
+
+    def _factory(provider_code: str, api_key: str, *, base_url: str | None = None):
+
+        class _RaisingAdapter:
+            def generate(self, request: AIRequest) -> AIResponse:  # noqa: ARG002
+                raise exception
+
+        return _RaisingAdapter()
+
+    return _factory
+
+
+def test_orphan_campaign_deleted_when_generate_plan_fails(tmp_path) -> None:
+    """GenerateCampaignPlan fails AFTER CreateCampaign committed -> the
+    orphan DRAFT campaign MUST be cleaned up before the GENERATION_FAILED
+    error returns to JS.
+
+    The exact failure path that originally motivated this task: AI
+    provider returns 404 (or any network/SDK error) and the user gets
+    a toast. Without the compensating delete, every retry would
+    accumulate a new orphan row.
+    """
+    bridge = _isolated_bridge(tmp_path)
+    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    with patch.object(
+        bridge._bootstrap.secret_store, "get_secret", return_value="sk-test-key"
+    ), patch(
+        "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
+        _failing_ai_factory(RuntimeError("provider down")),
+    ):
+        result = bridge.create_campaign_and_generate_plan(_valid_brief())
+
+    assert result["ok"] is False
+    assert result["error_code"] == "GENERATION_FAILED"
+    # The orphan row MUST be gone. We assert on the DB directly because
+    # the bridge is the only API the JS caller sees, and we want to
+    # prove the row is actually absent — not just that the function
+    # returned a dict.
+    conn = bridge._bootstrap.database_connection
+    assert conn.execute("SELECT COUNT(*) FROM campaigns").fetchone()[0] == 0
+    # Brief created by CreateCampaign is also gone (it was created
+    # in the same compensating action — see the docstring on
+    # delete_campaign for why this is safe in the bridge's call site).
+    assert conn.execute("SELECT COUNT(*) FROM campaign_briefs").fetchone()[0] == 0
+
+
+def test_orphan_campaign_deleted_on_domain_error_in_generate_plan(
+    tmp_path,
+) -> None:
+    """Same compensating behavior for the (EntityNotFound, InvariantViolation)
+    domain-error path inside ``GenerateCampaignPlan`` (separate from the
+    generic Exception branch).
+    """
+    from ai_campaign_studio.domain.common.errors import InvariantViolation
+
+    bridge = _isolated_bridge(tmp_path)
+    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    with patch.object(
+        bridge._bootstrap.secret_store, "get_secret", return_value="sk-test-key"
+    ), patch(
+        "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
+        _failing_ai_factory(InvariantViolation("role_sequence violated")),
+    ):
+        result = bridge.create_campaign_and_generate_plan(_valid_brief())
+
+    assert result["ok"] is False
+    assert result["error_code"] == "GENERATION_FAILED"
+    conn = bridge._bootstrap.database_connection
+    assert conn.execute("SELECT COUNT(*) FROM campaigns").fetchone()[0] == 0
+
+
+def test_compensating_delete_failure_does_not_mask_generation_error(
+    tmp_path,
+) -> None:
+    """If ``delete_campaign`` itself raises (DB locked, disk full,
+    programming error), the bridge MUST swallow it and return the
+    ORIGINAL GENERATION_FAILED error to JS — not a database error
+    that hides what the user actually needs to know.
+    """
+    bridge = _isolated_bridge(tmp_path)
+    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    with patch.object(
+        bridge._bootstrap.secret_store, "get_secret", return_value="sk-test-key"
+    ), patch(
+        "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
+        _failing_ai_factory(RuntimeError("provider down")),
+    ), patch.object(
+        bridge._campaign_repo,
+        "delete_campaign",
+        side_effect=RuntimeError("DB locked"),
+    ):
+        result = bridge.create_campaign_and_generate_plan(_valid_brief())
+
+    # The user-facing result is the AI error, NOT the DB error.
+    assert result["ok"] is False
+    assert result["error_code"] == "GENERATION_FAILED"
+    assert "DB locked" not in result["error_message"]
+    # The user-facing message must talk about the AI generation failure,
+    # not the database error. "AI generisanje plana" is the bridge's
+    # stable BHS message for the SDK exception branch.
+    assert "ai generisanje plana" in result["error_message"].lower()
+
+
+def test_create_campaign_failure_does_not_call_delete(tmp_path) -> None:
+    """If ``CreateCampaign`` itself fails (validation, DB error during
+    brand seed), there is nothing to compensate — no row was ever
+    committed. The bridge MUST NOT call ``delete_campaign`` in that
+    path (would be a no-op at best, masking the real error at worst).
+    """
+    bridge = _isolated_bridge(tmp_path)
+    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    with patch.object(
+        bridge._bootstrap.secret_store, "get_secret", return_value="sk-test-key"
+    ), patch.object(
+        bridge, "_ensure_brand", side_effect=ValueError("brand seed boom")
+    ), patch.object(
+        bridge._campaign_repo, "delete_campaign"
+    ) as fake_delete:
+        result = bridge.create_campaign_and_generate_plan(_valid_brief())
+
+    # Brand seed failure -> INTERNAL_ERROR (caught by the generic
+    # catch-all in the bridge).
+    assert result["ok"] is False
+    assert result["error_code"] == "INTERNAL_ERROR"
+    # delete_campaign was NEVER called — there was nothing to delete.
+    fake_delete.assert_not_called()

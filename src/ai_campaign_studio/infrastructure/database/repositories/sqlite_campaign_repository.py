@@ -158,6 +158,70 @@ class SqliteCampaignRepository:
             items=tuple(_item_from_row(item_row) for item_row in item_rows),
         )
 
+    def delete_campaign(
+        self, campaign_id: CampaignId, *, brief_id: str | None = None
+    ) -> None:
+        """Compensating-action delete — see ``CampaignRepositoryPort.delete_campaign``.
+
+        Parent (``campaigns``) first, dependents after — that order
+        respects the ``campaigns.brief_id REFERENCES campaign_briefs(id)``
+        FK (PRAGMA foreign_keys=ON in this project): we cannot delete
+        the brief until the campaign row that references it is gone.
+        The SQLite schema has NO ``ON DELETE CASCADE`` (see
+        ``resources/migrations/0002_campaign_content_visual.sql``) and
+        we intentionally do not touch the migration set from application
+        code, so the cascade lives here. Idempotent: deleting a
+        non-existent ``campaign_id`` is a no-op.
+
+        Note: ``content_pieces`` and ``content_claims`` reference
+        ``campaign_items`` but are not in the immediate deletion tree
+        (the bridge's compensating action runs BEFORE any content piece
+        is ever created, so a DRAFT-orphan campaign has no pieces or
+        claims). The FK chain is therefore safe in the only call site
+        that exists today; a future "delete approved campaign" feature
+        would need to extend this — out of scope for ACS-GUI-006.
+        """
+        # 1. campaign_items (children of plans) — first, so the plan→item
+        #    FK is empty before the plan is removed.
+        self._connection.execute(
+            "DELETE FROM campaign_items WHERE plan_id IN"
+            " (SELECT id FROM campaign_plans WHERE campaign_id = ?)",
+            (campaign_id,),
+        )
+        # 2. campaign_plans (children of campaigns).
+        self._connection.execute(
+            "DELETE FROM campaign_plans WHERE campaign_id = ?",
+            (campaign_id,),
+        )
+        # 3. campaign_visual_systems (children of campaigns).
+        self._connection.execute(
+            "DELETE FROM campaign_visual_systems WHERE campaign_id = ?",
+            (campaign_id,),
+        )
+        # 4. campaigns (parent) — must come BEFORE deleting campaign_briefs
+        #    because ``campaigns.brief_id`` FK references the brief row.
+        self._connection.execute(
+            "DELETE FROM campaigns WHERE id = ?",
+            (campaign_id,),
+        )
+        # 5. campaign_briefs (only if the caller opted in by passing
+        #    ``brief_id``). After step 4, the campaign row is gone so
+        #    the FK is satisfied and a direct id match is the right
+        #    tool. The brief is referenced by ``campaigns.brief_id``
+        #    but is logically a separate aggregate (user input, not
+        #    the campaign wrapper). For the bridge's compensating
+        #    action, the brief exists only because THIS campaign was
+        #    just created (no other campaign references it, because
+        #    ``CreateCampaign`` creates a fresh brief per call), so
+        #    it is safe to delete here. If a future caller reuses
+        #    briefs across campaigns, pass ``brief_id=None`` to skip
+        #    this step.
+        if brief_id is not None:
+            self._connection.execute(
+                "DELETE FROM campaign_briefs WHERE id = ?",
+                (brief_id,),
+            )
+
 
 def _campaign_from_row(row: sqlite3.Row) -> Campaign:
     return Campaign(
