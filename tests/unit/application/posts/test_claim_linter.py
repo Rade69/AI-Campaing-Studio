@@ -170,3 +170,35 @@ def test_percent_prohibited_term_still_works() -> None:
     result = lint_claim(_claim(ClaimStatus.NON_FACTUAL, "Uštedite 100%"), _rules())
     assert result.status is ClaimStatus.PROHIBITED
     assert "prohibited-claim" in result.reason_codes
+
+
+def test_glued_currency_number_is_specific_price() -> None:
+    # A digit glued directly to a currency symbol ("30KM") is a legitimate
+    # price signal and must be flagged as unsupported-price, not the
+    # generic unsupported-number.
+    result = lint_claim(
+        _claim(ClaimStatus.NON_FACTUAL, "Cijena je 30KM ukupno."), _rules()
+    )
+    assert result.status is ClaimStatus.UNSUPPORTED
+    assert "unsupported-price" in result.reason_codes
+
+
+def test_glued_duration_number_is_specific_duration() -> None:
+    # A digit glued directly to a duration unit ("3dana") is a legitimate
+    # duration signal and must be flagged as unsupported-duration, not the
+    # generic unsupported-number.
+    result = lint_claim(
+        _claim(ClaimStatus.NON_FACTUAL, "Akcija traje 3dana."), _rules()
+    )
+    assert result.status is ClaimStatus.UNSUPPORTED
+    assert "unsupported-duration" in result.reason_codes
+
+
+def test_letter_adjacent_unit_is_not_duration() -> None:
+    # Only a DIGIT adjacency is allowed for duration units; a letter glued
+    # before the unit ("nedana") still means the unit is inside a larger
+    # word and must NOT be flagged as a duration.
+    result = lint_claim(
+        _claim(ClaimStatus.NON_FACTUAL, "To je nedana 5."), _rules()
+    )
+    assert "unsupported-duration" not in result.reason_codes
