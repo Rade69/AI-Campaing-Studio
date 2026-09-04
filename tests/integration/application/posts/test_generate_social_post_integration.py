@@ -12,6 +12,9 @@ from ai_campaign_studio.application.campaigns.create_campaign import CreateCampa
 from ai_campaign_studio.application.posts.generate_social_post import (
     GenerateSocialPost,
 )
+from ai_campaign_studio.application.posts.revise_content_piece import (
+    ReviseContentPiece,
+)
 from ai_campaign_studio.application.posts.select_allowed_facts import (
     select_allowed_facts,
 )
@@ -25,6 +28,7 @@ from ai_campaign_studio.domain.common.errors import InvariantViolation
 from ai_campaign_studio.domain.common.ids import CampaignItemId, CampaignPlanId
 from ai_campaign_studio.domain.content.entities import CampaignTarget
 from ai_campaign_studio.domain.content.enums import ContentStatus
+from ai_campaign_studio.domain.content.revisions import RevisionType
 from ai_campaign_studio.infrastructure.database.connection import create_connection
 from ai_campaign_studio.infrastructure.database.migrations import run_migrations
 from ai_campaign_studio.infrastructure.database.repositories import (
@@ -32,6 +36,7 @@ from ai_campaign_studio.infrastructure.database.repositories import (
     SqliteCampaignRepository,
     SqliteContentRepository,
     SqliteFactRepository,
+    SqliteRevisionRepository,
 )
 from ai_campaign_studio.infrastructure.database.unit_of_work import SqliteUnitOfWork
 from ai_campaign_studio.ports.ai import AIRequest, AIResponse
@@ -140,6 +145,7 @@ def test_end_to_end_fixture_to_post(tmp_path: Path) -> None:
     fact_repo = SqliteFactRepository(connection)
     campaign_repo = SqliteCampaignRepository(connection)
     content_repo = SqliteContentRepository(connection)
+    revision_repo = SqliteRevisionRepository(connection)
     uow = SqliteUnitOfWork(connection)
 
     snapshot = LoadBrandFixture(brand_repo, fact_repo, uow).execute(_FIXTURE_PATH)
@@ -168,6 +174,7 @@ def test_end_to_end_fixture_to_post(tmp_path: Path) -> None:
         brand_repo,
         fact_repo,
         content_repo,
+        revision_repo,
         _FakePromptRepository(),
         _FakeAiPort(_post_payload(fact_id)),
         uow,
@@ -194,6 +201,7 @@ def test_generate_post_is_atomic_on_failure(tmp_path: Path) -> None:
     fact_repo = SqliteFactRepository(connection)
     campaign_repo = SqliteCampaignRepository(connection)
     content_repo = SqliteContentRepository(connection)
+    revision_repo = SqliteRevisionRepository(connection)
     uow = SqliteUnitOfWork(connection)
 
     snapshot = LoadBrandFixture(brand_repo, fact_repo, uow).execute(_FIXTURE_PATH)
@@ -219,6 +227,7 @@ def test_generate_post_is_atomic_on_failure(tmp_path: Path) -> None:
         brand_repo,
         fact_repo,
         _FailingContentRepository(content_repo),
+        revision_repo,
         _FakePromptRepository(),
         _FakeAiPort(_post_payload(fact_id)),
         uow,
@@ -244,6 +253,7 @@ def test_draft_plan_rejected_before_generation(tmp_path: Path) -> None:
     fact_repo = SqliteFactRepository(connection)
     campaign_repo = SqliteCampaignRepository(connection)
     content_repo = SqliteContentRepository(connection)
+    revision_repo = SqliteRevisionRepository(connection)
     uow = SqliteUnitOfWork(connection)
 
     snapshot = LoadBrandFixture(brand_repo, fact_repo, uow).execute(_FIXTURE_PATH)
@@ -266,6 +276,7 @@ def test_draft_plan_rejected_before_generation(tmp_path: Path) -> None:
         brand_repo,
         fact_repo,
         content_repo,
+        revision_repo,
         _FakePromptRepository(),
         _FakeAiPort(_post_payload("unused")),
         uow,
@@ -282,4 +293,65 @@ def test_draft_plan_rejected_before_generation(tmp_path: Path) -> None:
         )
 
     assert connection.execute("SELECT COUNT(*) FROM content_pieces").fetchone()[0] == 0
+    connection.close()
+
+
+def test_generate_then_revise_versions_2(tmp_path: Path) -> None:
+    connection = _setup_db(tmp_path)
+    brand_repo = SqliteBrandRepository(connection)
+    fact_repo = SqliteFactRepository(connection)
+    campaign_repo = SqliteCampaignRepository(connection)
+    content_repo = SqliteContentRepository(connection)
+    revision_repo = SqliteRevisionRepository(connection)
+    uow = SqliteUnitOfWork(connection)
+
+    snapshot = LoadBrandFixture(brand_repo, fact_repo, uow).execute(_FIXTURE_PATH)
+    campaign = CreateCampaign(campaign_repo, uow).execute(
+        snapshot.brand_id, snapshot.id, _valid_brief()
+    )
+    item = _item()
+    plan = CampaignPlan(
+        id=CampaignPlanId("plan-1"),
+        campaign_id=campaign.id,
+        version=1,
+        status=CampaignPlanStatus.APPROVED,
+        created_at=datetime.now(UTC),
+        items=[item],
+    )
+    campaign_repo.save_plan(plan)
+
+    allowed = select_allowed_facts(item, fact_repo.list_snapshot_facts(snapshot.id))
+    fact_id = allowed.fact_ids[0]
+
+    generate = GenerateSocialPost(
+        campaign_repo,
+        brand_repo,
+        fact_repo,
+        content_repo,
+        revision_repo,
+        _FakePromptRepository(),
+        _FakeAiPort(_post_payload(fact_id)),
+        uow,
+    )
+    piece = generate.execute(
+        campaign.id,
+        plan.id,
+        item.id,
+        CampaignTarget(
+            channel="SOCIAL", platform_code="INSTAGRAM", format_code="FEED_POST"
+        ),
+    )
+
+    revise = ReviseContentPiece(
+        content_repo,
+        fact_repo,
+        revision_repo,
+        _FakePromptRepository(),
+        _FakeAiPort({"headline": "New"}),
+        uow,
+    )
+    revise.execute(piece.id, RevisionType.NEW_HEADLINE, "warmer")
+
+    revisions = revision_repo.list_entity_revisions("ContentPiece", str(piece.id))
+    assert [r.version for r in revisions] == [1, 2]
     connection.close()

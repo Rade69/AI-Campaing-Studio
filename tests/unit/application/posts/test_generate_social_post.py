@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 import pytest
@@ -40,6 +41,7 @@ from ai_campaign_studio.domain.common.ids import (
 )
 from ai_campaign_studio.domain.content.entities import CampaignTarget
 from ai_campaign_studio.domain.content.enums import ContentStatus
+from ai_campaign_studio.domain.content.revisions import RevisionOrigin
 from ai_campaign_studio.domain.facts.entities import ApprovedFact, SourceReference
 from ai_campaign_studio.domain.facts.enums import FactStatus
 from ai_campaign_studio.ports.ai import AIRequest, AIResponse
@@ -130,6 +132,22 @@ class _FakeContentRepository:
     def list_campaign_content(self, campaign_id):  # noqa: ANN001
         del campaign_id
         return ()
+
+
+class _FakeRevisionRepository:
+    def __init__(self) -> None:
+        self.saved: list = []
+
+    def save_revision(self, revision) -> None:  # noqa: ANN001
+        self.saved.append(revision)
+
+    def get_revision(self, revision_id):  # noqa: ANN001
+        del revision_id
+        return None
+
+    def list_entity_revisions(self, entity_type, entity_id):  # noqa: ANN001
+        del entity_type, entity_id
+        return []
 
 
 class _FakePromptRepository:
@@ -247,12 +265,19 @@ def _valid_output() -> dict:
     }
 
 
-def _make_use_case(ai_payload: dict | None, content_repo=None, plan=None, ai_port=None):
+def _make_use_case(
+    ai_payload: dict | None,
+    content_repo=None,
+    plan=None,
+    ai_port=None,
+    revision_repo=None,
+):
     return GenerateSocialPost(
         _FakeCampaignRepository(_campaign(), plan if plan is not None else _plan()),
         _FakeBrandRepository(_snapshot()),
         _FakeFactRepository((_fact(),)),
         content_repo if content_repo is not None else _FakeContentRepository(),
+        revision_repo if revision_repo is not None else _FakeRevisionRepository(),
         _FakePromptRepository(),
         ai_port if ai_port is not None else _FakeAiPort(ai_payload),
         _FakeUnitOfWork(),
@@ -376,3 +401,25 @@ def test_unknown_entities_raise(campaign_id, plan_id, item_id) -> None:  # noqa:
     use_case = _make_use_case(_valid_output())
     with pytest.raises(EntityNotFound):
         use_case.execute(campaign_id, plan_id, item_id, _target())
+
+
+def test_generate_creates_initial_revision() -> None:
+    content_repo = _FakeContentRepository()
+    revision_repo = _FakeRevisionRepository()
+    use_case = _make_use_case(
+        _valid_output(), content_repo, revision_repo=revision_repo
+    )
+
+    piece = use_case.execute(
+        CampaignId("campaign-1"),
+        CampaignPlanId("plan-1"),
+        CampaignItemId("item-1"),
+        _target(),
+    )
+
+    assert len(piece.revision_ids) == 1
+    assert len(revision_repo.saved) == 1
+    revision = revision_repo.saved[0]
+    assert revision.version == 1
+    assert revision.origin is RevisionOrigin.AI
+    assert json.loads(revision.previous_value) is None
