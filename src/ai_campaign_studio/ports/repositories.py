@@ -71,6 +71,50 @@ class CampaignRepositoryPort(Protocol):
 
     def get_plan(self, plan_id: CampaignPlanId) -> CampaignPlan | None: ...
 
+    def delete_campaign(
+        self, campaign_id: CampaignId, *, brief_id: str | None = None
+    ) -> None:
+        """Compensating-action delete (ACS-GUI-006). USE SPARINGLY.
+
+        This is the ONLY delete operation in the entire repository layer
+        (the project is otherwise append-only / audit-trail oriented by
+        design). It is intended exclusively for compensating actions in
+        multi-step orchestrations where a later step failed AFTER an
+        earlier step's row was already committed. The current (and only)
+        caller is ``CampaignBridgeApi`` rolling back an orphan DRAFT
+        campaign when ``GenerateCampaignPlan`` fails after
+        ``CreateCampaign`` already committed.
+
+        Do NOT use this for:
+        - general "user wants to delete a campaign" UI flow (does not
+          exist in the product yet, and the audit model is wrong for it);
+        - ad-hoc test cleanup outside the bridge orchestrator;
+        - any other write that might silently lose work.
+
+        ``brief_id`` is required if the caller wants the brief row
+        removed too (the bridge always passes it; the schema has
+        ``campaigns.brief_id REFERENCES campaign_briefs(id)`` so the
+        brief cannot be deleted BEFORE the campaign row is gone, and
+        the campaign row is gone by the time the brief is deleted —
+        a simple direct ``DELETE FROM campaign_briefs WHERE id=?``
+        is the right tool here, not a subquery). ``brief_id=None``
+        leaves the brief alone (use this when the brief is shared
+        with another campaign; not the case in any current call site
+        but kept as an explicit opt-out for future safety).
+
+        Implementation notes (see ``SqliteCampaignRepository.delete_campaign``
+        for the canonical child-before-parent ordering):
+
+        - the delete is idempotent: deleting a non-existent campaign
+          is a no-op, not an error (caller's compensating action may
+          run after the row was already removed by another path);
+        - dependent rows (brief if requested, plan, items, visual_system)
+          MUST be removed in the same method, because the SQLite schema
+          does not declare ``ON DELETE CASCADE`` (resources/migrations/0002)
+          and we intentionally do not change the migration set from
+          application code.
+        """
+
 
 @runtime_checkable
 class ContentRepositoryPort(Protocol):

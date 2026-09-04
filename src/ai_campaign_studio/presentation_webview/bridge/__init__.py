@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 from ai_campaign_studio.application.brands.load_brand_fixture import LoadBrandFixture
 from ai_campaign_studio.application.campaigns.create_campaign import CreateCampaign
@@ -222,6 +223,14 @@ class CampaignBridgeApi:
                     unit_of_work=self._uow,
                 ).execute(campaign.id)
             except (EntityNotFound, InvariantViolation) as exc:
+                # Compensating action (ACS-GUI-006): ``CreateCampaign``
+                # already committed the campaign row in its own
+                # transaction. The plan generation failed, so the
+                # campaign is now an orphan DRAFT (no plan, invisible
+                # to the user via the GUI) — a duplicate target on the
+                # next click. Best-effort delete; never mask the
+                # original GENERATION_FAILED.
+                self._compensate_orphan_campaign(campaign)
                 return self._err(_ERROR_GENERATION, str(exc))
             except Exception as exc:
                 # AI/network/SDK errors land here. Per PYWEBVIEW_SECURITY
@@ -231,6 +240,9 @@ class CampaignBridgeApi:
                     "GenerateCampaignPlan failed (provider=%s, err=%s)",
                     provider_code, type(exc).__name__,
                 )
+                # Same compensating action as the domain-error path
+                # above — see ACS-GUI-006.
+                self._compensate_orphan_campaign(campaign)
                 return self._err(
                     _ERROR_GENERATION,
                     f"AI generisanje plana nije uspjelo ({type(exc).__name__}). "
@@ -354,6 +366,43 @@ class CampaignBridgeApi:
         ``AppPaths.data_dir`` which already does the right thing.
         """
         return self._bootstrap.paths.data_dir
+
+    def _compensate_orphan_campaign(self, campaign: Any) -> None:
+        """Best-effort delete of a DRAFT campaign that never got its plan
+        (ACS-GUI-006 compensating action).
+
+        Bridge runs two independent use-cases back-to-back, each with
+        its own ``with unit_of_work: ... commit()`` transaction:
+
+        1. ``CreateCampaign`` (commits the campaign row in TX-A)
+        2. ``GenerateCampaignPlan`` (commits the plan in TX-B, OR throws)
+
+        If step 2 throws, step 1's row is permanently visible in the
+        ``campaigns`` table as a DRAFT with no plan. The user's next
+        click would create a SECOND such orphan (and a third, fourth…)
+        because the GUI cannot see the orphan to retry it. This helper
+        is the bridge's response: attempt to roll back step 1's row
+        AND its brief (the brief exists only because this campaign was
+        just created — ``CreateCampaign`` makes a fresh brief per call,
+        so no other campaign can reference it).
+
+        Best-effort: the original ``GENERATION_FAILED`` error must
+        ALWAYS reach the JS caller, regardless of whether the
+        compensating delete succeeded. Any exception raised by
+        ``delete_campaign`` is caught and logged — the user sees the
+        AI-generation failure, not a database error. The orphan row
+        will be cleaned up by a later hygiene pass (or live with
+        itself — it is invisible to the user via the GUI either way).
+        """
+        try:
+            self._campaign_repo.delete_campaign(
+                campaign.id, brief_id=campaign.brief_id
+            )
+        except Exception:
+            self._bootstrap.logger.exception(
+                "compensating delete failed for orphan campaign %s",
+                campaign.id,
+            )
 
     @staticmethod
     def _err(code: str, message: str) -> dict:
