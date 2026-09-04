@@ -21,6 +21,16 @@
         panels.forEach(p=>{p.hidden=(p.id!==target);});
       }
     }
+    if(action==='save-and-plan') {
+      // ACS-GUI-005: real GUI→backend wiring. The button (Opis kampanje
+      // screen) is no longer a static link — clicking it gathers the
+      // form values, calls the js_api bridge, and on success navigates
+      // to the plan screen with ``?campaign=<id>``. Failure surfaces
+      // as a toast with the bridge-provided error_message. The button
+      // is disabled during the call to prevent double-clicks racing the
+      // network; a final ``finally`` re-enables it.
+      saveAndPlan(el);
+    }
   }));
   // Language picker (Podešavanja → Jezik). Each row is a button with
   // ``data-action="lang-pick"`` and ``data-lang="<code>"``. Clicking
@@ -45,6 +55,102 @@
     showToast(`Jezik sadržaja: ${name}.`);
   }));
   function showToast(msg){let t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';Object.assign(t.style,{position:'fixed',right:'24px',bottom:'24px',background:'#0f172a',color:'white',padding:'12px 16px',borderRadius:'10px',fontSize:'13px',zIndex:99,boxShadow:'0 10px 30px rgba(0,0,0,.18)'});document.body.appendChild(t)}t.textContent=msg;t.style.display='block';clearTimeout(window.__tt);window.__tt=setTimeout(()=>t.style.display='none',2200)}
+
+// --- ACS-GUI-005: save-and-plan bridge call ---
+//
+// The Opis kampanje form uses stable id="f-..." hooks (see
+// screens/opis_kampanje/__init__.py) so this handler can read each
+// field by id. The brief mapping is locked by the contract:
+//   - "Ciljani kanal" -> targets[0] with channel="SOCIAL" (the only
+//     channel for now)
+//   - Platforma -> platform_code via the locked table
+//   - Format -> format_code via the locked table (LinkedIn ignores the
+//     selected format and always gets PROFESSIONAL_POST)
+//   - "Jezik sadržaja" -> content_language_context (free string, passed
+//     as-is to the domain)
+//   - "Posebne instrukcije" -> special_instructions (1-element list
+//     if non-empty, else [])
+//   - content_piece_count hardcoded to 3 (no UI field yet)
+
+const _PLATFORM_TO_CODE = {Instagram: 'INSTAGRAM', Facebook: 'FACEBOOK', LinkedIn: 'LINKEDIN'};
+const _FORMAT_TO_CODE = {'Feed 4:5': 'FEED_POST', 'Kvadrat 1:1': 'FEED_POST', 'Priča 9:16': 'STORY'};
+const _LINKEDIN_FORMAT_CODE = 'PROFESSIONAL_POST';  // LinkedIn has no FEED_POST/STORY in registry
+
+function _val(id) {
+  const el = document.getElementById(id);
+  return el ? (el.value || '').trim() : '';
+}
+
+function _selectVal(id) {
+  // <select> elements expose ``.value`` directly; fall back to the
+  // first option if the user somehow has no selection.
+  const el = document.getElementById(id);
+  if (!el) return '';
+  return el.value || (el.options && el.options[0] && el.options[0].value) || '';
+}
+
+function buildBriefPayload() {
+  const platforma = _selectVal('f-platforma');
+  const format = _selectVal('f-format');
+  // LinkedIn edge case: registry has only PROFESSIONAL_POST/ARTICLE_LINK_POST;
+  // the GUI's "Feed 4:5 / Kvadrat 1:1 / Priča 9:16" select doesn't map semantically.
+  // Contract locks this: LinkedIn always gets PROFESSIONAL_POST.
+  const formatCode = (platforma === 'LinkedIn') ? _LINKEDIN_FORMAT_CODE : (_FORMAT_TO_CODE[format] || '');
+  const platformCode = _PLATFORM_TO_CODE[platforma] || '';
+  const instrukcije = _val('f-instrukcije');
+  return {
+    offer: _val('f-ponuda'),
+    goal: _selectVal('f-cilj'),
+    audience_text: _val('f-publika'),
+    targets: [{
+      channel: 'SOCIAL',
+      platform_code: platformCode,
+      format_code: formatCode,
+    }],
+    content_piece_count: 3,
+    content_language_context: _selectVal('f-jezik') || 'SR',
+    special_instructions: instrukcije ? [instrukcije] : [],
+  };
+}
+
+async function saveAndPlan(button) {
+  // Re-entrancy guard: disable the button while the call is in flight to
+  // prevent double-clicks racing the network. Re-enable in finally so
+  // the user can retry on error.
+  if (button.disabled) return;
+  button.disabled = true;
+  const originalLabel = button.textContent;
+  button.textContent = 'Generiram plan…';
+  try {
+    const api = window.pywebview && window.pywebview.api;
+    if (!api || typeof api.create_campaign_and_generate_plan !== 'function') {
+      showToast('Interna greška: bridge nije dostupan. Ponovo pokreni aplikaciju.');
+      return;
+    }
+    const payload = buildBriefPayload();
+    const result = await api.create_campaign_and_generate_plan(payload);
+    if (result && result.ok) {
+      const n = result.plan_item_count;
+      showToast('Plan generisan (' + n + ' stavki). Preusmjeravam…');
+      // Give the toast a brief moment to register visually before
+      // navigating; the user gets feedback that the click landed.
+      setTimeout(function() {
+        window.location.href = '../plan_kampanje/index.html?campaign=' + encodeURIComponent(result.campaign_id);
+      }, 600);
+    } else {
+      const msg = (result && result.error_message) ? result.error_message : 'Generisanje plana nije uspjelo.';
+      showToast(msg);
+    }
+  } catch (err) {
+    // The bridge is contractually required to never raise into JS
+    // (PYWEBVIEW_SECURITY §3), but we belt-and-brace against any
+    // uncaught exception from the IPC layer itself.
+    showToast('Interna greška pri pozivu: ' + (err && err.message ? err.message : 'nepoznato.'));
+  } finally {
+    button.disabled = false;
+    button.textContent = originalLabel;
+  }
+}
 })();
 
 (function(){

@@ -53,6 +53,17 @@ _FORBIDDEN_PREFIXES: dict[str, tuple[str, ...]] = {
         "ai_campaign_studio.application",
         "ai_campaign_studio.ports",
     ),
+    # presentation_webview/bridge/ is the *composition root* for the
+    # pywebview GUI (ACS-GUI-005). It is the only place in the
+    # presentation layer that is allowed to wire concrete infrastructure
+    # adapters (SQLite repos, the AI provider factory, the prompt repo,
+    # the bootstrap) together for the js_api boundary. By design it
+    # reaches into infrastructure/, application/, domain/ and ports/
+    # — this is the explicit bridge between the GUI layer and the
+    # foundation. The same invariants that apply to the rest of
+    # presentation_webview/ still hold at the *top-level*: no provider
+    # SDKs, no browsers, no web frameworks, no other GUI toolkits.
+    "presentation_webview/bridge": (),
     # infrastructure/ai/ holds the mock adapter (ACS-F1-008) and live
     # provider adapters (ACS-F1-016). Live adapters MAY import provider SDKs
     # (that is their job); browsers/web clients remain forbidden here.
@@ -74,6 +85,17 @@ _FORBIDDEN_TOP_LEVEL: dict[str, set[str]] = {
         | _WEB_MODULES
         | {"PySide6", "PyQt6"},
     ),
+    # presentation_webview/bridge/ follows the same top-level rules as
+    # the rest of presentation_webview/: no provider SDKs, no browsers,
+    # no web frameworks, no other GUI toolkits. It imports infrastructure
+    # *through* the foundation modules (provider_adapter_factory,
+    # Sqlite repos, prompts) — never the live SDKs directly.
+    "presentation_webview/bridge": (
+        _PROVIDER_SDK_MODULES
+        | {"playwright"}
+        | _WEB_MODULES
+        | {"PySide6", "PyQt6"},
+    ),
     "infrastructure/ai": _BROWSER_MODULES | _WEB_MODULES,
 }
 
@@ -83,6 +105,11 @@ def _layer_for(relative_path: Path) -> str | None:
     if not parts:
         return None
     top = parts[0]
+    # presentation_webview/bridge/ is a sub-layer (composition root) —
+    # checked before the parent layer, otherwise the parent rules would
+    # mask the bridge-specific allowance.
+    if top == "presentation_webview" and len(parts) >= 2 and parts[1] == "bridge":
+        return "presentation_webview/bridge"
     if top in _FORBIDDEN_PREFIXES:
         return top
     if top == "infrastructure" and len(parts) >= 2:
