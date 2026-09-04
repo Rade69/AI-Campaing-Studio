@@ -32,8 +32,8 @@ from ai_campaign_studio.bootstrap import create_bootstrap
 from ai_campaign_studio.config.paths import AppPaths
 from ai_campaign_studio.domain.common.errors import EntityNotFound, InvariantViolation
 from ai_campaign_studio.infrastructure.ai.provider_adapter_factory import (
+    _PROVIDER_PRIORITY,
     build_text_generation_adapter,
-    pick_configured_provider,
 )
 from ai_campaign_studio.infrastructure.database.repositories import (
     SqliteBrandRepository,
@@ -57,6 +57,31 @@ _ERROR_KEY_MISSING = "PROVIDER_KEY_MISSING"
 _ERROR_VALIDATION = "VALIDATION_ERROR"
 _ERROR_GENERATION = "GENERATION_FAILED"
 _ERROR_INTERNAL = "INTERNAL_ERROR"
+
+
+def _ordered_configured_codes(configured_codes: list[str]) -> list[str]:
+    """Return configured provider codes in priority order.
+
+    Same ordering as ``pick_configured_provider`` (``_PROVIDER_PRIORITY``
+    first, then any remaining codes in their original order), but returns
+    ALL candidates so the bridge can fall back through every configured
+    provider instead of stopping at the first. ``_PROVIDER_PRIORITY`` is
+    imported from the factory so the ordering has a single source of truth
+    and can never drift.
+    """
+    upper_to_original = {code.upper(): code for code in configured_codes}
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for priority_code in _PROVIDER_PRIORITY:
+        original = upper_to_original.get(priority_code)
+        if original is not None and original.upper() not in seen:
+            ordered.append(original)
+            seen.add(original.upper())
+    for code in configured_codes:
+        if code.upper() not in seen:
+            ordered.append(code)
+            seen.add(code.upper())
+    return ordered
 
 
 class CampaignBridgeApi:
@@ -287,27 +312,40 @@ class CampaignBridgeApi:
             pass
 
     def _resolve_provider(self) -> tuple[str | None, str | None]:
-        """Pick the highest-priority configured provider and pull its key.
+        """Walk configured providers in priority order; return the first with a key.
 
-        Returns ``(code, key)`` where either may be ``None``:
+        Returns ``(code, key)``:
         - no provider configured at all -> ``(None, None)``
-        - provider configured but key not in SecretStore -> ``(code, None)``
+        - every configured provider lacks a non-empty key in SecretStore ->
+          ``(last_tried_code, None)``
+        - first configured provider with a real key -> ``(code, key)``
 
         Does not raise — the caller maps absence to error codes.
         """
         configs = list(self._provider_config_repo.list_provider_configs())
         configured_codes = [c.provider_code for c in configs if c.configured]
-        code = pick_configured_provider(configured_codes)
-        if code is None:
+        ordered_codes = _ordered_configured_codes(configured_codes)
+        if not ordered_codes:
             return None, None
-        config = next((c for c in configs if c.provider_code == code), None)
-        if config is None or not config.credential_ref:
-            return code, None
-        try:
-            api_key = self._bootstrap.secret_store.get_secret(config.credential_ref)
-        except Exception:
-            return code, None
-        return code, (api_key or None)
+
+        last_code = ordered_codes[-1]
+        for code in ordered_codes:
+            config = next((c for c in configs if c.provider_code == code), None)
+            if config is None or not config.credential_ref:
+                last_code = code
+                continue
+            try:
+                api_key = self._bootstrap.secret_store.get_secret(
+                    config.credential_ref
+                )
+            except Exception:
+                last_code = code
+                continue
+            if api_key:
+                return code, api_key
+            last_code = code
+
+        return last_code, None
 
     def _user_data_dir(self) -> Path:
         """Resolve the per-user data dir, matching the package convention.

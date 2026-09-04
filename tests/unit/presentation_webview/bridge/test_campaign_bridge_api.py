@@ -206,6 +206,51 @@ def test_configured_provider_but_no_key_returns_key_missing(tmp_path) -> None:
     assert result["error_code"] == "PROVIDER_KEY_MISSING"
 
 
+def test_provider_fallback_uses_second_when_first_has_no_key(tmp_path) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge._provider_config_repo, "GOOGLE")
+
+    def _fake_get_secret(ref: str) -> str:
+        # OPENAI is higher priority but its key is missing; GOOGLE has one.
+        if ref == "provider/OPENAI/api_key":
+            return ""
+        return "sk-google-key"
+
+    called_with: dict[str, str] = {}
+
+    def _recording_factory(
+        provider_code: str, api_key: str, *, base_url: str | None = None
+    ):
+        called_with["provider_code"] = provider_code
+        called_with["api_key"] = api_key
+        return _FakeAiAdapter(_valid_ai_payload())
+
+    with patch.object(
+        bridge._bootstrap.secret_store, "get_secret", side_effect=_fake_get_secret
+    ), patch(
+        "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
+        _recording_factory,
+    ):
+        result = bridge.create_campaign_and_generate_plan(_valid_brief())
+
+    assert result["ok"] is True, f"unexpected result: {result}"
+    assert called_with["provider_code"] == "GOOGLE"
+
+
+def test_provider_fallback_all_missing_keys_returns_key_missing(tmp_path) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge._provider_config_repo, "ANTHROPIC")
+    _configure_provider(bridge._provider_config_repo, "GOOGLE")
+    with patch.object(
+        bridge._bootstrap.secret_store, "get_secret", return_value=""
+    ):
+        result = bridge.create_campaign_and_generate_plan(_valid_brief())
+    assert result["ok"] is False
+    assert result["error_code"] == "PROVIDER_KEY_MISSING"
+
+
 # --- happy path ---
 
 
@@ -240,12 +285,26 @@ def test_brand_seed_reused_on_second_call(tmp_path) -> None:
         _fake_ai_factory(_valid_ai_payload()),
     ):
         bridge.create_campaign_and_generate_plan(_valid_brief())
+        first_seed = json.loads(
+            (tmp_path / "brand-seed.json").read_text(encoding="utf-8")
+        )
         bridge.create_campaign_and_generate_plan(_valid_brief())
+        second_seed = json.loads(
+            (tmp_path / "brand-seed.json").read_text(encoding="utf-8")
+        )
     # Exactly one brand in the DB.
     count = bridge._bootstrap.database_connection.execute(
         "SELECT COUNT(*) FROM brands"
     ).fetchone()[0]
     assert count == 1, f"expected 1 brand, got {count}"
+    # Same identity across both calls, not just the same row count: the
+    # seed file must point at the SAME brand_id both times, and the single
+    # DB row must be that same id.
+    assert first_seed["brand_id"] == second_seed["brand_id"]
+    db_brand_id = bridge._bootstrap.database_connection.execute(
+        "SELECT id FROM brands"
+    ).fetchone()[0]
+    assert db_brand_id == first_seed["brand_id"]
 
 
 def test_returned_dict_is_json_serializable_and_contains_no_secrets(tmp_path) -> None:
