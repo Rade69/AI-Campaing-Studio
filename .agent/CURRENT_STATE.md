@@ -3,7 +3,30 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-018 (Anthropic adapter, A8 dio 4)
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-GUI-005 task contract napisan i
+push-ovan** (`cdbef5e`) — **prvi GUI→backend bridge**. Human Owner je nakon iskrene procjene stanja
+aplikacije ("arhitektura radi, GUI i backend su nepovezani") eksplicitno odobrio promjenu prioriteta
+i zadužio MiniMax-a da ovo implementira. Kontrakt:
+[agent_reports/ACS-GUI-005-task-contract.md](agent_reports/ACS-GUI-005-task-contract.md). Scope:
+klik na "Sačuvaj i napravi plan →" (Opis kampanje) prvi put zove pravi `CreateCampaign` +
+`GenerateCampaignPlan` kroz nov pywebview `js_api` bridge (`presentation_webview/bridge/`), pravu
+SQLite bazu i pravi konfigurisan AI provider — umjesto static `<a href>`. Ključne zaključane odluke
+u kontraktu: brand seeding preko lokalnog `brand-seed.json` (isti idiom kao window-state, jer
+`BrandRepositoryPort` nema "postoji li već brend" upit i `LoadBrandFixture` generiše nov ID svaki
+put); hardkodovana provider→model tabela (`resolve_default_text_model` ne radi jer registry nema
+unaprijed registrovane modele) — DeepSeek/OpenAI/Google modeli preuzeti iz već live-verifikovanih
+A8 izvještaja, Anthropic MORA biti nezavisno provjeren prije hardkodiranja (nije live-testiran
+nigdje u projektu); zaključana forma→brief mapa (channel/platform_code/format_code tabela,
+uključujući LinkedIn edge-case gdje GUI-jev format select ne mapira semantički — uvijek
+`PROFESSIONAL_POST`); `content_piece_count` hardkodovan na 3 (forma nema to polje još); Plan
+kampanje ekran EKSPLICITNO ostaje fixture u ovom tasku (dinamički render je budući task). Risk:
+**HIGH** (prvi js_api bridge, prvi real DB write + real AI poziv iz GUI klika) → pun review ciklus
+(Claude + Codex adversarial + Human Owner odobrenje), NE §29 skraćeni put. GitNexus MCP je bio
+nedostupan (rekonektuje se) — koordinator mora pokrenuti detect-changes/impact prije review-a.
+Worktree kreiran: `../ai-campaign-studio-worktrees/ACS-GUI-005-campaign-bridge`
+(`task/ACS-GUI-005-campaign-bridge`, base `main@73f52b1`). Implementacija još nije počela.
+
+Prethodni entry (2026-09-04): **ACS-F1-018 (Anthropic adapter, A8 dio 4)
 merged u main** (`6c0287e`). Human Owner odobrio nakon oba review-a (Claude+Codex, oba
 PASS/PASS_WITH_NOTES, nema blocking nalaza, dva prihvaćena non-blocking zapažanja — N1 kozmetički
 timeout error message, N2 buduć temperature-param razmatranje). Nezavisna post-merge verifikacija:
