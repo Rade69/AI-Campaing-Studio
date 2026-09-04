@@ -22,6 +22,17 @@ dependencies = [
     # the current canonical package for new code (the older
     # `google-generativeai` package is deprecated/EOL).
     "google-genai>=1.0",
+    # A8 dio 4 (Anthropic/Claude). >=1.0 required because we use the
+    # ``output_config`` parameter on ``messages.create`` for server-side
+    # JSON-schema structured output (BF-1 fix runda: prompt-based JSON
+    # alone was insufficient — DeepSeek had 7 stavki umjesto traženih 3
+    # without enforced schema). ``output_config`` was added in the 1.0
+    # line; raising the lower bound to 1.0 means we always have it and
+    # can drop the prompt-injection fallback path entirely. 1.3.0
+    # confirmed installed in the dev environment and exercised by the
+    # test suite against real anthropic.types.Message / TextBlock / Usage
+    # / ModelInfo instances.
+    "anthropic>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -30,9 +41,14 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.5",
     "mypy>=1.10",
-    # test_openai_adapter.py builds fake openai SDK exception objects
-    # (RateLimitError/APIConnectionError/AuthenticationError) whose
-    # constructors require real httpx.Request/httpx.Response instances.
+    # Both openai and anthropic SDK exception constructors require real
+    # httpx.Request / httpx.Response instances to build fake fixtures
+    # (see test_openai_adapter.py BF-1 fix and test_anthropic_adapter.py
+    # BF-1-style guard for stop_reason / token mapping). httpx is therefore
+    # a *test-only* dependency of the live-adapter test suite; we declare
+    # it explicitly here so the dev environment is reproducible from a
+    # fresh ``pip install -e ".[dev]"`` without accidentally relying on
+    # the openai SDK's transitive httpx pin.
     "httpx>=0.27",
 ]
 
