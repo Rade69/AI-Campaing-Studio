@@ -58,7 +58,9 @@ def load_claim_rules(path: Path) -> ClaimRules:
     )
 
 
-def _contains_word(text_folded: str, term: str) -> bool:
+def _contains_word(
+    text_folded: str, term: str, *, allow_digit_adjacent: bool = False
+) -> bool:
     """Match a term either as a whole word or as a literal substring.
 
     Terms whose both edges are word characters (``"jedini"``, ``"dan"``,
@@ -68,15 +70,28 @@ def _contains_word(text_folded: str, term: str) -> bool:
     ``"100%"``) fall back to a plain substring match: ``\b`` cannot anchor
     around a non-word character, and a symbol/percent sign cannot be "inside"
     a larger alphanumeric word, so plain substring is safe there.
+
+    ``allow_digit_adjacent`` relaxes the boundary for numeric-signal terms
+    (currency symbols, duration units): a digit glued directly before/after
+    the term is a legitimate signal (``"30KM"``, ``"3dana"``), not a false
+    positive. A letter/underscore before/after still blocks the match
+    (``"bambus"``/``"BAM"`` stays unmatched), because that means the term is
+    glued inside a larger word.
+
     ``re.escape`` keeps multi-word terms and terms with regex-special
     characters working as literals.
     """
     folded_term = term.casefold()
     starts_word = re.match(r"\w", folded_term) is not None
     ends_word = re.search(r"\w$", folded_term) is not None
-    if starts_word and ends_word:
-        return re.search(rf"\b{re.escape(folded_term)}\b", text_folded) is not None
-    return folded_term in text_folded
+    if not (starts_word and ends_word):
+        return folded_term in text_folded
+    if allow_digit_adjacent:
+        # ``[^\W\d]`` = a word char that is NOT a digit (letter/underscore).
+        # Block only that before/after the term; a digit is allowed.
+        pattern = rf"(?<![^\W\d]){re.escape(folded_term)}(?![^\W\d])"
+        return re.search(pattern, text_folded) is not None
+    return re.search(rf"\b{re.escape(folded_term)}\b", text_folded) is not None
 
 
 def lint_claim(claim: ContentClaim, rules: ClaimRules) -> ContentClaim:
@@ -119,14 +134,16 @@ def _numeric_reason_code(text_folded: str, rules: ClaimRules) -> str | None:
     has_digit = re.search(r"\d", text_folded) is not None
 
     for symbol in rules.currency_symbols:
-        if _contains_word(text_folded, symbol) and has_digit:
+        if _contains_word(
+            text_folded, symbol, allow_digit_adjacent=True
+        ) and has_digit:
             return "unsupported-price"
 
     if re.search(r"\d+\s*%", text_folded):
         return "unsupported-percent"
 
     for unit in _DURATION_UNITS:
-        if _contains_word(text_folded, unit) and has_digit:
+        if _contains_word(text_folded, unit, allow_digit_adjacent=True) and has_digit:
             return "unsupported-duration"
 
     if re.search(r"\d{1,2}\.\d{1,2}\.\d{2,4}", text_folded):
