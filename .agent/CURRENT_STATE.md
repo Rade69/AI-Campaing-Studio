@@ -3,7 +3,34 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-GUI-006 (kompenzaciono
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-020 BF-2 i ACS-F1-025
+(cross-post sličnost) merged u main** (`c106fda`, merges `7dbbf77`/`1837032`+`11289bf`).
+
+**ACS-F1-020 BF-2**: `_contains_word` dobio `allow_digit_adjacent` keyword — cifra zalijepljena
+za currency/duration termin ("30KM", "3dana") sad ispravno daje specifičan `unsupported-price`/
+`unsupported-duration` umjesto generičkog `unsupported-number`, preko `(?<![^\W\d])`/`(?![^\W\d])`
+lookaround-a (blokira samo slovo/underscore, dozvoljava cifru — `\b` to nije mogao jer su cifra i
+slovo oba `\w`). `prohibited_terms` grana netaknuta. Koordinator nezavisno reprodukovao sve
+poznate slučajeve (30KM, 3dana, nedana, jedinice, €, 100%) prije odobrenja.
+
+**ACS-F1-025**: novi `content_similarity.py` — deterministička word-set Jaccard sličnost (bez
+embeddings), poredi svaki novi generisan post sa svim postojećim u istoj kampanji
+(`list_campaign_content`, postojeći port metod), i forsira `NEEDS_REVIEW` ako je skor iznad 0.6.
+Ovo je Human Owner-ova prioritet #1 ideja od pet predloženih spoljnim review-om — direktno gađa
+originalni strah od "šest generičkih objava" koji je pokrenuo razgovor o smislenosti aplikacije.
+Prošao kroz fix rundu (BF-1): `.split()` je ostavljao interpunkciju zalijepljenu za riječi
+("zuba." ≠ "zuba"), vještački snižavajući skor — realan BHS parafraza par je scorovao 0.273
+umjesto 0.556, ispod praga, tačno slučaj koji je ova provjera trebala uhvatiti. Fix:
+`re.findall(r"\w+", ...)` umjesto `.split()`.
+
+Post-merge zajedno: 771 passed, ruff/mypy(140)/boundaries(18)/secrets svi čisti. Oba worktree-a
+uklonjena.
+
+**Preostale četiri ideje** (od pet predloženih) su namjerno odgođene — zapisane u koordinatorovoj
+memoriji za kasnije, svaka sa nijansom koju treba prvo riješiti (perzistencija, BrandSnapshot
+immutability, G10 gate).
+
+Prethodni entry (2026-09-04): **ACS-GUI-006 (kompenzaciono
 brisanje orphan DRAFT kampanje) merged u main** (`1dc23df`, merge `79ddb8a`). Rješava gap koji
 je koordinator direktno posmatrao tokom ACS-GUI-005 live testiranja (`campaigns=2,
 campaign_plans=0` nakon prvog neuspjelog poziva) i koji je MiniMax sam prijavio nakon
