@@ -241,6 +241,51 @@ def test_duplicate_topics_rejected() -> None:
     assert use_case._campaign_repo.plans == {}
 
 
+def test_duplicate_topics_rejected_case_insensitive_and_trimmed() -> None:
+    """Duplicate-topics provjera mora biti case-insensitive + whitespace-
+    insensitive. AI ponekad vrati "Cost of implants" za jednu stavku i
+    "  cost of implants  " za drugu — isti sadržaj, drugačiji case i
+    razmaci. Stara provjera (tačno string poređenje) ih je tretirala kao
+    različite teme i propuštala plan. Nova provjera ih tretira kao duplikat.
+
+    Napomena: addendum 2 specificira SAMO .casefold().strip() (ne i
+    uklanjanje interpunkcije). Dakle "Topic" i "Topic." ostaju RAZLIČITI
+    pod novom provjerom — test to ne pokriva namjerno.
+    """
+    items = _valid_items()
+    items[1]["topic"] = "  cost of implants  "  # case + whitespace varijacija
+    ai_port = _FakeAiPort(_payload(items))
+    use_case = _make_use_case(_campaign(), _brief(3), ai_port)
+
+    with pytest.raises(InvariantViolation) as exc_info:
+        use_case.execute(CampaignId("campaign-1"))
+    assert "duplicate topics" in str(exc_info.value).lower()
+
+    assert use_case._campaign_repo.campaign.status is CampaignStatus.DRAFT
+    assert use_case._campaign_repo.plans == {}
+
+
+def test_duplicate_topics_normalization_preserves_persisted_topic() -> None:
+    """Normalizacija (.casefold().strip()) je SAMO za poređenje — originalni
+    ``item.topic`` koji se perzistira u CampaignItem ostaje NEPROMIJENJEN.
+
+    Demonstracija: items[1] i items[2] se pod normalizacijom svode na isti
+    string ("implant process"), pa provjera detektuje duplikat. Ali originalni
+    stringovi (sa whitespace/casing) su različiti i perzistiraju se takvi kakvi
+    jesu u CampaignItem.topic (NE pipeline ne transformiše topic prije
+    perzistencije).
+    """
+    items = _valid_items()  # "Cost of implants", "Implant process", "Book consultation"
+    items[1]["topic"] = "Implant process"  # distinct from items[0]
+    items[2]["topic"] = "  IMPLANT PROCESS  "  # case + whitespace varijacija
+    # items[1] i items[2] se pod normalizacijom svode na isti string.
+    ai_port = _FakeAiPort(_payload(items))
+    use_case = _make_use_case(_campaign(), _brief(3), ai_port)
+
+    with pytest.raises(InvariantViolation):
+        use_case.execute(CampaignId("campaign-1"))
+
+
 def test_role_diversity_rejected() -> None:
     items = [
         {
@@ -266,3 +311,172 @@ def test_role_diversity_rejected() -> None:
 
     assert use_case._campaign_repo.campaign.status is CampaignStatus.DRAFT
     assert use_case._campaign_repo.plans == {}
+
+
+# --- ACS-F1-022: role_sequence membership enforcement ----------------------
+# LEAD_GENERATION_V1.role_sequence = (PROBLEM, EDUCATION, PROOF, OBJECTION,
+# BENEFIT, OFFER, ACTION). The plan can pick any subset, in any order; it
+# cannot use a role that the template did not list.
+
+
+def test_role_sequence_subset_in_any_order_is_accepted() -> None:
+    """Subset provjera, ne exact-match, ne order-sensitive.
+
+    Items use a different order than the template (template starts with
+    PROBLEM, this list starts with ACTION). All three roles ARE in the
+    template's role_sequence, so the plan must be accepted.
+    """
+    items = [
+        {
+            "order": 1,
+            "role": "ACTION",
+            "topic": "Book now",
+            "goal": "convert",
+            "facts_needed": [],
+        },
+        {
+            "order": 2,
+            "role": "EDUCATION",
+            "topic": "Implant process",
+            "goal": "educate",
+            "facts_needed": [],
+        },
+        {
+            "order": 3,
+            "role": "PROBLEM",
+            "topic": "Cost concern",
+            "goal": "awareness",
+            "facts_needed": [],
+        },
+    ]
+    ai_port = _FakeAiPort(_payload(items))
+    use_case = _make_use_case(_campaign(), _brief(3), ai_port)
+
+    plan = use_case.execute(CampaignId("campaign-1"))
+    assert len(plan.items) == 3
+
+
+def test_role_sequence_membership_rejects_one_role_outside_template() -> None:
+    """One role outside template (FAQ is NOT in LEAD_GENERATION_V1).
+
+    The plan is otherwise fine (PROBLEM, EDUCATION, ACTION are in the
+    template; distinct topics; 2+ distinct roles) — the single invalid
+    role must be enough to reject the plan.
+    """
+    items = [
+        {
+            "order": 1,
+            "role": "PROBLEM",
+            "topic": "Cost",
+            "goal": "awareness",
+            "facts_needed": [],
+        },
+        {
+            "order": 2,
+            "role": "EDUCATION",
+            "topic": "Process",
+            "goal": "educate",
+            "facts_needed": [],
+        },
+        {
+            "order": 3,
+            "role": "FAQ",  # NOT in LEAD_GENERATION_V1.role_sequence
+            "topic": "Common questions",
+            "goal": "inform",
+            "facts_needed": [],
+        },
+    ]
+    ai_port = _FakeAiPort(_payload(items))
+    use_case = _make_use_case(_campaign(), _brief(3), ai_port)
+
+    with pytest.raises(InvariantViolation) as exc_info:
+        use_case.execute(CampaignId("campaign-1"))
+
+    msg = str(exc_info.value)
+    assert "FAQ" in msg
+    assert "lead_generation_v1" in msg
+    # Campaign + plan are NOT persisted.
+    assert use_case._campaign_repo.campaign.status is CampaignStatus.DRAFT
+    assert use_case._campaign_repo.plans == {}
+
+
+def test_role_sequence_membership_rejects_all_roles_outside_template() -> None:
+    """Total mismatch — every role is outside the template.
+
+    The plan still passes the other two checks (2+ distinct roles,
+    distinct topics) but the membership check is the deal-breaker.
+    """
+    items = [
+        {
+            "order": 1,
+            "role": "FAQ",
+            "topic": "Topic A",
+            "goal": "g",
+            "facts_needed": [],
+        },
+        {
+            "order": 2,
+            "role": "STORY",
+            "topic": "Topic B",
+            "goal": "g",
+            "facts_needed": [],
+        },
+        {
+            "order": 3,
+            "role": "URGENCY",
+            "topic": "Topic C",
+            "goal": "g",
+            "facts_needed": [],
+        },
+    ]
+    ai_port = _FakeAiPort(_payload(items))
+    use_case = _make_use_case(_campaign(), _brief(3), ai_port)
+
+    with pytest.raises(InvariantViolation) as exc_info:
+        use_case.execute(CampaignId("campaign-1"))
+
+    msg = str(exc_info.value)
+    # Error message must name the offending roles, in sorted order, so
+    # the operator can see exactly what the AI invented.
+    for invalid_role in ("FAQ", "STORY", "URGENCY"):
+        assert invalid_role in msg
+    assert "lead_generation_v1" in msg
+    assert use_case._campaign_repo.campaign.status is CampaignStatus.DRAFT
+    assert use_case._campaign_repo.plans == {}
+
+
+def test_role_sequence_error_message_lists_invalid_roles_sorted() -> None:
+    """Multiple invalid roles must be listed alphabetically so the error
+    message is stable and easy to diff in test output."""
+    items = [
+        {
+            "order": 1,
+            "role": "STORY",  # not in template
+            "topic": "A",
+            "goal": "g",
+            "facts_needed": [],
+        },
+        {
+            "order": 2,
+            "role": "ACTION",  # in template
+            "topic": "B",
+            "goal": "g",
+            "facts_needed": [],
+        },
+        {
+            "order": 3,
+            "role": "FAQ",  # not in template
+            "topic": "C",
+            "goal": "g",
+            "facts_needed": [],
+        },
+    ]
+    ai_port = _FakeAiPort(_payload(items))
+    use_case = _make_use_case(_campaign(), _brief(3), ai_port)
+
+    with pytest.raises(InvariantViolation) as exc_info:
+        use_case.execute(CampaignId("campaign-1"))
+
+    msg = str(exc_info.value)
+    # "FAQ" must appear before "STORY" (sorted).
+    assert msg.index("FAQ") < msg.index("STORY")
