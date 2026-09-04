@@ -111,7 +111,7 @@ class GenerateCampaignPlan:
         output = validate_campaign_plan_output(
             response.structured_payload, brief.content_piece_count
         )
-        _validate_plan_domain(output)
+        _validate_plan_domain(output, LEAD_GENERATION_V1)
 
         items = tuple(
             CampaignItem(
@@ -193,18 +193,47 @@ def _build_user_text(
     return "\n".join(lines)
 
 
-def _validate_plan_domain(output: CampaignPlanOutput) -> None:
+def _validate_plan_domain(
+    output: CampaignPlanOutput, template: CampaignTemplate
+) -> None:
     """Deterministic domain checks that the Pydantic schema does not cover.
 
-    - no duplicate topics among items;
-    - at least 2 distinct roles when the plan has 2 or more items.
+    - no duplicate topics among items (case-insensitive, whitespace-trimmed
+      comparison — "Zdravlje zuba" and "zdravlje zuba." must collide);
+    - at least 2 distinct roles when the plan has 2 or more items;
+    - every generated role must be a member of ``template.role_sequence``
+      (subset provjera, NE exact-match, NE order-sensitive — AI legitimno
+      bira podskup uloga iz template-a jer je ``content_piece_count``
+      tipično manji od ``len(template.role_sequence)``).
     """
-    topics = [item.topic for item in output.items]
-    if len(topics) != len(set(topics)):
+    # Normalize for comparison only — the persisted ``item.topic`` keeps
+    # its original casing/punctuation. ``casefold()`` is the Unicode-aware
+    # lowercase (better than ``.lower()`` for non-ASCII; BHS_latin content
+    # does not have case folding edge cases, but we use it for consistency
+    # with the rest of the project), ``.strip()`` removes leading/trailing
+    # whitespace and incidental punctuation drift from the model.
+    normalized_topics = [item.topic.casefold().strip() for item in output.items]
+    if len(normalized_topics) != len(set(normalized_topics)):
         raise InvariantViolation("campaign plan must not contain duplicate topics")
 
     roles = {item.role for item in output.items}
     if len(output.items) >= 2 and len(roles) < 2:
         raise InvariantViolation(
             "campaign plan must use at least 2 distinct roles"
+        )
+
+    # ACS-F1-022: enforce role_sequence membership. Without this check,
+    # the AI is free to invent any valid ``CampaignRole`` (e.g. ``FAQ``,
+    # ``STORY``) even when the active template (e.g. LEAD_GENERATION_V1)
+    # does not list it. The template's ``role_sequence`` is the
+    # semantic commitment the planner makes for that campaign kind;
+    # violating it silently is a fact-grounding bug (live test
+    # happens to return good output because the model is good, not
+    # because the system guarantees it).
+    allowed_roles = set(template.role_sequence)
+    invalid_roles = roles - allowed_roles
+    if invalid_roles:
+        raise InvariantViolation(
+            f"campaign plan uses roles outside template {template.id!r}: "
+            f"{sorted(r.value for r in invalid_roles)}"
         )
