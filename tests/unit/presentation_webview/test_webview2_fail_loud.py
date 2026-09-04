@@ -84,11 +84,24 @@ def test_probe_is_noop_off_windows() -> None:
 
 
 def test_pywebview_start_uses_explicit_edgechromium_and_debug_false() -> None:
-    """Acceptance: webview.start must pass gui='edgechromium' and debug=False."""
+    """Acceptance: webview.start must pass gui='edgechromium' and debug=False.
+
+    ACS-GUI-005 BF-2 fix: ``_open_window`` now delegates bridge
+    construction to a module-level ``_build_bridge`` seam so this
+    test does not silently depend on the full composition root
+    (``create_bootstrap`` → DB conn, migrations, logging setup,
+    SecretStore). Without the seam, the test was hermetic on a
+    dev workstation but brittle across CI/sandbox environments
+    (Codex caught it via PermissionError on the log file).
+    """
     import pathlib
     fake_webview = MagicMock()
+    fake_bridge = MagicMock()
     with patch.dict(sys.modules, {"webview": fake_webview}), patch(
         "ai_campaign_studio.presentation_webview.__main__._probe_webview2"
+    ), patch(
+        "ai_campaign_studio.presentation_webview.__main__._build_bridge",
+        return_value=fake_bridge,
     ):
         from ai_campaign_studio.presentation_webview.__main__ import _open_window
 

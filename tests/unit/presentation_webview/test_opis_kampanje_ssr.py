@@ -118,12 +118,61 @@ def test_render_body_sacuvaj_nacrt_is_toast_stub() -> None:
     ), '"Sačuvaj nacrt" must be a toast-stub button'
 
 
-def test_render_body_sacuvaj_i_napravi_plan_is_real_link() -> None:
+def test_render_body_sacuvaj_i_napravi_plan_is_bridge_button() -> None:
+    """ACS-GUI-005: the "Sačuvaj i napravi plan" affordance is now a real
+    ``<button data-action="save-and-plan">`` (click triggers the
+    pywebview js_api bridge), NOT a static ``<a href>``.
+    """
     body = render_body()
+    # The button must carry the new ``data-action="save-and-plan"`` and a
+    # stable ``id="f-save-and-plan"`` hook (used by the app.js handler
+    # to re-enable the button on error).
     assert (
-        '<a class="btn primary" href="../plan_kampanje/index.html">'
-        "Sačuvaj i napravi plan →</a>"
+        '<button class="btn primary" id="f-save-and-plan" '
+        'data-action="save-and-plan">'
+        "Sačuvaj i napravi plan →</button>"
     ) in body
+    # And the static ``<a href>`` form is GONE — that was the pre-ACS-GUI-005
+    # pattern. Regression guard so a future refactor does not silently
+    # re-introduce it.
+    assert 'href="../plan_kampanje/index.html"' not in body
+    # The button text and primary class are preserved.
+    assert 'class="btn primary"' in body
+    assert "Sačuvaj i napravi plan" in body
+
+
+def test_render_body_emits_stable_id_hooks_for_every_form_field() -> None:
+    """ACS-GUI-005: every form field must carry a stable ``id="f-..."``
+    hook so the app.js save-and-plan handler can read each value back
+    from the DOM. Without these, the bridge would have to parse the
+    body by tag/position which is brittle and breaks with cosmetic
+    refactors.
+    """
+    body = render_body()
+    for hook in (
+        "f-naziv",
+        "f-cilj",
+        "f-ponuda",
+        "f-publika",
+        "f-kanal",
+        "f-platforma",
+        "f-format",
+        "f-jezik",
+        "f-instrukcije",
+        "f-save-and-plan",
+    ):
+        assert f'id="{hook}"' in body, f"missing id hook: {hook!r}"
+
+
+def test_render_body_je_zik_select_keeps_id_hook() -> None:
+    """Regression: the ACS-GUI-004 refactor added ``id`` to several
+    elements; the ACS-GUI-005 add of ``f-jezik`` must NOT remove the
+    existing ``<option value="SR" selected>`` rendering (the contract
+    says the bridge reads ``.value`` off the select directly).
+    """
+    body = render_body()
+    assert 'id="f-jezik"' in body
+    assert '<option value="SR" selected>Srpski</option>' in body
 
 
 def test_changing_fixture_changes_rendered_body() -> None:

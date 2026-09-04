@@ -11,7 +11,10 @@ from typing import Any, Protocol
 
 from ai_campaign_studio.localization.enums import AppLocale
 from ai_campaign_studio.presentation.state import AppRuntimeState
-from ai_campaign_studio.presentation.ui_models import ProviderStatusUiModel
+from ai_campaign_studio.presentation.ui_models import (
+    CampaignPlanResultUiModel,
+    ProviderStatusUiModel,
+)
 
 
 class PresentationFacade(Protocol):
@@ -19,7 +22,16 @@ class PresentationFacade(Protocol):
 
     A concrete facade wires these methods to the composition root
     (``bootstrap``) without the UI framework leaking into the foundation
-    modules. Campaign UI actions are intentionally absent in P0.
+    modules.
+
+    As of ACS-GUI-005, one campaign-related method is now part of the
+    foundation surface: ``create_campaign_and_generate_plan``. It is
+    documented here as part of the contract but is NOT a hard
+    requirement for every concrete facade to implement (Protocol is
+    structural in Python — see ACS-GUI-005 contract §"Ne implementirati
+    cijeli ``PresentationFacade`` Protocol"). pywebview's actual
+    ``js_api`` bridge is a narrow class that exposes only this one
+    method, not the full ``PresentationFacade`` set.
     """
 
     def set_app_locale(self, locale: AppLocale) -> None: ...
@@ -33,3 +45,7 @@ class PresentationFacade(Protocol):
     def run_health_check(self) -> dict[str, Any]: ...
 
     def cancel_job(self, job_id: str) -> None: ...
+
+    def create_campaign_and_generate_plan(
+        self, raw_brief: dict[str, Any]
+    ) -> CampaignPlanResultUiModel: ...

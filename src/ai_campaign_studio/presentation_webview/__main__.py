@@ -30,6 +30,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 # --- User data dir (cross-platform) -----------------------------------------
 # A small, dependency-free replacement for ``platformdirs`` so the GUI has a
@@ -162,6 +163,29 @@ def _probe_webview2() -> None:
     )
 
 
+def _build_bridge() -> Any:
+    """Construct the js_api bridge (ACS-GUI-005, BF-2 explicit seam).
+
+    Extracted as a module-level helper so the unit test
+    ``test_pywebview_start_uses_explicit_edgechromium_and_debug_false``
+    can patch the bridge construction WITHOUT triggering the full
+    composition root (``create_bootstrap`` → DB conn, migrations,
+    logging, keyring). Without this seam, the test was silently
+    dependent on filesystem/DB/logging side effects it never
+    intended to exercise — fine on a developer workstation, but
+    brittle across CI/sandbox environments (Codex caught this
+    via a PermissionError on the log file in its sandbox).
+
+    The bridge owns the full GUI→backend wiring (brand seeding +
+    provider resolution + CreateCampaign + GenerateCampaignPlan)
+    and exposes exactly one public method to the WebView2
+    JavaScript context, per docs/PYWEBVIEW_SECURITY.md §3.
+    """
+    from .bridge import CampaignBridgeApi  # noqa: PLC0415  (test seam)
+
+    return CampaignBridgeApi()
+
+
 def _open_window(html_path: Path, *, width: int, height: int) -> None:
     """Create and start the pywebview window. Imports are local so the
     module can be imported on test machines without pywebview installed
@@ -169,12 +193,16 @@ def _open_window(html_path: Path, *, width: int, height: int) -> None:
     import webview  # type: ignore[import-not-found,import-untyped]  # noqa: PLC0415
 
     _probe_webview2()
+
+    bridge = _build_bridge()
+
     window = webview.create_window(
         title="AI Campaign Studio",
         url=html_path.resolve().as_uri(),
         width=width,
         height=height,
         resizable=True,
+        js_api=bridge,
     )
 
     # Persist window size on every resize. We use ``resized`` rather

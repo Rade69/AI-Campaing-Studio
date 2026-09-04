@@ -83,36 +83,55 @@ DEFAULT_FIXTURE = OpisKampanjeFixture(
 )
 
 
-def _select(options: tuple[str, ...], selected: str) -> str:
+def _select(
+    options: tuple[str, ...], selected: str, *, id_attr: str | None = None
+) -> str:
     """Render a ``<select>`` with the selected option marked.
 
     Single-value selects (cilj/kanal) pass a one-element tuple so the
     rendered markup matches the mokap's single-option selects.
+
+    ``id_attr`` (optional) injects ``id="..."`` onto the rendered
+    ``<select>`` so the bridge ``app.js`` handler can read the chosen
+    value via a stable DOM hook. Without it the rendered markup is
+    identical to the pre-ACS-GUI-005 version (used by the
+    ``render_body`` fallback and by tests that don't care about JS hooks).
     """
+    id_html = f' id="{html.escape(id_attr)}"' if id_attr else ""
     opts = "".join(
         f"<option{' selected' if o == selected else ''}>{html.escape(o)}</option>"
         for o in options
     )
-    return f'<select class="select">{opts}</select>'
+    return f'<select{id_html} class="select">{opts}</select>'
 
 
-def _jezik_select(selected_code: str) -> str:
+def _jezik_select(selected_code: str, *, id_attr: str | None = None) -> str:
     """Render the ``<select>`` for content language (SR/HR/BS/EN).
 
     A real dropdown with all 4 codes as options -- consistent with the
     Kanal/Platforma/Format selects it sits next to.
     """
+    id_html = f' id="{html.escape(id_attr)}"' if id_attr else ""
     opts = "".join(
         f"<option value=\"{html.escape(code)}\""
         f"{' selected' if code == selected_code else ''}>"
         f"{html.escape(label)}</option>"
         for code, label in JEZICI_SADRZAJA
     )
-    return f'<select class="select">{opts}</select>'
+    return f'<select{id_html} class="select">{opts}</select>'
 
 
 def render_body(fixture: OpisKampanjeFixture | None = None) -> str:
-    """Return the Opis kampanje body HTML driven by the supplied fixture."""
+    """Return the Opis kampanje body HTML driven by the supplied fixture.
+
+    As of ACS-GUI-005: every form field carries a stable ``id="f-..."``
+    attribute (used by the ``app.js`` save-and-plan handler to read
+    values back from the DOM before crossing the js_api boundary), and
+    the "Sačuvaj i napravi plan →" affordance is a ``<button
+    data-action="save-and-plan">`` rather than a static ``<a href>`` —
+    the click now triggers a real ``CreateCampaign + GenerateCampaignPlan``
+    sequence via the bridge.
+    """
     fx = fixture or DEFAULT_FIXTURE
     return (
         stepper_html(1, fx.campaign_name)
@@ -126,33 +145,35 @@ def render_body(fixture: OpisKampanjeFixture | None = None) -> str:
         '<div class="grid g2">'
         '<div class="card">'
         '<div class="field"><label>Naziv kampanje</label>'
-        f'<input class="input" value="{html.escape(fx.naziv)}">'
+        f'<input class="input" id="f-naziv" value="{html.escape(fx.naziv)}">'
         "</div>"
         '<div class="field"><label>Cilj kampanje</label>'
-        + _select((fx.cilj,), fx.cilj)
+        + _select((fx.cilj,), fx.cilj, id_attr="f-cilj")
         + "</div>"
         '<div class="field"><label>Ponuda / proizvod</label>'
-        f'<textarea class="textarea">{html.escape(fx.ponuda)}</textarea>'
+        f'<textarea class="textarea" id="f-ponuda">'
+        f"{html.escape(fx.ponuda)}</textarea>"
         "</div>"
         '<div class="field"><label>Ciljna publika</label>'
-        f'<textarea class="textarea">{html.escape(fx.publika)}</textarea>'
+        f'<textarea class="textarea" id="f-publika">'
+        f"{html.escape(fx.publika)}</textarea>"
         "</div>"
         "</div>"
         '<div class="card"><h3>Ciljani kanal</h3>'
         '<div class="field"><label>Kanal</label>'
-        + _select((fx.kanal,), fx.kanal)
+        + _select((fx.kanal,), fx.kanal, id_attr="f-kanal")
         + "</div>"
         '<div class="field"><label>Platforma</label>'
-        + _select(PLATFORMS, fx.platforma)
+        + _select(PLATFORMS, fx.platforma, id_attr="f-platforma")
         + "</div>"
         '<div class="field"><label>Format</label>'
-        + _select(FORMATS, fx.format)
+        + _select(FORMATS, fx.format, id_attr="f-format")
         + "</div>"
         '<div class="field"><label>Jezik sadržaja</label>'
-        + _jezik_select(fx.jezik)
+        + _jezik_select(fx.jezik, id_attr="f-jezik")
         + "</div>"
         '<div class="field"><label>Posebne instrukcije</label>'
-        f'<textarea class="textarea" placeholder="Opcionalno">'
+        f'<textarea class="textarea" id="f-instrukcije" placeholder="Opcionalno">'
         f"{html.escape(fx.instrukcije)}</textarea>"
         "</div>"
         "</div>"
@@ -162,8 +183,13 @@ def render_body(fixture: OpisKampanjeFixture | None = None) -> str:
         f'data-message="{html.escape(fx.sacuvaj_nacrt_toast)}">'
         "Sačuvaj nacrt"
         "</button>"
-        '<a class="btn primary" href="../plan_kampanje/index.html">'
-        "Sačuvaj i napravi plan →</a>"
+        # ACS-GUI-005: real button, not a static link. The app.js
+        # ``save-and-plan`` handler reads the form via stable id="..."
+        # hooks, calls ``window.pywebview.api.create_campaign_and_generate_plan``,
+        # and on success navigates to the plan screen with
+        # ``?campaign=<id>``.
+        '<button class="btn primary" id="f-save-and-plan" data-action="save-and-plan">'
+        "Sačuvaj i napravi plan →</button>"
         "</div>"
     )
 
