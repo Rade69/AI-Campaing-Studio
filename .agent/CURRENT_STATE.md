@@ -3,15 +3,24 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **A8 nastavak, tri paralelna HIGH-risk
-taska otvorena, dva čekaju Codex.** ACS-F1-017 (DeepSeek+OpenRouter+OpenAI-kompatibilan,
-implementer Pi) — Claude review `PASS_WITH_NOTES`, čeka Codex. ACS-F1-019 (Google/Gemini,
-implementer Crush) — evidence predata, Claude review `PASS_WITH_NOTES` (SDK: `google-genai`,
-obrazložen izbor nad deprecated `google-generativeai`; koordinator nezavisno instalirao paket i
-provjerio SVAKI korišten SDK tip protiv stvarnog paketa — sve se poklapa; 655 passed, F1-lekcija
-fresh-environment provjera reprodukovana, ruff/mypy/boundaries/secrets čisti), čeka Codex
-adversarial review (`agent_reports/2026-09-04-ACS-F1-019-brief-za-codex.md`). ACS-F1-018
-(Anthropic, implementer MiniMax) i dalje čeka evidenciju.
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **Human Owner uradio ručnu end-to-end
+validaciju sa pravim DeepSeek ključem (van formalnog review-a) — ACS-F1-017 review downgrade-ovan
+na REJECT, stvaran blocking bug pronađen.** Puna kampanja (LoadBrandFixture → CreateCampaign →
+GenerateCampaignPlan → ApproveCampaignPlan → GenerateSocialPost) pokrenuta uživo protiv pravog
+DeepSeek API-ja (BrightSmile Dental fixture). **Ključni pozitivan nalaz**: fact-grounding stvarno
+radi — AI je generisao uvjerljivu ali neutemeljenu FACT tvrdnju u OFFER stavci, claim linter je to
+uhvatio (`FACT/UNSUPPORTED`) i post je ispravno vraćen u `NEEDS_REVIEW`, ne tiho propušten. Nema
+zabranjenih termina ni u jednom generisanom tekstu. **BF-1 (blocking, za ACS-F1-017)**:
+`OpenAIAdapter`-ov hardkodovan `response_format: json_schema` DeepSeek stvarno odbija ("This
+response_format type is unavailable now") — nijedan mock-ovan test (Pi-jev, koordinator-ov) to
+nije mogao uhvatiti. Potvrđen fix uživo: `json_object` mod + šema ugrađena u prompt tekst + izričita
+instrukcija o tačnom broju stavki (bez nje, DeepSeek je generisao 7 umjesto traženih 3). OpenRouter
+NIJE testiran uživo — ne pretpostavljati ponašanje. Fix brief poslat Pi-ju
+(`agent_reports/2026-09-04-ACS-F1-017-fix-brief-za-pi.md`); Codex NIJE pozvan na staru verziju,
+ide tek nakon fixa. ACS-F1-019 (Google/Gemini, implementer Crush) i dalje čeka Codex adversarial
+review — ista klasa rizika, ali PROIZVOD nije live-testiran, samo mock — vrijedno razmotriti isti
+tip ručne validacije prije Human Owner odobrenja. ACS-F1-018 (Anthropic, implementer MiniMax) i
+dalje čeka evidenciju.
 
 Prethodni entry (2026-09-04): **A8 nastavak, tri paralelna HIGH-risk taska otvorena.**
 
