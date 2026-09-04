@@ -3,7 +3,24 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-GUI-005 task contract napisan i
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-017 (DeepSeek/OpenRouter/
+OpenAI-kompatibilan, A8 dio 3) merged u main** (`76be81f`) — **A8 (multi-provider AI adapteri)
+KOMPLETIRAN, svih 5 provajdera na main-u.** Human Owner odobrio nakon Codex-ove treće (finalne)
+adversarial runde: `PASS_WITH_NOTES`, nema blokirajućih nalaza. R2-BF-1 (count-detection regex
+lažno hvatao `discount`/`account_id`) potvrđeno zatvoren — koordinator nezavisno reprodukovao fix
+(`\bcount\b` word-boundary) protiv i pozitivnih i negativnih slučajeva prije odobrenja. Post-merge
+verifikacija na main-u: 698 passed, `ruff check src tests scripts`/`mypy src`/
+`test_import_boundaries.py`(18)/`check_no_secrets.py` svi čisti, čist merge bez konflikta (main se
+u međuvremenu pomjerio zbog ACS-GUI-005 kontrakt commit-ova, nema preklapanja fajlova). DeepSeek
+live-verifikovan (A8 dio 3 rana faza); OpenRouter/generic OpenAI-kompatibilan NISU live-testirani
+(konzervativan `json_object` default dok se suprotno ne dokaže) — otvoren item za budući smoke-test
+kad ključ bude dostupan. Worktree uklonjen.
+
+**A8 status: SVIH 5 provajdera (OpenAI, Anthropic, Google, DeepSeek, OpenRouter/generic
+OpenAI-kompatibilan) merged u main.** Fokus se vraća na GUI-backend bridge (ACS-GUI-005, u toku,
+MiniMax implementira).
+
+Prethodni entry (2026-09-04): **ACS-GUI-005 task contract napisan i
 push-ovan** (`cdbef5e`) — **prvi GUI→backend bridge**. Human Owner je nakon iskrene procjene stanja
 aplikacije ("arhitektura radi, GUI i backend su nepovezani") eksplicitno odobrio promjenu prioriteta
 i zadužio MiniMax-a da ovo implementira. Kontrakt:
