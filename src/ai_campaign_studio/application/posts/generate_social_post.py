@@ -18,6 +18,9 @@ from ai_campaign_studio.application.posts.claim_linter import (
     load_claim_rules,
 )
 from ai_campaign_studio.application.posts.claim_validator import validate_claim
+from ai_campaign_studio.application.posts.content_similarity import (
+    is_too_similar_to_any,
+)
 from ai_campaign_studio.application.posts.derive_content_status import (
     derive_content_status,
 )
@@ -46,7 +49,7 @@ from ai_campaign_studio.domain.content.entities import (
     ContentPiece,
     SocialPostPayload,
 )
-from ai_campaign_studio.domain.content.enums import ContentPayloadType
+from ai_campaign_studio.domain.content.enums import ContentPayloadType, ContentStatus
 from ai_campaign_studio.domain.content.revisions import Revision, RevisionOrigin
 from ai_campaign_studio.domain.facts.entities import ApprovedFact
 from ai_campaign_studio.ports.ai import AIRequest, TextGenerationPort
@@ -177,6 +180,16 @@ class GenerateSocialPost:
             cta=output.cta,
             hashtags=tuple(output.hashtags),
         )
+
+        existing_texts = tuple(
+            f"{piece.payload.headline} {piece.payload.caption}"
+            for piece in self._content_repo.list_campaign_content(campaign_id)
+            if piece.payload is not None
+        )
+        if is_too_similar_to_any(
+            f"{output.headline} {output.caption}", existing_texts
+        ):
+            status = ContentStatus.NEEDS_REVIEW
 
         now = utc_now()
         piece_id = PostId(new_id())
