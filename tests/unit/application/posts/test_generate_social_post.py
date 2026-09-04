@@ -38,9 +38,14 @@ from ai_campaign_studio.domain.common.ids import (
     CampaignItemId,
     CampaignPlanId,
     FactId,
+    PostId,
 )
-from ai_campaign_studio.domain.content.entities import CampaignTarget
-from ai_campaign_studio.domain.content.enums import ContentStatus
+from ai_campaign_studio.domain.content.entities import (
+    CampaignTarget,
+    ContentPiece,
+    SocialPostPayload,
+)
+from ai_campaign_studio.domain.content.enums import ContentPayloadType, ContentStatus
 from ai_campaign_studio.domain.content.revisions import RevisionOrigin
 from ai_campaign_studio.domain.facts.entities import ApprovedFact, SourceReference
 from ai_campaign_studio.domain.facts.enums import FactStatus
@@ -119,8 +124,9 @@ class _FakeFactRepository:
 
 
 class _FakeContentRepository:
-    def __init__(self) -> None:
+    def __init__(self, existing: tuple = ()) -> None:
         self.saved: list = []
+        self._existing = existing
 
     def save_content_piece(self, content_piece) -> None:  # noqa: ANN001
         self.saved.append(content_piece)
@@ -131,7 +137,7 @@ class _FakeContentRepository:
 
     def list_campaign_content(self, campaign_id):  # noqa: ANN001
         del campaign_id
-        return ()
+        return self._existing
 
 
 class _FakeRevisionRepository:
@@ -423,3 +429,49 @@ def test_generate_creates_initial_revision() -> None:
     assert revision.version == 1
     assert revision.origin is RevisionOrigin.AI
     assert json.loads(revision.previous_value) is None
+
+
+def _existing_piece(headline: str, caption: str) -> ContentPiece:
+    return ContentPiece(
+        id=PostId("existing-1"),
+        campaign_item_id=CampaignItemId("item-0"),
+        target=_target(),
+        payload_type=ContentPayloadType.SOCIAL_POST,
+        status=ContentStatus.DRAFT,
+        brand_snapshot_id=BrandSnapshotId("snap-1"),
+        created_at=_CREATED_AT,
+        updated_at=_CREATED_AT,
+        payload=SocialPostPayload(
+            headline=headline, caption=caption, hook="", body="", cta=""
+        ),
+    )
+
+
+def test_similar_existing_post_yields_needs_review() -> None:
+    existing = _existing_piece("H", "C")
+    content_repo = _FakeContentRepository(existing=(existing,))
+    use_case = _make_use_case(_valid_output(), content_repo)
+
+    piece = use_case.execute(
+        CampaignId("campaign-1"),
+        CampaignPlanId("plan-1"),
+        CampaignItemId("item-1"),
+        _target(),
+    )
+
+    assert piece.status is ContentStatus.NEEDS_REVIEW
+
+
+def test_dissimilar_existing_post_keeps_status() -> None:
+    existing = _existing_piece("Totally", "Different")
+    content_repo = _FakeContentRepository(existing=(existing,))
+    use_case = _make_use_case(_valid_output(), content_repo)
+
+    piece = use_case.execute(
+        CampaignId("campaign-1"),
+        CampaignPlanId("plan-1"),
+        CampaignItemId("item-1"),
+        _target(),
+    )
+
+    assert piece.status is ContentStatus.DRAFT

@@ -355,3 +355,56 @@ def test_generate_then_revise_versions_2(tmp_path: Path) -> None:
     revisions = revision_repo.list_entity_revisions("ContentPiece", str(piece.id))
     assert [r.version for r in revisions] == [1, 2]
     connection.close()
+
+
+def test_similar_second_post_flagged_needs_review(tmp_path: Path) -> None:
+    connection = _setup_db(tmp_path)
+    brand_repo = SqliteBrandRepository(connection)
+    fact_repo = SqliteFactRepository(connection)
+    campaign_repo = SqliteCampaignRepository(connection)
+    content_repo = SqliteContentRepository(connection)
+    revision_repo = SqliteRevisionRepository(connection)
+    uow = SqliteUnitOfWork(connection)
+
+    snapshot = LoadBrandFixture(brand_repo, fact_repo, uow).execute(_FIXTURE_PATH)
+    campaign = CreateCampaign(campaign_repo, uow).execute(
+        snapshot.brand_id, snapshot.id, _valid_brief()
+    )
+    item = _item()
+    plan = CampaignPlan(
+        id=CampaignPlanId("plan-1"),
+        campaign_id=campaign.id,
+        version=1,
+        status=CampaignPlanStatus.APPROVED,
+        created_at=datetime.now(UTC),
+        items=[item],
+    )
+    campaign_repo.save_plan(plan)
+
+    allowed = select_allowed_facts(item, fact_repo.list_snapshot_facts(snapshot.id))
+    fact_id = allowed.fact_ids[0]
+    target = CampaignTarget(
+        channel="SOCIAL", platform_code="INSTAGRAM", format_code="FEED_POST"
+    )
+
+    generate = GenerateSocialPost(
+        campaign_repo,
+        brand_repo,
+        fact_repo,
+        content_repo,
+        revision_repo,
+        _FakePromptRepository(),
+        _FakeAiPort(_post_payload(fact_id)),
+        uow,
+    )
+    first = generate.execute(campaign.id, plan.id, item.id, target)
+    second = generate.execute(campaign.id, plan.id, item.id, target)
+
+    assert first.status is ContentStatus.DRAFT
+    assert second.status is ContentStatus.NEEDS_REVIEW
+
+    # Jednosmjernost: prva objava ostaje DRAFT (ne re-snima se).
+    persisted_first = content_repo.get_content_piece(first.id)
+    assert persisted_first is not None
+    assert persisted_first.status is ContentStatus.DRAFT
+    connection.close()
