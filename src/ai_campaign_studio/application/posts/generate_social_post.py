@@ -8,6 +8,8 @@ only on ports — no channels/ai_registry/provider imports.
 
 from __future__ import annotations
 
+import json
+from dataclasses import asdict
 from pathlib import Path
 from typing import Protocol
 
@@ -35,6 +37,7 @@ from ai_campaign_studio.domain.common.ids import (
     CampaignItemId,
     CampaignPlanId,
     PostId,
+    RevisionId,
     new_id,
 )
 from ai_campaign_studio.domain.common.timestamps import utc_now
@@ -44,6 +47,7 @@ from ai_campaign_studio.domain.content.entities import (
     SocialPostPayload,
 )
 from ai_campaign_studio.domain.content.enums import ContentPayloadType
+from ai_campaign_studio.domain.content.revisions import Revision, RevisionOrigin
 from ai_campaign_studio.domain.facts.entities import ApprovedFact
 from ai_campaign_studio.ports.ai import AIRequest, TextGenerationPort
 from ai_campaign_studio.ports.prompts import PromptRepositoryPort
@@ -52,6 +56,7 @@ from ai_campaign_studio.ports.repositories import (
     CampaignRepositoryPort,
     ContentRepositoryPort,
     FactRepositoryPort,
+    RevisionRepositoryPort,
 )
 
 _PROMPT_NAME = "post_generation"
@@ -85,6 +90,7 @@ class GenerateSocialPost:
         brand_repo: BrandRepositoryPort,
         fact_repo: FactRepositoryPort,
         content_repo: ContentRepositoryPort,
+        revision_repo: RevisionRepositoryPort,
         prompt_repo: PromptRepositoryPort,
         ai_port: TextGenerationPort,
         unit_of_work: _UnitOfWork,
@@ -93,6 +99,7 @@ class GenerateSocialPost:
         self._brand_repo = brand_repo
         self._fact_repo = fact_repo
         self._content_repo = content_repo
+        self._revision_repo = revision_repo
         self._prompt_repo = prompt_repo
         self._ai_port = ai_port
         self._unit_of_work = unit_of_work
@@ -172,8 +179,23 @@ class GenerateSocialPost:
         )
 
         now = utc_now()
+        piece_id = PostId(new_id())
+        revision = Revision(
+            id=RevisionId(new_id()),
+            entity_type="ContentPiece",
+            entity_id=str(piece_id),
+            version=1,
+            timestamp=now,
+            origin=RevisionOrigin.AI,
+            previous_value=json.dumps(None),
+            new_value=json.dumps(asdict(payload)),
+            provider=response.provider,
+            model=response.model,
+            prompt_version=_PROMPT_VERSION,
+            instruction=None,
+        )
         content_piece = ContentPiece(
-            id=PostId(new_id()),
+            id=piece_id,
             campaign_item_id=campaign_item.id,
             target=target,
             payload_type=ContentPayloadType.SOCIAL_POST,
@@ -183,10 +205,12 @@ class GenerateSocialPost:
             updated_at=now,
             facts_allowed=allowed.fact_ids,
             claims=claims,
+            revision_ids=(revision.id,),
             payload=payload,
         )
 
         with self._unit_of_work:
+            self._revision_repo.save_revision(revision)
             self._content_repo.save_content_piece(content_piece)
             self._unit_of_work.commit()
 
