@@ -3,7 +3,24 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-022 (role_sequence
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-GUI-006 (kompenzaciono
+brisanje orphan DRAFT kampanje) merged u main** (`1dc23df`, merge `79ddb8a`). Rješava gap koji
+je koordinator direktno posmatrao tokom ACS-GUI-005 live testiranja (`campaigns=2,
+campaign_plans=0` nakon prvog neuspjelog poziva) i koji je MiniMax sam prijavio nakon
+samo-pregleda svog ACS-GUI-005 rada. Bridge poziva `CreateCampaign` i `GenerateCampaignPlan` kao
+dvije odvojene, zasebno commit-ovane transakcije — ako drugi padne, prvi ostaje trajno sačuvan
+kao orphan DRAFT bez plana. Prava dijeljena transakcija bi zahtijevala mijenjanje transakcionog
+ugovora samih use-case-a (van scope-a), pa je rješenje usko, best-effort kompenzaciono brisanje —
+**PRVA delete metoda u cijelom repository/port sloju** (projekat je inače čist append-only), sa
+docstring-om koji eksplicitno ograničava namjenu (samo za multi-step orchestration rollback, ne
+opšta delete funkcija). Ispravna parent-prije-child FK ordering logika (campaigns prije
+campaign_briefs, jer `campaigns.brief_id` referencira `campaign_briefs.id` pod
+`PRAGMA foreign_keys=ON`) — koordinator nezavisno live-testirao protiv prave SQLite konekcije sa
+uključenim FK enforcement-om. Nikad ne maskira originalnu `GENERATION_FAILED` grešku čak i ako
+samo brisanje padne. 25 novih testova. Post-merge: 756 passed, ruff/mypy(139)/boundaries(18)/
+secrets svi čisti. Worktree uklonjen.
+
+Prethodni entry (2026-09-04): **ACS-F1-022 (role_sequence
 enforcement + duplicate-topic normalizacija) merged u main** (`80c5d54`, merge `a46cb3a`).
 `_validate_plan_domain` sada odbacuje plan ako BILO KOJA generisana uloga NIJE član
 `template.role_sequence` (subset provjera, ne order/count-sensitive) — do sada je jedina role
