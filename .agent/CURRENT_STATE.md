@@ -3,7 +3,47 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-017 (DeepSeek/OpenRouter/
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-GUI-005 (prvi GUI→backend
+pywebview bridge) merged u main** (`fcf1dcc`, merge `33dd144`) — **prvi klik u GUI-ju sada
+stvarno kreira kampanju i generiše plan.** "Sačuvaj i napravi plan →" na Opis kampanje ekranu
+zove nov `js_api` bridge (`presentation_webview/bridge/CampaignBridgeApi`) koji poziva pravi
+`CreateCampaign` + `GenerateCampaignPlan` protiv prave SQLite baze i pravog konfigurisanog AI
+providera. Human Owner odobrio nakon punog HIGH-risk ciklusa: Claude review PASS, dva fix kruga
+nakon Codex adversarial review-a (BF-1: hardkodovan Google model_id bio pogrešan/zastario —
+`gemini-1.5-flash` umjesto stvarno live-verifikovanog `gemini-2.5-flash`, koordinator to otkrio
+LIVE testom prije nego što je poslano Codex-u; BF-2: Codex uhvatio da je pywebview acceptance
+test izgubio hermetičnost jer `_open_window()` sada gradi pravi bridge/bootstrap inline — fix:
+patchable `_build_bridge()` seam), Codex finalni verdikt `PASS_WITH_NOTES`. Live-verifikovano
+DVA PUTA od strane koordinatora (prije i poslije BF-1 fixa) direktnim pozivom bridge metode
+protiv prave lokalne baze i pravog Gemini API-ja — `CreateCampaign` + brand-seed idempotency
+potvrđeni ispravni čak i prije fixa (2 poziva → 1 red u `brands`, ispravno), nakon fixa i
+`GenerateCampaignPlan` uspio sa stvarnim redovima u `campaign_plans`. Post-merge:
+`check_no_secrets.py` uhvatio lažno pozitivan nalaz (fake test API ključevi
+`sk-ant-test`/`goog-test` u novom test fajlu, scanner ne prepoznaje "test" kao placeholder
+marker) — koordinator ispravio preimenovanjem u `sk-ant-EXAMPLE`/`goog-EXAMPLE` (već prepoznat
+marker), ne širenjem scanner allowlist-e. Finalna verifikacija na main-u: 722 passed,
+ruff/mypy(139 files)/import-boundaries(18)/secrets svi čisti.
+
+**Proces napomena za buduće taskove**: implementer (MiniMax) je jednom pitao Human Owner-a
+DIREKTNO (svoj vlastiti ask_user alat) za odobrenje izlaska van `allowed_paths`
+(`test_import_boundaries.py`), mimo koordinatora — sadržaj je nezavisno pregledan i ispravan, ali
+ubuduće provjeriti ovakve "coordinator approved" tvrdnje direktno s Human Owner-om, ne uzeti ih
+zdravo za gotovo iz evidence izvještaja.
+
+**Poznat, pre-postojeći gap otkriven ovim taskom** (nije uveden ovim taskom, blokira budući
+"Podešavanja provider config" GUI task): stvarna GUI app uvijek konstruiše
+`AppSettings(environment="development")`, što znači `EnvironmentSecretStore` (read-only) — pravi
+`ConfigureProvider` use-case ne može stvarno persistovati ključ kroz pravu app danas.
+
+**Takođe otvoreno (paralelno, u toku)**: **ACS-F1-020** — spoljna code review sesija je našla
+(koordinator nezavisno reprodukovao) substring false-positive bug u `claim_linter.py`
+(`"jedinice"` sadrži `"jedini"` zabranjen termin, `"danas"` sadrži `"dan"` duration unit) — ista
+klasa greške kao R2-BF-1. Kontrakt napisan, dodijeljen Pi-ju, MEDIUM risk (§29). Worktree kreiran,
+implementacija u toku.
+
+Worktree (ACS-GUI-005) uklonjen.
+
+Prethodni entry (2026-09-04): **ACS-F1-017 (DeepSeek/OpenRouter/
 OpenAI-kompatibilan, A8 dio 3) merged u main** (`76be81f`) — **A8 (multi-provider AI adapteri)
 KOMPLETIRAN, svih 5 provajdera na main-u.** Human Owner odobrio nakon Codex-ove treće (finalne)
 adversarial runde: `PASS_WITH_NOTES`, nema blokirajućih nalaza. R2-BF-1 (count-detection regex
