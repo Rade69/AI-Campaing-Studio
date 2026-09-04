@@ -3,7 +3,32 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-020 (claim_linter
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-024 (bridge provider
+fallback) merged u main** (`e483a87`, merge `591cdbd`). Pi je samostalno pokrenuo i predao ovaj
+task BEZ eksplicitnog kickoff briefa od koordinatora — očigledno njegov alat prati nove kontrakte
+dodijeljene njemu na main-u i sam kreira worktree/počinje rad (korisna operativna informacija za
+buduće taskove — ne treba uvijek čekati da koordinator pošalje "→ ZA PI" brief). `_resolve_provider`
+sada iterira kroz SVE konfigurisane providere po prioritetu (ne samo prvog) i vraća prvi sa
+stvarnim ključem; `PROVIDER_KEY_MISSING` sad je istinit tek kad su svi probani. Pi je dizajn
+odluku (import `_PROVIDER_PRIORITY` kao private simbol iz factory-ja da izbjegne duplirani source
+of truth) jasno obrazložio u evidence-u. Ojačan i `test_brand_seed_reused_on_second_call` da
+provjerava identitet (`brand_id`), ne samo broj redova. Post-merge: 736 passed,
+ruff/mypy(139)/boundaries(18)/secrets svi čisti. Worktree uklonjen.
+
+**Paralelna nezavisna review sesija (druga Claude instanca) je istovremeno pregledala ACS-F1-020**
+(prije BF-1 merge-a) i našla dva nalaza: F1 ("100%" prohibited term potpuno neuhvatljiv) — ispalo
+da je VEĆ ispravljeno Pi-jevim stvarnim BF-1 fixom, nezavisno potvrđeno, NIJE ponovo otvarano; F2
+(brojevi zalijepljeni za jedinicu/simbol bez razmaka — "30KM", "3dana" — dobijaju generički
+`unsupported-number` umjesto specifičnog `unsupported-price`/`unsupported-duration`) je STVARAN i
+i dalje prisutan u mergovanom main-u — NIJE bezbjednosni regres (status ostaje UNSUPPORTED, samo
+je reason_code manje specifičan), ali vrijedi popraviti. Fix brief poslat Pi-ju (BF-2), nov
+worktree kreiran jer je original već mergovan:
+[agent_reports/2026-09-04-ACS-F1-020-fix-brief-2-za-pi.md](agent_reports/2026-09-04-ACS-F1-020-fix-brief-2-za-pi.md).
+Paralelna sesija je predložila dizajn (digit-adjacent lookaround varijanta SAMO za
+currency/duration provjere, prohibited_terms grana ostaje strogo `\b...\b`), koordinator ga je
+razradio u tačan kod prije slanja Pi-ju.
+
+Prethodni entry (2026-09-04): **ACS-F1-020 (claim_linter
 word-boundary) i ACS-F1-023 (UNIQUE indeksi) merged u main** (`4027917`, merges `a41254f`/
 `ad1bd0e`).
 
