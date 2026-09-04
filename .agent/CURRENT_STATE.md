@@ -3,6 +3,21 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **A8 status: ACS-F1-017 REJECT (R2-BF-1),
+ACS-F1-018 poslat Codex-u, ACS-F1-019 čeka Human Owner odobrenje.**
+
+- **ACS-F1-017 (DeepSeek/OpenRouter/OpenAI-kompatibilan, Pi)**: Codex re-review nakon BF-1 fixa —
+  `REJECT`. BF-1 (DeepSeek json_schema) potvrđen zatvoren, ALI nov nalaz R2-BF-1: exact-count regex
+  hvata `discount`/`account_id` kao lažan "generiši tačno N stavki" nalog (podstring "count").
+  Koordinator nezavisno reprodukovao. Fix brief poslat Pi-ju:
+  [agent_reports/2026-09-04-ACS-F1-017-fix-brief-2-za-pi.md](agent_reports/2026-09-04-ACS-F1-017-fix-brief-2-za-pi.md).
+- **ACS-F1-018 (Anthropic, MiniMax)**: BF-1 fix (native `output_config` umjesto prompt-based JSON)
+  potvrđen — 673 passed, `pyproject.toml` lower bound ispravno `anthropic>=1.0`. Human Owner nema
+  Anthropic ključ (nije live-testirano). Poslato Codex-u:
+  [agent_reports/2026-09-04-ACS-F1-018-brief-za-codex.md](agent_reports/2026-09-04-ACS-F1-018-brief-za-codex.md).
+- **ACS-F1-019 (Google, Crush)**: oba review-a PASS + live-verifikovano protiv pravog Gemini
+  API-ja — **spremno za Human Owner odobrenje**, čeka eksplicitno "odobravam".
+
 **Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-019 (Google, Crush) — oba
 review-a PASS, live-verifikovano protiv pravog Gemini API-ja, spremno za Human Owner odobrenje.**
 Codex adversarial review: `PASS_WITH_NOTES` (jedan non-blocking nalaz — adapter ne validira
