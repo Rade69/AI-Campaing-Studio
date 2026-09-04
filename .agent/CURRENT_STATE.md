@@ -3,9 +3,29 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-016 (OpenAI adapter, HIGH) —
-OBA review-a PASS (Claude + Codex, dvije runde svaki), čeka SAMO Human Owner eksplicitno
-odobrenje.** Codex re-review: `PASS_WITH_NOTES`
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-016 (OpenAI adapter, A8 dio 2,
+HIGH) merged u main** (`1b7a71f`). Human Owner eksplicitno odobrio ("Odobravam") nakon dvije pune
+runde review-a (Claude arhitektura + Codex adversarial, oba dva puta). Prvi live AI provider
+adapter u projektu: `OpenAIAdapter` implementira `TextGenerationPort` + vlastite
+`test_connection()`/`discover_models()` (namjerno NE implementira `AIProviderConnectionPort` —
+multi-provider-dispatch potpis preuranjen dok postoji samo jedan provajder), bounded retry (max 2,
+samo `RateLimitError`/`APIConnectionError`), sve SDK greške mapirane u domain
+`InfrastructureError` (nikad sirov ključ/exception tekst). 4 provider-setup use-case-a
+(`ConfigureProvider`/`TestProviderConnection`/`DiscoverModels`/`SelectDefaultModel`) zavise samo
+od portova; `TestProviderConnection`/`DiscoverModels` primaju adapter kroz lokalni Protocol (DI
+seam) umjesto interne konstrukcije — ispravka greške iz kontrakt-ovog skiciranog potpisa koja bi
+izazvala `application→infrastructure` import. `credential_ref` striktno string referenca. Cijeli
+test suite mock-ovan, bez pravog API poziva/ključa.
+
+Kroz review popravljeno: **F1** (nedeklarisana `httpx` test-zavisnost, CI rizik — dodato
+`httpx>=0.27` u dev extras), **BF-1** (`finish_reason` čitan sa pogrešnog OpenAI SDK objekta —
+`message` umjesto `choice`, uvijek `None` sa pravim response-om), **BF-2** (`ConfigureProvider`
+nije provjeravao `requires_api_key` prije upisa secreta — sad baca `InvariantViolation` prije bilo
+kakvog upisa). Nezavisna post-merge verifikacija: 644 passed, `ruff check .`/`mypy src`/
+`test_import_boundaries.py`(18)/`check_no_secrets.py` svi čisti. Worktree uklonjen.
+
+Prethodni entry (2026-09-04): **ACS-F1-016 — OBA review-a PASS (Claude + Codex, dvije runde
+svaki), čeka SAMO Human Owner eksplicitno odobrenje.** Codex re-review: `PASS_WITH_NOTES`
 (`agent_reports/2026-09-04-ACS-F1-016-review-codex-rereview.md`) — BF-1/BF-2 nezavisno
 reprodukovani kao zatvoreni vlastitom repro probom (`finish_reason='stop'`,
 `noauth_rejected=InvariantViolation` sa praznim secret_store/config_repo). Jedina napomena (full
