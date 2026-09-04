@@ -109,9 +109,9 @@ def test_build_returns_anthropic_adapter_with_correct_model() -> None:
     with patch(
         "ai_campaign_studio.infrastructure.ai.anthropic_adapter.AnthropicAdapter"
     ) as cls:
-        factory.build_text_generation_adapter("ANTHROPIC", api_key="sk-ant-test")
+        factory.build_text_generation_adapter("ANTHROPIC", api_key="sk-ant-EXAMPLE")
     cls.assert_called_once_with(
-        api_key="sk-ant-test", model="claude-3-haiku-20240307", base_url=None
+        api_key="sk-ant-EXAMPLE", model="claude-3-haiku-20240307", base_url=None
     )
 
 
@@ -119,13 +119,13 @@ def test_build_returns_google_adapter_with_correct_model() -> None:
     with patch(
         "ai_campaign_studio.infrastructure.ai.google_adapter.GoogleAdapter"
     ) as cls:
-        factory.build_text_generation_adapter("GOOGLE", api_key="goog-test")
+        factory.build_text_generation_adapter("GOOGLE", api_key="goog-EXAMPLE")
     # GoogleAdapter does NOT accept base_url (Gemini SDK uses Google's
     # own endpoint; the factory explicitly drops it). The call signature
     # is therefore ``(api_key, model)`` only. The model string is the
     # one live-verified in ACS-F1-019 (NOT ``gemini-1.5-flash``).
     cls.assert_called_once_with(
-        api_key="goog-test", model="gemini-2.5-flash"
+        api_key="goog-EXAMPLE", model="gemini-2.5-flash"
     )
 
 
