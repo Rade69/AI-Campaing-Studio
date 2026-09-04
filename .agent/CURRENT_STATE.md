@@ -3,6 +3,18 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-017 BF-1 fix potvrđen i
+LIVE-verifikovan, čeka Codex.** Pi dodao `structured_output_mode` parametar na `OpenAIAdapter`
+(`json_schema` default netaknut, `json_object` za DeepSeek — schema + exact-count instrukcija iz
+dva izvora: `minItems==maxItems` u schema-i i `*_count: N` regex u tekstu). Koordinator nezavisno
+pokrenuo `build_deepseek_adapter` protiv PRAVOG DeepSeek API-ja (isti ključ kao ranija ručna
+validacija) — tačno 3 stavke, stvaran sadržaj, nema 400 greške. Prvi task u ovoj seriji gdje je i
+implementacija I fix live-verifikovan prije Codex runde. 655 passed, ruff/mypy/boundaries/secrets
+čisti. Poslato Codex-u:
+[agent_reports/2026-09-04-ACS-F1-017-rereview-za-codex.md](agent_reports/2026-09-04-ACS-F1-017-rereview-za-codex.md).
+OpenRouter/generic OpenAI-compatible ostaju neverifikovani protiv pravih API-ja (konzervativan
+`json_object` default dok se suprotno ne dokaže).
+
 **Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-018 (Anthropic, MiniMax) —
 evidence predata, REJECT (BF-1), fix runda u toku.** MiniMax-ovo istraživanje SDK-a (protiv
 `anthropic 0.105.2`, u SISTEMSKOM Python-u, ne projektnom `.venv`-u — otkriveno i ispravljeno od
