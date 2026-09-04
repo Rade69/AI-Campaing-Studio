@@ -4,19 +4,20 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-03 (coordinator: claude) — **ACS-F1-016 (OpenAI adapter, HIGH) —
-Codex adversarial review vraćen `REJECT`, dva nalaza, oba nezavisno potvrđena, fix runda 2 u
-toku.** `agent_reports/2026-09-03-ACS-F1-016-review-codex.md`:
-- **BF-1**: `OpenAIAdapter.generate()` čita `finish_reason` sa `message` objekta umjesto sa
-  `choice` — sa pravim OpenAI response-om uvijek vraća `None` (test fixture je slučajno maskirao
-  bug). Koordinator provjerio stvaran SDK model (`Choice`/`ChatCompletionMessage` pydantic polja)
-  — potvrđeno realan bug.
-- **BF-2**: `ConfigureProvider.execute()` ne provjerava `provider.requires_api_key` prije upisa
-  secreta — upisao bi credential referencu i za provider koji ne treba API ključ. Koordinator
-  potvrdio da je `requires_api_key` stvarno postojeće polje na `AIProviderDefinition` — realan bug.
+BF-1/BF-2 popravljeni i nezavisno potvrđeni, čeka Codex re-review.** Crush popravio oba nalaza iz
+Codex REJECT-a: `openai_adapter.py` sad čita `finish_reason=getattr(choice, "finish_reason",
+None)` (bilo sa `message`), `configure_provider.py` dobio `if not provider.requires_api_key: raise
+InvariantViolation(...)` guard prije `set_secret`/`save_provider_config`. Oba regresiona testa
+pročitana i potvrđena da testiraju stvarno traženo (BF-2 test eksplicitno dokazuje da ni
+secret_store ni config_repo nisu pozvani na guard putanji). Nezavisno: 644 passed, ruff/mypy/
+`test_import_boundaries.py`(18)/`check_no_secrets.py` svi čisti, scope nepromijenjen od prošle
+runde. Poslat Codex-u na re-review: `agent_reports/2026-09-03-ACS-F1-016-rereview-za-codex.md`.
+**I dalje nije merge-spremno** — čeka Codex verdict, pa Human Owner eksplicitno odobrenje.
 
-Fix brief poslat Crush-u: `agent_reports/2026-09-03-ACS-F1-016-fix-brief-2-za-crush.md` (uzak
-scope, samo BF-1/BF-2). Nakon fixa ide nazad Codex-u na re-review — treća runda ako i tu nešto
-iskrsne. F1 (httpx, prethodna runda) ostaje zatvoren, nije ponovo otvoren.
+Prethodni entry (2026-09-03): **ACS-F1-016 — Codex adversarial review vraćen `REJECT`**, dva
+nalaza (BF-1: `finish_reason` sa pogrešnog objekta; BF-2: `ConfigureProvider` ne provjerava
+`requires_api_key`), oba nezavisno potvrđena prije fix runde 2. F1 (httpx, prethodna runda) ostao
+zatvoren, nije ponovo otvoren.
 
 Prethodni entry (2026-09-03): **ACS-F1-016 — F1
 zatvoren, čeka Codex adversarial review.** Crush dodao `"httpx>=0.27"` u `[project.optional-
