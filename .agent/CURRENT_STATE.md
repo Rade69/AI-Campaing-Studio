@@ -3,6 +3,16 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-018 (Anthropic, MiniMax) — oba
+review-a PASS_WITH_NOTES, spremno za Human Owner odobrenje.** Codex adversarial review: nema
+blocking nalaza. Dva non-blocking zapažanja (N1: `_map_error()` isinstance redoslijed čini timeout
+granu nedostupnom — kozmetički, `ErrorCode` ostaje ispravan; N2: buduć rizik ako neko postavi
+`temperature` protiv novijih Anthropic modela — trenutno nijedan pozivalac to ne radi). Koordinator
+nezavisno potvrdio N1. Nije live-testirano (nema Anthropic ključa). Review:
+`H:\ai-campaign-studio-worktrees\ACS-F1-018-anthropic-adapter\agent_reports\2026-09-04-ACS-F1-018-review-claude.md`.
+
+Preostalo u A8: ACS-F1-017 (DeepSeek) čeka finalni Codex re-review nakon R2-BF-1 fixa.
+
 **Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-019 (Google/Gemini adapter, A8
 dio 5) merged u main** (`be8964e`). Human Owner odobrio nakon oba review-a (Claude+Codex, oba
 PASS) i pune live end-to-end validacije protiv pravog Gemini API-ja (plan tačno 3 stavke od prvog
