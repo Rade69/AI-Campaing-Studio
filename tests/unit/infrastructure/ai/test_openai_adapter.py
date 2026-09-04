@@ -15,7 +15,11 @@ import pytest
 
 from ai_campaign_studio.ai_registry.model_profiles import ModelSource
 from ai_campaign_studio.domain.common.errors import ErrorCode, InfrastructureError
-from ai_campaign_studio.infrastructure.ai.openai_adapter import OpenAIAdapter
+from ai_campaign_studio.infrastructure.ai.openai_adapter import (
+    JSON_OBJECT_MODE,
+    OpenAIAdapter,
+    _count_constraints_from_text,
+)
 from ai_campaign_studio.ports.ai import AIRequest
 
 
@@ -194,3 +198,146 @@ def test_discover_models_maps_to_model_profiles() -> None:
     assert [m.model_id for m in models] == ["gpt-4o", "gpt-4o-mini"]
     assert all(m.provider_code == "OPENAI" for m in models)
     assert all(m.source is ModelSource.DISCOVERED for m in models)
+
+
+def test_generate_uses_default_provider_display() -> None:
+    client = Mock()
+    client.chat.completions.create.return_value = _completion('{"result": "ok"}')
+    adapter = _adapter(client)
+
+    response = adapter.generate(_request())
+
+    assert response.provider == "openai"
+
+
+def test_generate_uses_custom_provider_display() -> None:
+    client = Mock()
+    client.chat.completions.create.return_value = _completion('{"result": "ok"}')
+    adapter = OpenAIAdapter(
+        api_key="sk-EXAMPLE-test",
+        model="deepseek-chat",
+        client=client,
+        provider_code="DEEPSEEK",
+        provider_display="deepseek",
+    )
+
+    response = adapter.generate(_request())
+
+    assert response.provider == "deepseek"
+
+
+def test_discover_models_uses_custom_provider_code() -> None:
+    client = Mock()
+    client.models.list.return_value = SimpleNamespace(
+        data=[SimpleNamespace(id="deepseek-chat")]
+    )
+    adapter = OpenAIAdapter(
+        api_key="sk-EXAMPLE-test",
+        model="deepseek-chat",
+        client=client,
+        provider_code="DEEPSEEK",
+        provider_display="deepseek",
+    )
+
+    models = adapter.discover_models()
+
+    assert all(m.provider_code == "DEEPSEEK" for m in models)
+
+
+def test_json_object_mode_embeds_schema_and_exact_count_instruction() -> None:
+    client = Mock()
+    client.chat.completions.create.return_value = _completion(
+        '{"items": ["a", "b", "c"]}'
+    )
+    adapter = OpenAIAdapter(
+        api_key="sk-EXAMPLE-test",
+        model="deepseek-chat",
+        client=client,
+        provider_code="DEEPSEEK",
+        provider_display="deepseek",
+        structured_output_mode=JSON_OBJECT_MODE,
+    )
+    request = AIRequest(
+        purpose="campaign_plan",
+        prompt_name="campaign_plan",
+        prompt_version="1",
+        system_text="system",
+        user_text="content_piece_count: 3\n",
+        json_schema={
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "items": {"type": "string"},
+                }
+            },
+        },
+    )
+
+    adapter.generate(request)
+
+    kwargs = client.chat.completions.create.call_args.kwargs
+    assert kwargs["response_format"] == {"type": "json_object"}
+    system_content = kwargs["messages"][0]["content"]
+    assert '"items"' in system_content  # schema embedded as text
+    assert "array field `items`: exactly 3 item(s)" in system_content
+    assert "`content_piece_count` = 3" in system_content
+    assert "Do not produce more or fewer items" in system_content
+
+
+def test_invalid_structured_output_mode_rejected() -> None:
+    client = Mock()
+
+    with pytest.raises(ValueError):
+        OpenAIAdapter(
+            api_key="sk-EXAMPLE-test",
+            model="gpt-4o",
+            client=client,
+            structured_output_mode="json_text",
+        )
+
+
+def test_count_constraints_matches_only_real_count_fields() -> None:
+    assert _count_constraints_from_text("content_piece_count: 3") == [
+        ("content_piece_count", 3)
+    ]
+    assert _count_constraints_from_text("count: 3") == [("count", 3)]
+    assert _count_constraints_from_text("item_count: 5") == [("item_count", 5)]
+
+
+def test_count_constraints_ignores_false_positives() -> None:
+    assert _count_constraints_from_text("discount: 20") == []
+    assert _count_constraints_from_text("account_id: 123") == []
+
+
+def test_json_object_mode_without_counts_omits_count_block() -> None:
+    client = Mock()
+    client.chat.completions.create.return_value = _completion('{"result": "ok"}')
+    adapter = OpenAIAdapter(
+        api_key="sk-EXAMPLE-test",
+        model="deepseek-chat",
+        client=client,
+        provider_code="DEEPSEEK",
+        provider_display="deepseek",
+        structured_output_mode=JSON_OBJECT_MODE,
+    )
+    request = AIRequest(
+        purpose="campaign_plan",
+        prompt_name="campaign_plan",
+        prompt_version="1",
+        system_text="system",
+        user_text="goal: sell stuff\naudience: everyone\n",
+        json_schema={
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+        },
+    )
+
+    adapter.generate(request)
+
+    kwargs = client.chat.completions.create.call_args.kwargs
+    system_content = kwargs["messages"][0]["content"]
+    assert "Exact count requirements" not in system_content
+    assert '"name"' in system_content  # schema is still embedded
