@@ -3,7 +3,30 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-021 (GenerateSocialPost
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-020 (claim_linter
+word-boundary) i ACS-F1-023 (UNIQUE indeksi) merged u main** (`4027917`, merges `a41254f`/
+`ad1bd0e`).
+
+**ACS-F1-020**: nakon BF-1 fix runde — word-boundary primijenjen SAMO na termine čija OBA kraja
+su `\w` (alfanumerički); termini koji počinju/završavaju non-`\w` karakterom (`€`, `100%`) padaju
+na plain substring (word-boundary se ne može usidriti oko čistog simbola, a simbol ne može biti
+"unutar" veće riječi pa substring tamo nije rizičan). Koordinator nezavisno reprodukovao sve
+slučajeve (€ cijena, 100% zabranjen termin, tri originalna substring nalaza) prije odobrenja.
+Pi je usput sam otkrio i zatvorio DODATNI regres koji je njegov prvi fix uveo (100% je prestao
+biti PROHIBITED) — ista disciplina kao ranije R2-BF-1 adversarial provjere.
+
+**ACS-F1-023**: nova append-only migracija `0004_uniqueness_constraints.sql` —
+`UNIQUE(entity_type, entity_id, version)` na `revisions`, `UNIQUE(plan_id, "order")` na
+`campaign_items`. Koordinator je LIČNO primijenio migraciju protiv svoje postojeće lokalne dev
+baze (korišćene za ACS-GUI-005 live testiranje) prije odobrenja — nula postojećih duplikata,
+migracija prošla čisto. Crush je usput ispravio netačnu putanju iz kontrakta
+(`tests/integration/infrastructure/database/` ne postoji, stvaran je
+`tests/integration/database/`) — transparentno prijavljeno, ne tiho zaobiđeno.
+
+Post-merge verifikacija oba zajedno: 734 passed, ruff/mypy(139)/boundaries(18)/secrets svi čisti.
+Oba §29 MEDIUM, Claude-only review. Oba worktree-a uklonjena.
+
+Prethodni entry (2026-09-04): **ACS-F1-021 (GenerateSocialPost
 initial Revision) merged u main** (`66dbd5a`, merge `e7cff39`). Spoljni code review je našao
 (koordinator nezavisno reprodukovao) da `GenerateSocialPost.execute()` nikad nije kreirao
 `Revision` zapis za AI-jevu originalnu generaciju — `revision_ids` je ostajao prazan tuple za
