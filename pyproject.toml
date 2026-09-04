@@ -18,6 +18,10 @@ dependencies = [
     # tests so no real network call happens during CI. >=1.30 guarantees the
     # `response_format` json_schema structured-outputs API used here.
     "openai>=1.30",
+    # Google (Gemini) live adapter (A8, dio 5). Unified Google Gen AI SDK,
+    # the current canonical package for new code (the older
+    # `google-generativeai` package is deprecated/EOL).
+    "google-genai>=1.0",
 ]
 
 [project.optional-dependencies]
