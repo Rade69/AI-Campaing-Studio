@@ -3,7 +3,17 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-016 (OpenAI adapter, A8 dio 2,
+**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **A8 nastavak, tri paralelna HIGH-risk
+taska otvorena.** ACS-F1-017 (DeepSeek+OpenRouter+OpenAI-kompatibilan, implementer Pi) — evidence
+predata, Claude arhitektonski review `PASS_WITH_NOTES` (parametrizacija `OpenAIAdapter`-a sa
+`provider_code`/`provider_display`, novi `openai_compatible_providers.py` fabrike, base URL-ovi
+nezavisno potvrđeni protiv dokumentacije, 652 passed, ruff/mypy/scope čisti), čeka Codex adversarial
+review (`agent_reports/2026-09-04-ACS-F1-017-brief-za-codex.md`). ACS-F1-018 (Anthropic, implementer
+MiniMax) i ACS-F1-019 (Google, implementer Crush) su pokrenuti paralelno, još čekaju evidenciju —
+oba kontrakta namjerno ostavljaju tačan SDK/API mehanizam kao istraživački korak implementeru (ne
+propisuju možda-zastarjele pretpostavke o strukturisanom izlazu/models-list API-ju).
+
+Prethodni entry (2026-09-04): **ACS-F1-016 (OpenAI adapter, A8 dio 2,
 HIGH) merged u main** (`1b7a71f`). Human Owner eksplicitno odobrio ("Odobravam") nakon dvije pune
 runde review-a (Claude arhitektura + Codex adversarial, oba dva puta). Prvi live AI provider
 adapter u projektu: `OpenAIAdapter` implementira `TextGenerationPort` + vlastite
