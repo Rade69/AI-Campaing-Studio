@@ -3,7 +3,17 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-037 task contract napisan i
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-037 (P1.5-G1 Performance Domain)
+merged u main.** `DistributionInstance`/`PerformanceSnapshot`/`PerformanceImportBatch`/
+`CanonicalMetricSet`/`MetricPeriod` + dva odvojena enuma (`DistributionSource` sa EXPORT,
+`PerformanceSource` bez njega) — čisto domain, bez perzistencije, tri aditivne linije u
+`domain/common/ids.py`. Post-merge: 949 passed, ruff/mypy(167) čisti. LOW risk, §29 → odmah merge,
+BEZ nalaza. Worktree uklonjen. **Sljedeći korak**: P1.5-G2 Persistence (Faza 1 v1.5 §17 — nova
+migracija `0004_performance_foundation.sql`, tabele `distribution_instances`/
+`performance_snapshots`/`performance_import_batches`/`performance_import_rows`, plus
+`DistributionRepositoryPort`/`PerformanceRepositoryPort` + SQLite implementacije).
+
+Prethodni entry (2026-09-05): **ACS-F1-037 task contract napisan i
 otvoren** (nije implementiran, implementer=TBD, LOW risk) — **P1.5-G1 Performance Domain** (Faza 1
 v1.5 §15-16), prvi pravi Slice 1.5 gate. Čisto domain-nivo: `DistributionInstance`,
 `PerformanceSnapshot`, `PerformanceImportBatch`, `CanonicalMetricSet`, `MetricPeriod`,
