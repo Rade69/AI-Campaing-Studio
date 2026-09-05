@@ -3,7 +3,20 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-038 (P1.5-G2 Persistence) merged u
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-039 task contract napisan i
+otvoren** (nije implementiran, implementer=TBD, MEDIUM risk) — **PRIJE P1.5-G3 CSV Import, NIJE
+CSV Import.** Provjereno (grep) da NIŠTA u kodu ne poziva `save_distribution_instance` niti
+konstruiše `DistributionInstance` — P1.5-G1/G2 su definisali pojam i dali mu mjesto u bazi, ali
+niko ga ne popunjava. `PerformanceSnapshot` MORA pokazivati na `distribution_instance_id` (Faza 0.7
+§4), pa CSV import bez STVARNIH `DistributionInstance` redova nema prema čemu da matchuje —
+STVARNA blokada, ne stilski propust. Rješenje: `ExportCampaign` (export = momenat kad je sadržaj
+STVARNO distribuiran, `distribution_source=EXPORT`) sad ADITIVNO snima `DistributionInstance` po
+eksportovanom piece-u, koristeći VEĆ POSTOJEĆE podatke iz manifest-building petlje (nema
+duplirane logike). **Mijenja javni potpis `ExportCampaign.__init__`** (nov obavezan
+`performance_repo` parametar) — treći put da se ovaj use-case dopunjuje (034 export, 036 manifest,
+sad 039 distribution instance). Vidi `agent_reports/ACS-F1-039-task-contract.md`.
+
+Prethodni entry (2026-09-05): **ACS-F1-038 (P1.5-G2 Persistence) merged u
 main.** Migracija `0006_performance_foundation.sql` (kontrakt je pogrešno naveo `0004` — taj broj je
 već zauzet od `0004_uniqueness_constraints.sql`/`0005_layout_specs.sql`, koordinatorov propust u
 popisu postojećih migracija; implementer transparentno prijavio i koristio sljedeći slobodan broj,
