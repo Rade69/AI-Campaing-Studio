@@ -1,0 +1,29 @@
+{
+  "render_success": true,
+  "first_render_ms": 95.2,
+  "warm_render_samples_ms": [
+    44.56,
+    48.79,
+    50.84,
+    53.62,
+    44.73
+  ],
+  "avg_render_ms": 48.51,
+  "stdev_render_ms": 3.51,
+  "overflow_detection": {
+    "wrapped_line_count": 10,
+    "wrapped_height_px": 790,
+    "wrapped_width_px": 890.96875,
+    "budget_px": 600,
+    "overflow_detected": true
+  },
+  "bhs_glyphs_ok": true,
+  "bhs_glyph_widths_px": {
+    "c": 36.0,
+    "c_with_acute": 36.0,
+    "s_with_caron": 33.0,
+    "d_with_stroke": 46.0,
+    "z_with_caron": 35.0
+  },
+  "png_size_bytes": 51164
+}

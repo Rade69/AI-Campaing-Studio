@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  R-B spike template (ACS-F1-032). Reference SVG for the Pillow-based
+  rasteriser. The actual rasterisation does NOT parse this SVG (no
+  cairosvg/resvg available in the dev env); the Pillow driver in
+  render.py mirrors the layout defined here. The SVG is committed as
+  the human-readable design source of truth and as the artifact that
+  A14 dio 2 (production renderer) can use as its actual input format.
+
+  Canvas: 1080 x 1350 (plan section 45, Slice-1 format).
+  Family: Segoe UI / Arial fallback (Windows-default; covers BHS Latin
+  diacritics: č, ć, š, đ, ž).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350"
+     viewBox="0 0 1080 1350">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f8fafc"/>
+    </linearGradient>
+    <radialGradient id="hi" cx="0.9" cy="0.1" r="0.5">
+      <stop offset="0" stop-color="#e0f2fe" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="lo" cx="0.1" cy="0.9" r="0.5">
+      <stop offset="0" stop-color="#ecfccb" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1080" height="1350" fill="url(#bg)"/>
+  <rect width="1080" height="1350" fill="url(#hi)"/>
+  <rect width="1080" height="1350" fill="url(#lo)"/>
+
+  <!-- Logo block -->
+  <rect x="80" y="80" width="96" height="96" rx="24" fill="#0f766e"/>
+  <text x="128" y="148" text-anchor="middle" font-family="Segoe UI, Arial"
+        font-size="40" font-weight="700" fill="#ffffff">BS</text>
+  <text x="200" y="148" font-family="Segoe UI, Arial" font-size="28"
+        font-weight="600" fill="#0f172a">BrightSmile Dental</text>
+
+  <!-- Headline (variable; the rasteriser wraps this to a width budget) -->
+  <text x="80" y="280" font-family="Segoe UI, Arial" font-size="76"
+        font-weight="800" fill="#0f172a" id="headline">
+    {{HEADLINE}}
+  </text>
+
+  <!-- Caption (variable) -->
+  <text x="80" y="900" font-family="Segoe UI, Arial" font-size="36"
+        fill="#334155" id="caption">
+    {{CAPTION}}
+  </text>
+
+  <!-- CTA -->
+  <rect x="80" y="1180" width="540" height="84" rx="18" fill="#0f766e"/>
+  <text x="350" y="1238" text-anchor="middle" font-family="Segoe UI, Arial"
+        font-size="36" font-weight="700" fill="#ffffff">Zakažite konsultaciju</text>
+
+  <!-- Footer -->
+  <text x="80" y="1300" font-family="Segoe UI, Arial" font-size="22"
+        fill="#64748b">Centar Sarajeva · Tim sa 12+ godina iskustva · Medicinski titanijum klase 4</text>
+</svg>
