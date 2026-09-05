@@ -3,7 +3,16 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **A19 (puna vertical slice) live provjera
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-035 (CTA overflow fix) merged u
+main.** `_draw_cta` sad pre-wrap-uje CTA tekst preko POSTOJEĆE `_wrap_text` funkcije (isti pristup
+kao headline) prije crtanja — dugme raste po visini za višeredan tekst, širina ostaje fiksna
+(540px), kratak tekst NEPROMIJENJEN (84px, regresioni test). Koordinator nezavisno ponovo
+renderovao TAČAN CTA tekst iz A19 nalaza ("Zakažite konsultaciju i otkrijte mogućnosti za vaš
+osmeh.") i otvorio PNG direktno — tekst sad prelomljen u 2 reda, potpuno unutar platna, ništa
+odsječeno. Post-merge: 926 passed, ruff/mypy(161) čisti. LOW risk, §29 → odmah merge, BEZ nalaza.
+Worktree uklonjen.
+
+Prethodni entry (2026-09-05): **A19 (puna vertical slice) live provjera
 IZVRŠENA — mehanički PASS, ali otkriven pravi bug.** Koordinator pokrenuo cijeli lanac (fixture →
 CreateCampaign → GenerateCampaignPlan → ApproveCampaignPlan → GenerateSocialPost×6 →
 GenerateVisualSystem → PlanPostLayout×6 → ExportCampaign) preko STVARNOG DeepSeek API poziva (Google
