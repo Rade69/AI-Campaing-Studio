@@ -35,10 +35,12 @@ Design decisions enforced here (per the A14 dio 2 contract):
 from __future__ import annotations
 
 import time
+import warnings
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+from ai_campaign_studio.config.paths import AppPaths
 from ai_campaign_studio.domain.visual.enums import (
     Alignment,
     CtaStyle,
@@ -56,14 +58,18 @@ from ai_campaign_studio.ports.rendering import (
 
 # --- Font + palette (fixed, neutral, no brand access) ---
 
-# Segoe UI ships with Windows and covers the BHS Latin diacritics
-# (č ć š đ ž). On Linux/macOS this path is missing -- the Pillow
-# default font is used as a silent fallback so the renderer does not
-# crash on a non-Windows dev box. The actual headline glyphs in the
-# output WILL look different on Linux/macOS; that is a known
-# acceptance-stage limitation, not a runtime bug.
-_FONT_PATH_BOLD = r"C:\Windows\Fonts\seguisb.ttf"
-_FONT_PATH_REG = r"C:\Windows\Fonts\segoeui.ttf"
+# Noto Sans is bundled under ``resources/fonts/`` (SIL OFL 1.1 -- see
+# ``resources/fonts/OFL.txt``) so the renderer uses the SAME TrueType
+# font on Windows/Linux/macOS. The font covers the BHS Latin diacritics
+# (č ć š đ ž) -- verified at bundle time, not assumed. Hardcoding
+# ``C:\Windows\Fonts\...`` is intentionally removed: that path exists
+# only on Windows and silently degraded to the bitmap default font on
+# Linux CI, breaking pixel-exact tests (ACS-F1-040). The path is derived
+# via ``AppPaths`` exactly like every other bundled resource
+# (i18n/platforms/prompts/migrations).
+_FONTS_DIR = AppPaths().resources_dir / "fonts"
+_FONT_PATH_BOLD = _FONTS_DIR / "NotoSans-Bold.ttf"
+_FONT_PATH_REG = _FONTS_DIR / "NotoSans-Regular.ttf"
 
 _NEUTRAL_BG = (255, 255, 255)
 _NEUTRAL_INK = (15, 23, 42)
@@ -127,16 +133,32 @@ def _parse_format(fmt: str) -> tuple[int, int]:
 
 
 def _load_font(weight: str) -> ImageFont.FreeTypeFont:
-    """Load a TrueType font or fall back to PIL default on non-Windows.
+    """Load the bundled TrueType font, falling back to the Pillow
+    bitmap default only if the bundled file is physically missing or
+    corrupt.
 
-    The non-Windows fallback returns a ``PIL.ImageFont.ImageFont`` (not
-    a ``FreeTypeFont``); we widen the return type so the fallback path
+    The fallback returns a ``PIL.ImageFont.ImageFont`` (not a
+    ``FreeTypeFont``); we widen the return type so the fallback path
     is type-checked honest -- callers treat both uniformly.
+
+    The fallback is now LOUD (``warnings.warn``) rather than silent.
+    The ACS-F1-040 root cause was exactly a silent fallback masking the
+    fact that the Windows-only font path did not exist on Linux CI.
+    With the bundled font, this branch should never fire in a normal
+    checkout -- if it does, something is broken and the operator must
+    hear about it (same "no fake success state" principle as the
+    renderer's other degradation paths).
     """
     path = _FONT_PATH_BOLD if weight == "bold" else _FONT_PATH_REG
     try:
         return ImageFont.truetype(path, size=24)
-    except OSError:
+    except OSError as exc:
+        warnings.warn(
+            f"bundled font {path} could not be loaded ({exc}); "
+            f"falling back to Pillow bitmap default -- rendered text "
+            f"metrics will be wrong",
+            stacklevel=2,
+        )
         return ImageFont.load_default()  # type: ignore[return-value]
 
 
