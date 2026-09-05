@@ -3,7 +3,18 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-038 task contract napisan i
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-038 (P1.5-G2 Persistence) merged u
+main.** Migracija `0006_performance_foundation.sql` (kontrakt je pogrešno naveo `0004` — taj broj je
+već zauzet od `0004_uniqueness_constraints.sql`/`0005_layout_specs.sql`, koordinatorov propust u
+popisu postojećih migracija; implementer transparentno prijavio i koristio sljedeći slobodan broj,
+DDL identičan). Tri tabele (`performance_import_batches`, `distribution_instances`,
+`performance_snapshots`), nov `PerformanceRepositoryPort` (minimalan, save/get po id-u),
+`SqlitePerformanceRepository`. Post-merge: 957 passed, ruff/mypy(168) čisti. MEDIUM risk, §29 →
+odmah merge, BEZ nalaza (osim ispravke broja migracije). Worktree uklonjen. **Sljedeći korak**:
+P1.5-G3 CSV Import (Faza 1 v1.5 §18 — `ImportPerformanceCsv`, `PreviewPerformanceMapping`,
+`ConfirmPerformanceImport`; tu se konačno definiše `PerformanceImportRow` entitet + tabela).
+
+Prethodni entry (2026-09-05): **ACS-F1-038 task contract napisan i
 otvoren** (nije implementiran, implementer=TBD, MEDIUM risk) — **P1.5-G2 Persistence** (Faza 1 v1.5
 §17). Nova migracija `0004_performance_foundation.sql` (SAMO tri tabele:
 `performance_import_batches`, `distribution_instances`, `performance_snapshots` — `PerformanceSnapshot`-ovih
