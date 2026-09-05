@@ -11,13 +11,25 @@ import json
 import sqlite3
 from datetime import datetime
 
-from ai_campaign_studio.domain.common.ids import CampaignId, VisualSystemId
+from ai_campaign_studio.domain.common.ids import (
+    CampaignId,
+    LayoutSpecId,
+    PostId,
+    VisualSystemId,
+)
+from ai_campaign_studio.domain.common.timestamps import utc_now
 from ai_campaign_studio.domain.visual.entities import CampaignVisualSystem
 from ai_campaign_studio.domain.visual.enums import (
     Alignment,
+    CtaStyle,
+    HeadlinePosition,
     HeadlineScale,
+    ImagePosition,
     LayoutPrimitive,
+    LogoPosition,
+    Overlay,
 )
+from ai_campaign_studio.domain.visual.layout import LayoutSpec
 
 
 class SqliteVisualRepository:
@@ -84,4 +96,71 @@ class SqliteVisualRepository:
             alignment=Alignment(row["alignment"]),
             created_at=datetime.fromisoformat(row["created_at"]),
             style=tuple(json.loads(row["style_json"])),
+        )
+
+    def save_layout_spec(self, layout_spec: LayoutSpec) -> None:
+        if layout_spec.id is None:
+            raise ValueError("layout_spec.id must be set before saving")
+        if layout_spec.content_piece_id is None:
+            raise ValueError(
+                "layout_spec.content_piece_id must be set before saving"
+            )
+        if layout_spec.validation_status is None:
+            raise ValueError(
+                "layout_spec.validation_status must be set before saving"
+            )
+
+        payload = {
+            "primitive": layout_spec.primitive.value,
+            "image_position": layout_spec.image_position.value,
+            "headline_position": layout_spec.headline_position.value,
+            "headline_scale": layout_spec.headline_scale.value,
+            "overlay": layout_spec.overlay.value,
+            "logo_position": layout_spec.logo_position.value,
+            "cta_style": layout_spec.cta_style.value,
+            "alignment": layout_spec.alignment.value,
+        }
+        self._connection.execute(
+            "INSERT INTO layout_specs (id, content_piece_id, format,"
+            " payload_json, validation_status, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)"
+            " ON CONFLICT(id) DO UPDATE SET"
+            " content_piece_id=excluded.content_piece_id,"
+            " format=excluded.format,"
+            " payload_json=excluded.payload_json,"
+            " validation_status=excluded.validation_status",
+            # ``created_at`` is deliberately NOT in the UPDATE set: it records
+            # when the row was FIRST created, so a re-save of the same id must
+            # not overwrite it (append-only/audit-trail principle).
+            (
+                layout_spec.id,
+                layout_spec.content_piece_id,
+                layout_spec.format,
+                json.dumps(payload),
+                layout_spec.validation_status,
+                utc_now().isoformat(),
+            ),
+        )
+
+    def get_layout_spec(self, layout_spec_id: LayoutSpecId) -> LayoutSpec | None:
+        row = self._connection.execute(
+            "SELECT * FROM layout_specs WHERE id = ?",
+            (layout_spec_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        payload = json.loads(row["payload_json"])
+        return LayoutSpec(
+            primitive=LayoutPrimitive(payload["primitive"]),
+            image_position=ImagePosition(payload["image_position"]),
+            headline_position=HeadlinePosition(payload["headline_position"]),
+            headline_scale=HeadlineScale(payload["headline_scale"]),
+            overlay=Overlay(payload["overlay"]),
+            logo_position=LogoPosition(payload["logo_position"]),
+            cta_style=CtaStyle(payload["cta_style"]),
+            alignment=Alignment(payload["alignment"]),
+            format=row["format"],
+            id=LayoutSpecId(row["id"]),
+            content_piece_id=PostId(row["content_piece_id"]),
+            validation_status=row["validation_status"],
         )

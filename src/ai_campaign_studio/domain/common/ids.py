@@ -19,6 +19,7 @@ CampaignItemId = NewType("CampaignItemId", str)
 PostId = NewType("PostId", str)
 RevisionId = NewType("RevisionId", str)
 VisualSystemId = NewType("VisualSystemId", str)
+LayoutSpecId = NewType("LayoutSpecId", str)
 
 
 def new_id() -> str:
