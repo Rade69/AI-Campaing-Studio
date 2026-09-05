@@ -3,6 +3,26 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
+**HITNO — CI je CRVEN na main-u od 2026-09-05 ~13:53** (potvrđeno preko
+`gh run list`/`gh run view` uživo na GitHub-u, ne pretpostavka). Svih
+zadnjih 8 push-eva na main (od ACS-F1-036 merge-a naovamo, uključujući
+ACS-F1-037/038/039) je `failure`. Uzrok: renderer ima hardkodovanu
+Windows-only putanju do fonta (`C:\Windows\Fonts\seguisb.ttf`,
+`selected_renderer.py:65-66`) sa TIHIM fallback-om na
+`ImageFont.load_default()` kad fajl ne postoji (`.github/workflows/ci.yml`
+koristi `runs-on: ubuntu-latest`, gdje taj font ne postoji). Fallback font
+ima drugačije metrike teksta → 2 testa padaju na piksel-tačnim
+provjerama (`test_hero_and_split_produce_visibly_different_pngs`,
+`test_long_cta_text_wraps_instead_of_clipping`), + 1 kaskadni fail
+(`test_gate_report_against_current_repo_passes`, pokreće `pytest -q`
+kao podproces). Ovo je NIJE bio propust implementacije (fallback je bio
+NAMJERAN i dokumentovan u ACS-F1-033 kao "known acceptance-stage
+limitation") — propust je što niko (uključujući koordinatora, cijelu ovu
+sesiju) nije provjerio da CI stvarno prolazi na GitHub-u, samo lokalno
+na Windows-u. Nalaz je originalno prijavljen preko nezavisne web-Claude
+provjere 2026-09-05, koordinator ga nezavisno reprodukovao uživo prije
+prihvatanja. **Task contract za popravku: vidi ACS-F1-040 ispod.**
+
 **Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-039 (ExportCampaign snima
 DistributionInstance) merged u main — preduslov za P1.5-G3 CSV Import zatvoren.** `ExportCampaign`
 sad, u ISTOJ petlji koja gradi `manifest.json`, snima jedan `DistributionInstance` po eksportovanom
