@@ -3,7 +3,19 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-029 (`GenerateVisualSystem`, A13,
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-030 task contract napisan i
+otvoren** (nije implementiran, implementer=TBD, MEDIUM risk) — **A13 dio 2, foundation korak**
+(plan sekcija 24: `layout_specs` tabela). Namjerno ODVOJEN od stvarnog use-case-a
+(`plan_post_layout.py`/`validate_layout.py`, sekcije 40-41) — isti obrazac kao što je
+`campaign_visual_systems`/`VisualRepositoryPort` bilo izgrađeno davno prije nego što ga je
+ACS-F1-029 konačno iskoristio. Ovaj task: `LayoutSpecId` (nov ID tip), `LayoutSpec` dobija tri nova
+OPCIONA polja (`id`/`content_piece_id`/`validation_status`, svi default `None` — ne lomi postojeću
+ACS-F1-029 konstrukciju), nova migracija `0005_layout_specs.sql`, `VisualRepositoryPort` dobija
+`save_layout_spec`/`get_layout_spec` (aditivno, postojeće dvije metode netaknute). Use-case
+(A13 dio 2b) je blokiran dok se ovaj task ne mergira — zavisi od ovdje uvedenih tipova/metoda. Vidi
+`agent_reports/ACS-F1-030-task-contract.md`.
+
+Prethodni entry (2026-09-05): **ACS-F1-029 (`GenerateVisualSystem`, A13,
 plan sekcija 39) merged u main.** Nov `application/visual/generate_visual_system.py` povezuje
 VEĆ POSTOJEĆU A13 fundaciju (domain/visual/, `VisualRepositoryPort`, `campaign_visual_systems`
 tabela, `visual_direction/v1.yaml` prompt) — jedan AI poziv, perzistuje `CampaignVisualSystem`,
