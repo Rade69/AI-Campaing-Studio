@@ -3,7 +3,22 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-034 (`ExportCampaign`) merged u
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **A19 (puna vertical slice) live provjera
+IZVRŠENA — mehanički PASS, ali otkriven pravi bug.** Koordinator pokrenuo cijeli lanac (fixture →
+CreateCampaign → GenerateCampaignPlan → ApproveCampaignPlan → GenerateSocialPost×6 →
+GenerateVisualSystem → PlanPostLayout×6 → ExportCampaign) preko STVARNOG DeepSeek API poziva (Google
+free-tier dnevni limit od 20 poziva potrošen tokom testiranja), bez ijedne ručne izmjene baze. ZIP
+struktura tačna, telemetrija poštena, sve funkcioniše — ALI otvaranjem stvarnih renderovanih PNG-ova
+otkriven **stvaran bug**: CTA tekst se siječe van lijeve ivice platna kad AI vrati punu rečenicu
+(57 karaktera: "Zakažite konsultaciju i otkrijte mogućnosti za vaš osmeh.") umjesto kratke
+dugme-fraze — `PillowRenderer._draw_cta` nema word-wrap/overflow zaštitu kakvu headline putanja ima
+(centrira tekst preko `(w - tw) // 2` koje postaje negativno kad je tekst širi od 540px dugmeta).
+Nijedan ACS-F1-033 test ovo nije uhvatio jer su svi test CTA tekstovi bili kratki. **ACS-F1-035
+task contract napisan i otvoren** (implementer=TBD, LOW risk) — fix reusuje postojeću `_wrap_text`
+funkciju (isti pristup kao headline), dugme raste po visini za višeredan tekst, širina ostaje
+fiksna. Vidi `agent_reports/ACS-F1-035-task-contract.md`.
+
+Prethodni entry (2026-09-05): **ACS-F1-034 (`ExportCampaign`) merged u
 main — A15 gotov, plan sekcije 39-46 (A13-A15) POTPUNO gotove u kodu.** ZIP export: `campaign.json`
 (bez secreta) + `content-NN/{content.json, caption.txt, feed.png}` + `telemetry/ai_summary.json`
 (pošteno — samo provider/model agregacija iz `Revision` redova, eksplicitna napomena da token/cost
