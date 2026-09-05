@@ -3,7 +3,28 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-032 task contract napisan i
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-032 (renderer spike) merged u main
+— A14 DIO 1 ZATVOREN, R-B (SVG-based/Pillow) ODABRAN kao produkcijski renderer pravac.** Oba
+kandidata stvarno izgrađena i izmjerena protiv istog BHS/overflow test seta (1080x1350): R-A
+(HTML/CSS+Playwright) 745ms warm/377KB PNG, R-B (SVG/Pillow) 48.5ms warm/51KB PNG — R-B pobijedio
+3/6 kriterijuma decisivno (packaging — nema chromium ~150MB binary, performance, text measurement).
+Odluka u `artifacts/renderer_spike_result.json` (svih 9 planovih polja) + `spikes/renderer/COMPARISON.md`.
+R-A ostaje u repou kao referenca za buduće CSS-bogate scenarije. **Runda 1 (Claude review) našla
+KRITIČAN packaging bug**: `pyproject.toml` je imao nevažeću ugniježdenu TOML strukturu za novu
+`renderer-spike` opcionu zavisnost grupu — `setuptools` je to odbijao, i `pip install -e .`
+(BEZ IJEDNOG extra-a!) je u potpunosti padao, neopaženo od pytest/ruff/mypy jer dijeljeni venv je
+već bio instaliran od ranije. Koordinator live reprodukovao PRIJE i POSLIJE fixa (`pip install
+--dry-run` za sva 3 scenarija: default/.[dev]/.[renderer-spike]). MiniMax premjestio
+`renderer-spike` kao sibling ključ u postojeću `[project.optional-dependencies]` tabelu. Dodatno:
+`.gitignore` proširen (`!artifacts/renderer_spike_result.json`, isti obrazac kao postojeći
+`phase0_foundation_gate.json` izuzetak) — fajl je bio tiho isključen širokim `artifacts/*` pravilom.
+Post-merge: 858 passed, ruff/mypy(151) čisti, `pip install --dry-run` (default/.[dev]) potvrđen na
+main-u. MEDIUM risk, §29 → odmah merge. Worktree uklonjen. **Sljedeći korak**: A14 dio 2
+(produkcijski renderer — `ports/rendering.py`, `infrastructure/rendering/selected_renderer.py`
+sa pravom SVG bibliotekom, `application/rendering/render_post.py`) — sljedeći kandidat za task
+contract.
+
+Prethodni entry (2026-09-05): **ACS-F1-032 task contract napisan i
 otvoren** (nije implementiran, implementer=TBD, MEDIUM risk) — **A14 dio 1, RENDERER SPIKE** (plan
 sekcija 42), prvi korak ka stvarnom renderovanju slika. Human Owner eksplicitno odabrao PUN spike
 (oba kandidata stvarno izgrađena i uporeñena — R-A HTML/CSS+Playwright vs R-B SVG-based), NASUPROT
