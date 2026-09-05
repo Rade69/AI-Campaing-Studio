@@ -3,8 +3,8 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-029 task contract napisan i
-otvoren** (nije implementiran, implementer=TBD, MEDIUM risk) — **A13 iz plana (Campaign Visual
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-029 proslijeđen Pi-ju**
+(implementer=pi, MEDIUM risk, čeka implementaciju) — **A13 iz plana (Campaign Visual
 System + LayoutSpec, sekcija 39), prvi konkretan korak ka `G10 Vertical Slice PASS`** nakon što je
 A16 zatvoren. Istraga prije pisanja kontrakta otkrila da je VEĆINA A13 fundacije već izgrađena
 ranije (van vidljivog task-praćenja, vjerovatno rana P0/A3-A5 faza): `domain/visual/` (entities,

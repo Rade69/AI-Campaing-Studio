@@ -4,9 +4,9 @@ phase: Faza-1 (post A16) — A13 "Campaign Visual System"
 title: "GenerateVisualSystem: AI-generisan CampaignVisualSystem + LayoutSpec za kampanju (plan sekcija 39)"
 risk: MEDIUM
 coordinator: claude
-implementer: TBD
+implementer: pi
 reviewers: [claude]
-status: "OPEN — contract written before code, čeka implementera"
+status: "OPEN — proslijeđeno Pi-ju (2026-09-05), implementacija u toku/na čekanju"
 created_at: 2026-09-05
 dependencies: []
 allowed_paths:
