@@ -3,7 +3,15 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-035 (CTA overflow fix) merged u
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **A20 exit evaluation ZAKLJUČEN — G10
+Vertical Slice Gate = PASS (Human Owner odluka, "Proceed").** Vidi detaljnu sekciju "G10 Vertical
+Slice Gate — PASS" niže u ovom fajlu za punu dokaznu osnovu (R1 rezultat preko 5 modela, A19 dvaput
+potvrđen, 5 stvarnih bugova nađeno i popravljeno kroz review proces). **Performance/Analytics
+status promijenjen u `SLICE 1.5 ACTIVE`** — svaki budući Performance/Analytics task sada slijedi
+`.agent/TASK_ROUTING.md` dio B (prvi input: CSV/Excel import, NE direktne platform API integracije).
+Faza 1 Campaign Engine (A1-A18, uključujući A13-A15 render/export) je time zvanično zatvorena.
+
+Prethodni entry (2026-09-05): **ACS-F1-035 (CTA overflow fix) merged u
 main.** `_draw_cta` sad pre-wrap-uje CTA tekst preko POSTOJEĆE `_wrap_text` funkcije (isti pristup
 kao headline) prije crtanja — dugme raste po visini za višeredan tekst, širina ostaje fiksna
 (540px), kratak tekst NEPROMIJENJEN (84px, regresioni test). Koordinator nezavisno ponovo
@@ -1127,22 +1135,54 @@ koristi ACS-F1-007 (loaded brand) + ACS-F1-008 (prompts/AI port/mock adapter) za
 
 ```text
 ARCHITECTURE: LOCKED / PLANNED
-RUNTIME ANALYTICS IMPLEMENTATION: NOT STARTED
+RUNTIME ANALYTICS IMPLEMENTATION: SLICE 1.5 ACTIVE
 ```
 
-Tačan redoslijed:
+## G10 Vertical Slice Gate — **PASS (2026-09-05, Human Owner odluka)**
+
+**A20 exit evaluation zaključen.** Human Owner je, na osnovu sinteze svih dokaza, eksplicitno
+odabrao **PASS — Proceed** (nasuprot Pivot/potrebno-više-podataka opcijama, sve tri ponuđene
+eksplicitno).
+
+Dokazna osnova (sve već izvršeno i dokumentovano u prethodnim entry-ima ovog fajla):
+
+- **R1 (da li je strukturisan Campaign Engine pristup mjerljivo bolji od golog LLM prompta) —
+  DA, dosljedno preko 5 modela/4 providera** (Gemini 2.5 Flash, DeepSeek-R1, GPT-4o-mini,
+  GPT-5.6-sol, MiniMax-M3 ručni test): System B (naš pipeline) = **uvijek 0** neosnovanih/
+  numeričkih kršenja; Control A (goli prompt) = **uvijek 6-9** kršenja. Bez ijednog izuzetka.
+- **A19 (puna vertical slice) — PASS**, dvaput nezavisno potvrđeno (DeepSeek): kompletan lanac
+  fixture→brief→plan→odobrenje→6 postova→vizuelni sistem→6 layouta→render→export radi kroz
+  stvaran AI provider, BEZ ijedne ručne izmjene baze, BEZ skrivenog CLI zaobilaska (acceptance
+  kriterijum plan sekcije A19, doslovno zadovoljen).
+- **Review proces stvarno hvata i popravlja prave bugove** (dokaz da nije "sve prolazi jer se
+  ne gleda pažljivo"): claim_linter morfološki gap (garantovano/garantujemo), layout_specs audit
+  timestamp korupcija, ACS-F1-029 test-coverage gap (spojene "entity not found" grane), kritičan
+  `pyproject.toml` packaging bug (kvario SVAKU instalaciju projekta), CTA text overflow bug
+  (otkriven TEK live A19 provjerom sa stvarnim, ne fixture-hardkodiranim AI odgovorom).
+
+Svjesno prihvaćena ograničenja za ovu fazu (NISU blokeri, dokumentovana kroz odgovarajuće task
+contracte): renderer koristi fiksnu neutralnu paletu, ne brand boje; nema image-upload pipeline-a
+za post-slike; `render_artifacts` se ne perzistuje; povremena model-specifična schema
+nekompatibilnost (npr. `gpt-5.5` sa `layout_spec.format`, vidi agent memory
+`project_gpt55_layout_spec_incompatibility`) — validacija ispravno odbija, ne krije problem.
+
+Tačan redoslijed (sada):
 
 ```text
-P0 Foundation
-→ Faza 1 Campaign Engine
-→ G10 Vertical Slice PASS
-→ Slice 1.5 Performance Foundation
-→ Slice 2 Brand / Website Ingestion
+P0 Foundation — PASS
+→ Faza 1 Campaign Engine (A1-A18) — kompletan
+→ G10 Vertical Slice PASS — 2026-09-05 ✅
+→ Slice 1.5 Performance Foundation — AKTIVNO OD SADA
+→ Slice 2 Brand / Website Ingestion — čeka Slice 1.5
 ```
 
-Analytics se **NE implementira sada u P0**.
+Od ovog trenutka svaki Performance/Analytics Task Contract mora slijediti
+`.agent/TASK_ROUTING.md` sekciju **Performance / Analytics task**, dio **B. Poslije potvrđenog
+G10 Vertical Slice PASS — Slice 1.5** (prvi input: CSV/Excel import + manual mapping/correction,
+NE direktne platform API integracije — vidi TASK_ROUTING.md dio **C**).
 
-Prije Slice 1.5 Faza 1 mora samo sačuvati seam-ove koji sprečavaju kasniji veliki refaktor:
+Prije Slice 1.5 Faza 1 je već sačuvala seam-ove koji sprečavaju kasniji veliki refaktor
+(potvrđeno kroz A13-A15 implementaciju):
 
 ```text
 campaign_id
@@ -1151,13 +1191,9 @@ campaign_item_id
 content_piece_id
 content_revision_id
 channel_code / platform_code / format_code
-export manifest.json
+export manifest.json (ExportCampaign, ACS-F1-034)
 analytics_match_key
 ```
-
-Kada `G10 = PASS`, koordinator mijenja ovaj status u `SLICE 1.5 ACTIVE`. Od tog trenutka svaki
-Performance/Analytics Task Contract mora slijediti `.agent/TASK_ROUTING.md` sekciju
-**Performance / Analytics task**.
 
 ## Trenutni P0 gate
 
