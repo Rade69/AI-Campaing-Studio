@@ -3,7 +3,18 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-031 task contract napisan i
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-031 (`PlanPostLayout` +
+`validate_layout`, A13 dio 2b) merged u main — A13 je time POTPUNO gotov u kodu (plan sekcije
+39-41).** Crush implementirao čisto na prvi pokušaj — nema nalaza u review-u (naučeno iz
+ACS-F1-029/030 rundi: svih 5 "entity not found" scenarija su genuinno odvojena, nema spojenih grana).
+Primitiv van kampanjskog dozvoljenog skupa → `InvariantViolation`, ništa perzistovano; predug
+headline → NIJE fatalno, perzistuje se sa `validation_status="INVALID"`; `format` uvijek
+Slice-1 konstanta (dokazano AI odgovorom sa namjerno drugačijim stringom). Post-merge: 858 passed,
+ruff/mypy(151) čisti. MEDIUM risk, §29 → odmah merge. Worktree uklonjen. **Sljedeći korak ka
+`G10 Vertical Slice PASS`**: A14 (renderer spike + produkcijski renderer, plan sekcija 42+) — prvi
+put da se bilo šta iz `application/rendering/`/`infrastructure/rendering/` piše.
+
+Prethodni entry (2026-09-05): **ACS-F1-031 task contract napisan i
 otvoren** (nije implementiran, implementer=TBD, MEDIUM risk) — **A13 dio 2b, plan sekcije 40-41**,
 posljednji A13 komad prije A14 (renderer). `PlanPostLayout` use-case: AI poziv preko novog prompta
 `post_layout/v1.yaml` (reuse postojećeg `LayoutSpecCandidate` schema-e), bira layout primitiv SAMO
