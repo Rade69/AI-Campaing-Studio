@@ -49,15 +49,21 @@ from ai_campaign_studio.domain.common.errors import (
 from ai_campaign_studio.domain.common.ids import (
     CampaignId,
     CampaignPlanId,
+    DistributionInstanceId,
+    RevisionId,
     VisualSystemId,
+    new_id,
 )
 from ai_campaign_studio.domain.common.timestamps import utc_now
 from ai_campaign_studio.domain.content.entities import ContentPiece
+from ai_campaign_studio.domain.performance.entities import DistributionInstance
+from ai_campaign_studio.domain.performance.enums import DistributionSource
 from ai_campaign_studio.ports.export import ExportResult, ExportWriterPort
 from ai_campaign_studio.ports.rendering import RendererPort
 from ai_campaign_studio.ports.repositories import (
     CampaignRepositoryPort,
     ContentRepositoryPort,
+    PerformanceRepositoryPort,
     RevisionRepositoryPort,
     VisualRepositoryPort,
 )
@@ -107,6 +113,7 @@ class ExportCampaign:
         revision_repo: RevisionRepositoryPort,
         renderer: RendererPort,
         export_writer: ExportWriterPort,
+        performance_repo: PerformanceRepositoryPort,
     ) -> None:
         self._campaign_repo = campaign_repo
         self._content_repo = content_repo
@@ -114,6 +121,7 @@ class ExportCampaign:
         self._revision_repo = revision_repo
         self._renderer = renderer
         self._export_writer = export_writer
+        self._performance_repo = performance_repo
 
     def execute(
         self,
@@ -167,8 +175,25 @@ class ExportCampaign:
         #    with no revision at all is a data-integrity bug (not a skip
         #    reason), so it raises ``InvariantViolation``.
         manifest_items = []
+        distribution_instance_ids: list[str] = []
         for e in exports:
             content_revision_id = _latest_revision_id(e.piece)
+            distribution_instance = DistributionInstance(
+                id=DistributionInstanceId(new_id()),
+                campaign_id=campaign.id,
+                campaign_item_id=e.piece.campaign_item_id,
+                content_piece_id=e.piece.id,
+                content_revision_id=RevisionId(content_revision_id),
+                channel_code=e.piece.target.channel,
+                platform_code=e.piece.target.platform_code,
+                format_code=e.piece.target.format_code,
+                distribution_source=DistributionSource.EXPORT,
+                created_at=utc_now(),
+            )
+            self._performance_repo.save_distribution_instance(
+                distribution_instance
+            )
+            distribution_instance_ids.append(str(distribution_instance.id))
             manifest_items.append(
                 {
                     "campaign_item_id": str(e.piece.campaign_item_id),
@@ -273,6 +298,7 @@ class ExportCampaign:
             zip_path=output_zip_path,
             exported_content_piece_ids=exported_ids,
             skipped_content_piece_ids=tuple(skipped),
+            distribution_instance_ids=tuple(distribution_instance_ids),
         )
 
     # -- helpers ------------------------------------------------------------

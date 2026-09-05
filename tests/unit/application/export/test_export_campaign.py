@@ -58,6 +58,8 @@ from ai_campaign_studio.domain.content.revisions import (
     Revision,
     RevisionOrigin,
 )
+from ai_campaign_studio.domain.performance.entities import DistributionInstance
+from ai_campaign_studio.domain.performance.enums import DistributionSource
 from ai_campaign_studio.domain.visual.entities import CampaignVisualSystem
 from ai_campaign_studio.domain.visual.enums import (
     Alignment,
@@ -342,6 +344,24 @@ class _FakeRevisionRepo:
         return ()
 
 
+class _FakePerformanceRepo:
+    """In-memory PerformanceRepositoryPort (records saved instances)."""
+
+    def __init__(self) -> None:
+        self.saved: list[DistributionInstance] = []
+        self.save_count = 0
+
+    def save_distribution_instance(self, instance: DistributionInstance) -> None:
+        self.saved.append(instance)
+        self.save_count += 1
+
+    def get_distribution_instance(self, distribution_instance_id):  # noqa: ANN001
+        return next(
+            (i for i in self.saved if str(i.id) == str(distribution_instance_id)),
+            None,
+        )
+
+
 class _RecordingRenderer:
     """Fake RendererPort that returns a configurable status and a
     deterministic PNG-shaped byte blob.
@@ -426,6 +446,7 @@ def _use_case(
     revisions: dict[str, tuple[Revision, ...]] | None = None,
     renderer: _RecordingRenderer | None = None,
     writer: _RecordingExportWriter | None = None,
+    performance_repo: _FakePerformanceRepo | None = None,
 ):
     """Build a wired-up ``ExportCampaign`` for one test.
 
@@ -452,6 +473,9 @@ def _use_case(
     revision_repo = _FakeRevisionRepo(revisions_by_piece=revisions)
     renderer = renderer if renderer is not None else _RecordingRenderer()
     writer = writer if writer is not None else _RecordingExportWriter()
+    performance_repo = (
+        performance_repo if performance_repo is not None else _FakePerformanceRepo()
+    )
     uc = ExportCampaign(
         campaign_repo=campaign_repo,
         content_repo=content_repo,
@@ -459,6 +483,7 @@ def _use_case(
         revision_repo=revision_repo,
         renderer=renderer,
         export_writer=writer,
+        performance_repo=performance_repo,
     )
     return uc, campaign_repo, content_repo, visual_repo, revision_repo, renderer, writer
 
@@ -954,3 +979,70 @@ def test_piece_without_revision_raises_invariant() -> None:
             VisualSystemId("vs-1"),
             "out.zip",
         )
+
+
+def test_distribution_instances_saved_for_each_exported_piece() -> None:
+    piece1, piece2, item1, item2 = _build_two_pieces()
+    layouts = {"p-1": _layout_spec("p-1"), "p-2": _layout_spec("p-2")}
+    uc, _, _, _, _, _, writer = _use_case(
+        pieces=(piece1, piece2), plan_items=(item1, item2), layouts=layouts
+    )
+    uc.execute(
+        CampaignId("c-1"),
+        CampaignPlanId("plan-1"),
+        VisualSystemId("vs-1"),
+        "out.zip",
+    )
+
+    repo = uc._performance_repo
+    assert repo.save_count == 2
+    manifest = json.loads(writer.last_files["manifest.json"])
+    assert len(repo.saved) == 2
+    for i, instance in enumerate(repo.saved):
+        item = manifest["items"][i]
+        # content_revision_id MUST be the same value written into manifest.json
+        # (single calculation, not two that could diverge).
+        assert instance.content_piece_id == PostId(item["content_piece_id"])
+        assert str(instance.content_revision_id) == item["content_revision_id"]
+        assert instance.platform_code == item["platform_code"]
+        assert instance.format_code == item["format_code"]
+        assert instance.distribution_source is DistributionSource.EXPORT
+
+
+def test_export_result_distribution_instance_ids_match_order() -> None:
+    piece1, piece2, item1, item2 = _build_two_pieces()
+    layouts = {"p-1": _layout_spec("p-1"), "p-2": _layout_spec("p-2")}
+    uc, _, _, _, _, _, _ = _use_case(
+        pieces=(piece1, piece2), plan_items=(item1, item2), layouts=layouts
+    )
+    result = uc.execute(
+        CampaignId("c-1"),
+        CampaignPlanId("plan-1"),
+        VisualSystemId("vs-1"),
+        "out.zip",
+    )
+    assert result.distribution_instance_ids == tuple(
+        str(i.id) for i in uc._performance_repo.saved
+    )
+    assert len(result.distribution_instance_ids) == 2
+
+
+def test_skipped_piece_gets_no_distribution_instance() -> None:
+    piece1 = _piece("p-1", "item-1", with_payload=True)
+    piece2 = _piece("p-2", "item-2", with_payload=False)
+    item1 = _item("item-1", order=1)
+    item2 = _item("item-2", order=2)
+    layouts = {"p-1": _layout_spec("p-1")}
+    uc, _, _, _, _, _, _ = _use_case(
+        pieces=(piece1, piece2), plan_items=(item1, item2), layouts=layouts
+    )
+    result = uc.execute(
+        CampaignId("c-1"),
+        CampaignPlanId("plan-1"),
+        VisualSystemId("vs-1"),
+        "out.zip",
+    )
+    assert result.exported_content_piece_ids == ("p-1",)
+    assert len(result.distribution_instance_ids) == 1
+    assert uc._performance_repo.save_count == 1
+    assert uc._performance_repo.saved[0].content_piece_id == PostId("p-1")

@@ -62,6 +62,7 @@ class ExportResult:
     zip_path: str
     exported_content_piece_ids: tuple[str, ...]
     skipped_content_piece_ids: tuple[str, ...]
+    distribution_instance_ids: tuple[str, ...]
 
 
 __all__ = ["ExportResult", "ExportWriterPort"]
