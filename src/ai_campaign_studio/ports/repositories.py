@@ -20,8 +20,11 @@ from ai_campaign_studio.domain.common.ids import (
     BrandSnapshotId,
     CampaignId,
     CampaignPlanId,
+    DistributionInstanceId,
     FactId,
     LayoutSpecId,
+    PerformanceImportBatchId,
+    PerformanceSnapshotId,
     PostId,
     RevisionId,
     VisualSystemId,
@@ -29,6 +32,11 @@ from ai_campaign_studio.domain.common.ids import (
 from ai_campaign_studio.domain.content.entities import ContentPiece
 from ai_campaign_studio.domain.content.revisions import Revision
 from ai_campaign_studio.domain.facts.entities import ApprovedFact
+from ai_campaign_studio.domain.performance.entities import (
+    DistributionInstance,
+    PerformanceImportBatch,
+    PerformanceSnapshot,
+)
 from ai_campaign_studio.domain.visual.entities import CampaignVisualSystem
 from ai_campaign_studio.domain.visual.layout import LayoutSpec
 
@@ -179,6 +187,41 @@ class RevisionRepositoryPort(Protocol):
     def list_entity_revisions(
         self, entity_type: str, entity_id: str
     ) -> tuple[Revision, ...]: ...
+
+
+@runtime_checkable
+class PerformanceRepositoryPort(Protocol):
+    """Persistence for the Performance domain (P1.5-G1 entities).
+
+    Deliberately minimal for now — only save/get by each entity's own id.
+    Query-by-related-entity methods (e.g. "all snapshots for one
+    distribution instance") are added later, when a real caller
+    (P1.5-G3/G4/G5/G6) asks for them.
+    """
+
+    def save_distribution_instance(
+        self, instance: DistributionInstance
+    ) -> None: ...
+
+    def get_distribution_instance(
+        self, distribution_instance_id: DistributionInstanceId
+    ) -> DistributionInstance | None: ...
+
+    def save_performance_import_batch(
+        self, batch: PerformanceImportBatch
+    ) -> None: ...
+
+    def get_performance_import_batch(
+        self, batch_id: PerformanceImportBatchId
+    ) -> PerformanceImportBatch | None: ...
+
+    def save_performance_snapshot(
+        self, snapshot: PerformanceSnapshot
+    ) -> None: ...
+
+    def get_performance_snapshot(
+        self, snapshot_id: PerformanceSnapshotId
+    ) -> PerformanceSnapshot | None: ...
 
 
 @runtime_checkable
