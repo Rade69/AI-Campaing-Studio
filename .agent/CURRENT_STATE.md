@@ -3,7 +3,29 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-026 (A/B evaluation
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-027 (human_eval.py —
+blind A/B evaluacioni paket, §49) merged u main** (`5f47c92`, merge `3f332af`) — **A16 (G10 A/B
+evaluation harness) je time KOMPLETIRAN u kodu** (run_control_a + run_system_b +
+deterministic_metrics + human_eval, sve mergovano).
+
+`build_human_eval_package` mapira Control A / System B `EvaluationPost` tuple-ove u dva nasumično
+označena "Campaign X"/"Campaign Y" bucket-a (X/Y dodjela je nasumična PO POZIVU preko injektovanog
+`rng`, ne fiksno A=X/B=Y — evaluator koji radi više runova ne može naučiti obrazac), tačna §49
+rubrika (6 kriterijuma 1-5 + slobodan komentar). Slijep prikaz posta namjerno izostavlja
+`role`/`topic`/`claims`/`platform_code`/`format_code` — bilo šta od toga bi odalo koji je izvor
+(System B ima role, Control A nema). `reveal` mapping se vraća ODVOJENO, nikad kao polje na
+`HumanEvalPackage`, da se ne desi slučajno serijalizovanje u fajl koji evaluator čita.
+`write_human_eval_files` piše tri odvojena fajla (content JSON, prazan scoring CSV, reveal JSON sa
+eksplicitnim upozorenjem). Post-merge: 814 passed, ruff/mypy(147)/boundaries(18)/secrets svi
+čisti. Worktree uklonjen.
+
+**Sljedeći korak**: koordinator će ručno (scratchpad skripta) pokrenuti CIJELI A16 lanac
+(`run_control_a` + `run_system_b` + `deterministic_metrics` + `human_eval`) protiv BrightSmile
+fixture-a sa pravim provider ključem — prva stvarna live provjera da li System B pobjeđuje Control
+A. Ovo NIJE novi Task Contract, nego direktna koordinatorova post-merge verifikacija (isti
+obrazac kao live testovi za ACS-GUI-005/007).
+
+Prethodni entry (2026-09-05): **ACS-F1-026 (A/B evaluation
 harness — Control A + System B + determinističke metrike) merged u main** (`b000aa5`, merge
 `b39851d`) — **G10/A16 iz Faza 1 v1.4 §47-48, prva stvarna implementacija.**
 
