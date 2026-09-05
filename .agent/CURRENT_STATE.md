@@ -3,7 +3,22 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-028 task contract napisan i
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-029 task contract napisan i
+otvoren** (nije implementiran, implementer=TBD, MEDIUM risk) — **A13 iz plana (Campaign Visual
+System + LayoutSpec, sekcija 39), prvi konkretan korak ka `G10 Vertical Slice PASS`** nakon što je
+A16 zatvoren. Istraga prije pisanja kontrakta otkrila da je VEĆINA A13 fundacije već izgrađena
+ranije (van vidljivog task-praćenja, vjerovatno rana P0/A3-A5 faza): `domain/visual/` (entities,
+layout, slots, enums), `application/schemas/visual_direction_output.py`, `VisualRepositoryPort`/
+`SqliteVisualRepository`, `campaign_visual_systems` tabela, čak i `resources/prompts/visual_direction/v1.yaml`
+prompt — sve postoji, ništa od toga nema pozivaoca u `application/` sloju. Kontrakt pokriva SAMO
+nedostajući komad: `GenerateVisualSystem` use-case (`application/visual/generate_visual_system.py`)
+koji sve ovo poveže — jedan AI poziv, perzistuje `CampaignVisualSystem`, vraća `LayoutSpec`
+in-memory (BEZ perzistencije — `layout_specs` tabela iz plana ne postoji, nova migracija je
+namjerno van scope-a). Vidi `agent_reports/ACS-F1-029-task-contract.md`. Slijedeći korak nakon ovog
+(per-post `plan_post_layout.py`/`validate_layout.py`, zahtijeva novu migraciju) čeka da se ovaj
+task završi.
+
+Prethodni entry (2026-09-05): **ACS-F1-028 task contract napisan i
 otvoren** (nije implementiran, implementer=TBD, LOW risk) — poznato ograničenje otkriveno kroz
 live A16 verifikaciju: `claim_linter.py` `prohibited_terms` provjera je EXACT-WORD, ne hvata
 morfološke varijante istog korijena (`garantovano` ne matchuje registrovani `garantujemo`).
