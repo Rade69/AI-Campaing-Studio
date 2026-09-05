@@ -3,7 +3,22 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-032 (renderer spike) merged u main
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-033 task contract napisan i
+otvoren** (nije implementiran, implementer=TBD, MEDIUM risk) — **A14 dio 2, PRVI stvaran renderer**
+(plan sekcije 43-45), nakon ACS-F1-032 odluke (R-B/Pillow). `ports/rendering.py`
+(`RenderRequest`/`RenderResult`/`RenderStatus`/`RendererPort`), `infrastructure/rendering/selected_renderer.py`
+(`PillowRenderer` — HERO/SPLIT stvarno vizuelno različiti, real font-metrika overflow detekcija →
+`LAYOUT_VALIDATION_ERROR` ALI PNG se svejedno piše), `application/rendering/render_post.py`
+(`RenderPost` use-case, prima `visual_system_id` eksplicitno kao parametar — isti obrazac kao
+`PlanPostLayout`/ACS-F1-031, izbjegava nepostojeći FK lookup). Nova port metoda
+`VisualRepositoryPort.get_layout_spec_by_content_piece` (vraća najnoviji red ako ih ima više).
+Dvije namjerne dizajn odluke dokumentovane u kontraktu: (1) Pillow direktno, NE
+cairosvg/resvg (nepotvrđena zavisnost na Windows-u, `template.svg` ostaje samo dokumentacija);
+(2) FIKSNA neutralna paleta, NE brand-driven boje (plan sekcija 43 `RenderRequest` doslovno nema
+brand/color polje — poznato Slice-1 ograničenje). NEMA perzistencije (`render_artifacts` tabela ne
+postoji, namjerno van scope-a). Vidi `agent_reports/ACS-F1-033-task-contract.md`.
+
+Prethodni entry (2026-09-05): **ACS-F1-032 (renderer spike) merged u main
 — A14 DIO 1 ZATVOREN, R-B (SVG-based/Pillow) ODABRAN kao produkcijski renderer pravac.** Oba
 kandidata stvarno izgrađena i izmjerena protiv istog BHS/overflow test seta (1080x1350): R-A
 (HTML/CSS+Playwright) 745ms warm/377KB PNG, R-B (SVG/Pillow) 48.5ms warm/51KB PNG — R-B pobijedio
