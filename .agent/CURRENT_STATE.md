@@ -3,7 +3,18 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-029 proslijeđen Pi-ju**
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-028 (claim_linter morfološke
+varijante garant- korijena) merged u main** (merge commit direktno nakon `0bfa905`). MiniMax
+dodao 6 varijanti (`garantovano`, `garantovan`, `garantuje`, `garantujem`, `garantuju`, `garancija`)
+u `resources/claim_rules/default_v1.yaml` + 10 novih testova u `test_claim_linter.py` — data-only,
+`claim_linter.py` nedirnut. Uključuje honestan regression test
+(`test_garantujete_second_person_does_not_match`) koji dokumentuje da fix NE pokriva sve gramatičke
+oblike (2. lice množine i dalje van dometa) — priznat, ne skriven scope. Koordinator nezavisno
+reprodukovao: 29/29 specifičnih testova, 824/824 cijeli suite, ruff/mypy čisti, git diff potvrđen
+na tačno 2 fajla (+ evidence report), oba u `allowed_paths`. LOW risk, §29: Claude-only review PASS
+→ odmah merge. Worktree i branch uklonjeni.
+
+Prethodni entry (2026-09-05): **ACS-F1-029 proslijeđen Pi-ju**
 (implementer=pi, MEDIUM risk, čeka implementaciju) — **A13 iz plana (Campaign Visual
 System + LayoutSpec, sekcija 39), prvi konkretan korak ka `G10 Vertical Slice PASS`** nakon što je
 A16 zatvoren. Istraga prije pisanja kontrakta otkrila da je VEĆINA A13 fundacije već izgrađena
