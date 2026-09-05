@@ -36,6 +36,7 @@ from ai_campaign_studio.application.visual.generate_visual_system import (
     GenerateVisualSystem,
 )
 from ai_campaign_studio.application.visual.plan_post_layout import PlanPostLayout
+from ai_campaign_studio.domain.common.ids import DistributionInstanceId
 from ai_campaign_studio.domain.content.entities import CampaignTarget
 from ai_campaign_studio.infrastructure.database.connection import create_connection
 from ai_campaign_studio.infrastructure.database.migrations import run_migrations
@@ -44,6 +45,7 @@ from ai_campaign_studio.infrastructure.database.repositories import (
     SqliteCampaignRepository,
     SqliteContentRepository,
     SqliteFactRepository,
+    SqlitePerformanceRepository,
     SqliteRevisionRepository,
     SqliteVisualRepository,
 )
@@ -221,6 +223,7 @@ def test_end_to_end_export_writes_valid_zip_with_real_pngs(
     content_repo = SqliteContentRepository(connection)
     revision_repo = SqliteRevisionRepository(connection)
     visual_repo = SqliteVisualRepository(connection)
+    performance_repo = SqlitePerformanceRepository(connection)
     uow = SqliteUnitOfWork(connection)
 
     # Realistic provider/model for the telemetry assertion below.
@@ -291,6 +294,7 @@ def test_end_to_end_export_writes_valid_zip_with_real_pngs(
         revision_repo=revision_repo,
         renderer=PillowRenderer(),
         export_writer=ZipExportWriter(),
+        performance_repo=performance_repo,
     )
     out_zip = tmp_path / "export.zip"
     result = exporter.execute(
@@ -391,6 +395,21 @@ def test_end_to_end_export_writes_valid_zip_with_real_pngs(
             assert revisions, f"piece {piece.id} has no revisions"
             assert item["content_revision_id"] == str(revisions[-1].id)
 
+    # Distribution instances were actually persisted (round-trip through the
+    # real SqlitePerformanceRepository, not a fake).
+    for i, piece in enumerate(pieces):
+        di_id = result.distribution_instance_ids[i]
+        di = performance_repo.get_distribution_instance(
+            DistributionInstanceId(di_id)
+        )
+        assert di is not None
+        assert di.content_piece_id == piece.id
+        revisions = revision_repo.list_entity_revisions(
+            "ContentPiece", str(piece.id)
+        )
+        assert revisions
+        assert di.content_revision_id == revisions[-1].id
+
     connection.close()
 
 
@@ -416,6 +435,7 @@ def test_export_zip_is_byte_stable_across_runs(tmp_path: Path) -> None:
         content_repo = SqliteContentRepository(connection)
         revision_repo = SqliteRevisionRepository(connection)
         visual_repo = SqliteVisualRepository(connection)
+        performance_repo = SqlitePerformanceRepository(connection)
         uow = SqliteUnitOfWork(connection)
         ai = _FakeAiPort(_post_payload())
         snapshot = LoadBrandFixture(brand_repo, fact_repo, uow).execute(_FIXTURE_PATH)
@@ -450,6 +470,7 @@ def test_export_zip_is_byte_stable_across_runs(tmp_path: Path) -> None:
             campaign_repo=campaign_repo, content_repo=content_repo,
             visual_repo=visual_repo, revision_repo=revision_repo,
             renderer=PillowRenderer(), export_writer=ZipExportWriter(),
+            performance_repo=performance_repo,
         ).execute(campaign.id, approved.id, vs.id, str(out_zip))
         connection.close()
         return zipfile.ZipFile(out_zip, mode="r")

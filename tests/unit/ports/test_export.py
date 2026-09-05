@@ -2,7 +2,7 @@
 
 Pins the shape of ``ExportWriterPort`` and ``ExportResult``. The
 Protocol has exactly ONE method (``write_zip``) — this test asserts
-that. ``ExportResult`` is frozen with three required fields, in the
+that. ``ExportResult`` is frozen with four required fields, in the
 exact order the contract specifies.
 """
 
@@ -47,6 +47,7 @@ def test_export_result_is_frozen() -> None:
         zip_path="/tmp/x.zip",
         exported_content_piece_ids=("p-1", "p-2"),
         skipped_content_piece_ids=("p-3",),
+        distribution_instance_ids=("di-1", "di-2"),
     )
     import dataclasses
     with __import__("pytest").raises(dataclasses.FrozenInstanceError):
@@ -65,10 +66,12 @@ def test_export_result_fields_and_order() -> None:
         zip_path="/tmp/x.zip",
         exported_content_piece_ids=("p-1",),
         skipped_content_piece_ids=(),
+        distribution_instance_ids=("di-1",),
     )
     assert r.zip_path == "/tmp/x.zip"
     assert r.exported_content_piece_ids == ("p-1",)
     assert r.skipped_content_piece_ids == ()
+    assert r.distribution_instance_ids == ("di-1",)
     # Field order matters for ``dataclasses.astuple`` and any
     # downstream that depends on it.
     field_names = [f.name for f in ExportResult.__dataclass_fields__.values()]
@@ -76,6 +79,7 @@ def test_export_result_fields_and_order() -> None:
         "zip_path",
         "exported_content_piece_ids",
         "skipped_content_piece_ids",
+        "distribution_instance_ids",
     ]
 
 
