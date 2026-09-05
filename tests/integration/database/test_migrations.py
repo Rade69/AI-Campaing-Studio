@@ -140,3 +140,26 @@ def test_fresh_db_applies_layout_specs_migration(tmp_path: Path) -> None:
     }
     conn2.close()
     assert 5 in versions
+
+
+def test_fresh_db_applies_performance_migration(tmp_path: Path) -> None:
+    db_path = tmp_path / "test.db"
+    conn = create_connection(db_path)
+    applied = run_migrations(conn, MIGRATIONS_DIR)
+    conn.close()
+
+    assert 6 in applied
+
+    conn2 = create_connection(db_path)
+    tables = _table_names(conn2)
+    assert {
+        "performance_import_batches",
+        "distribution_instances",
+        "performance_snapshots",
+    } <= tables
+    versions = {
+        row["version"]
+        for row in conn2.execute("SELECT version FROM schema_migrations").fetchall()
+    }
+    conn2.close()
+    assert 6 in versions
