@@ -3,7 +3,20 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-027 (human_eval.py —
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-028 task contract napisan i
+otvoren** (nije implementiran, implementer=TBD, LOW risk) — poznato ograničenje otkriveno kroz
+live A16 verifikaciju: `claim_linter.py` `prohibited_terms` provjera je EXACT-WORD, ne hvata
+morfološke varijante istog korijena (`garantovano` ne matchuje registrovani `garantujemo`).
+Nalaz potiče iz MiniMax-ove (kodni agent) ručne "Control A" probe (brief:
+`agent_reports/2026-09-05-A16-brief-za-minimax-model-test.md`) — MiniMax je sam vjerovao da će
+"Garantovano ćete dobiti..." biti uhvaćeno kao kršenje, ali stvaran linter je vratio
+`forbidden_phrase_hits=0`. Fix namjerno data-only (proširiti YAML listu varijanti), NE
+stemming/lemmatizacija u kodu — vidi kontrakt za obrazloženje. Human Owner eksplicitno tražio da
+se ovo "otvori i odmah završi [kao kontrakt] da ostaje za kasnije" — kontrakt je kompletan,
+implementer nije dodijeljen, čeka da neko bude slobodan. Vidi
+`agent_reports/ACS-F1-028-task-contract.md`.
+
+Prethodni entry (2026-09-05): **ACS-F1-027 (human_eval.py —
 blind A/B evaluacioni paket, §49) merged u main** (`5f47c92`, merge `3f332af`) — **A16 (G10 A/B
 evaluation harness) je time KOMPLETIRAN u kodu** (run_control_a + run_system_b +
 deterministic_metrics + human_eval, sve mergovano).
