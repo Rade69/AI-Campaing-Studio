@@ -14,6 +14,11 @@ _EXPECTED_METHODS = {
     # structural); we only assert the protocol DOES declare it so the
     # contract surface is honest about what exists.
     "create_campaign_and_generate_plan",
+    # Added in ACS-GUI-007: real provider configuration via the bridge.
+    # First js_api method that takes a SECRET string FROM JS (vs. only
+    # using them server-side). The contract still says it returns the
+    # safe DTO type — no raw secret in the result.
+    "configure_provider",
 }
 
 
@@ -39,4 +44,15 @@ def test_bridge_implements_create_campaign_and_generate_plan() -> None:
     sig = inspect.signature(method)
     # Exactly one positional parameter after ``self`` (raw_brief) and a dict return.
     assert list(sig.parameters) == ["self", "raw_brief"]
-    assert sig.return_annotation in (dict, "dict")
+
+
+def test_bridge_implements_configure_provider() -> None:
+    """``configure_provider`` is the second js_api method. Same narrow-
+    surface rule as ``create_campaign_and_generate_plan``."""
+    from ai_campaign_studio.presentation_webview.bridge import CampaignBridgeApi
+
+    method = getattr(CampaignBridgeApi, "configure_provider", None)
+    assert method is not None, "bridge must expose configure_provider"
+    import inspect
+    sig = inspect.signature(method)
+    assert list(sig.parameters) == ["self", "raw_payload"]

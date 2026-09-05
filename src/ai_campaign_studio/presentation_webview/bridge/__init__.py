@@ -1,19 +1,28 @@
-"""pywebview ``js_api`` bridge (ACS-GUI-005).
+"""pywebview ``js_api`` bridge (ACS-GUI-005 / ACS-GUI-007).
 
 The first real GUI→backend wiring in the project. Exposes a narrow class
 (``CampaignBridgeApi``) to the WebView2 JavaScript context via pywebview's
 ``js_api=`` argument. Per ``docs/PYWEBVIEW_SECURITY.md`` §3:
 
-- Only a single public method is exposed (``create_campaign_and_generate_plan``).
-- Every payload from JS is validated at the boundary (Pydantic schema on
-  the inner ``CampaignBriefInput``; we do NOT trust JS types/values).
-- The return ``dict`` is JSON-serializable, never contains API keys, tokens,
-  SecretStore contents, file paths, or raw Python exception text.
+- Two narrow public methods: ``create_campaign_and_generate_plan``
+  (ACS-GUI-005) and ``configure_provider`` (ACS-GUI-007 — the FIRST
+  method that accepts a secret string FROM JS; the campaign flow only
+  USES secrets, never accepts them from the user). Each method is
+  narrow on its own: one positional ``dict`` argument, one
+  ``CampaignPlanResultUiModel`` / ``ProviderConfigResultUiModel``
+  return shape.
+- Every payload from JS is validated at the boundary (Pydantic schema
+  for the campaign flow, explicit string-type checks for the
+  configure flow; we do NOT trust JS types/values either way).
+- The return ``dict`` is JSON-serializable, never contains API keys,
+  tokens, SecretStore contents, file paths, or raw Python exception
+  text. In particular, ``configure_provider`` NEVER carries the
+  ``api_key`` field (input or echoed) in the result DTO.
 
 The bridge is the ONLY component that knows how to translate the
-form-shaped GUI input into the application-layer shape
-(``CampaignBriefInput``). It is composition: it wires use-cases, repositories,
-the AI provider factory, and a brand-seeding cache.
+form-shaped GUI input into the application-layer shape. It is
+composition: it wires use-cases, repositories, the AI provider
+factory, and a brand-seeding cache.
 """
 
 from __future__ import annotations
@@ -23,6 +32,9 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from ai_campaign_studio.application.ai_provider.configure_provider import (
+    ConfigureProvider,
+)
 from ai_campaign_studio.application.brands.load_brand_fixture import LoadBrandFixture
 from ai_campaign_studio.application.campaigns.create_campaign import CreateCampaign
 from ai_campaign_studio.application.campaigns.generate_campaign_plan import (
@@ -31,7 +43,12 @@ from ai_campaign_studio.application.campaigns.generate_campaign_plan import (
 from ai_campaign_studio.application.schemas.campaign_brief import CampaignBriefInput
 from ai_campaign_studio.bootstrap import create_bootstrap
 from ai_campaign_studio.config.paths import AppPaths
-from ai_campaign_studio.domain.common.errors import EntityNotFound, InvariantViolation
+from ai_campaign_studio.config.settings import AppSettings
+from ai_campaign_studio.domain.common.errors import (
+    EntityNotFound,
+    InvariantViolation,
+    RegistryError,
+)
 from ai_campaign_studio.infrastructure.ai.provider_adapter_factory import (
     _PROVIDER_PRIORITY,
     build_text_generation_adapter,
@@ -46,7 +63,10 @@ from ai_campaign_studio.infrastructure.database.unit_of_work import SqliteUnitOf
 from ai_campaign_studio.infrastructure.prompts.yaml_prompt_repository import (
     YamlPromptRepository,
 )
-from ai_campaign_studio.presentation.ui_models import CampaignPlanResultUiModel
+from ai_campaign_studio.presentation.ui_models import (
+    CampaignPlanResultUiModel,
+    ProviderConfigResultUiModel,
+)
 
 _BRAND_SEED_FILE = "brand-seed.json"
 
@@ -97,15 +117,31 @@ class CampaignBridgeApi:
     repositories, AI factory) — there is no per-call re-wire.
     """
 
-    def __init__(self, *, paths: AppPaths | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        paths: AppPaths | None = None,
+        settings: AppSettings | None = None,
+    ) -> None:
         # Bootstrap is the single source of truth for settings, paths,
         # secret store, DB connection, and the registries. Construct it
         # once; reuse across the lifetime of the bridge.
         #
-        # ``paths`` is an explicit seam for tests. Production code
-        # passes nothing and ``create_bootstrap()`` builds the canonical
-        # ``AppPaths`` (resolved via ``AppSettings`` -> env -> defaults).
-        self._bootstrap = create_bootstrap(paths=paths)
+        # ``paths`` and ``settings`` are explicit test seams. Production
+        # code passes neither, and the defaults below pick the right
+        # values:
+        # - ``paths=None`` -> ``create_bootstrap`` builds the canonical
+        #   ``AppPaths`` (resolved via ``AppSettings`` -> env -> defaults).
+        # - ``settings=None`` -> the real GUI app uses
+        #   ``AppSettings(environment="production")`` so the SecretStore
+        #   is the real OS keyring (``KeyringSecretStore``), not the
+        #   read-only dev/test ``EnvironmentSecretStore``. Tests that
+        #   build the bridge directly MUST pass an explicit ``settings``
+        #   (typically ``AppSettings(environment="development")``) so
+        #   they do not touch the real OS keyring during test runs.
+        if settings is None:
+            settings = AppSettings(environment="production")
+        self._bootstrap = create_bootstrap(settings=settings, paths=paths)
         conn = self._bootstrap.database_connection
         self._brand_repo = SqliteBrandRepository(conn)
         self._fact_repo = SqliteFactRepository(conn)
@@ -267,6 +303,104 @@ class CampaignBridgeApi:
                 "Interna greška — pogledajte log aplikacije.",
             )
 
+    def configure_provider(self, raw_payload: dict) -> dict:
+        """Persist a provider API key into the real SecretStore (ACS-GUI-007).
+
+        This is the FIRST js_api method that takes a secret string FROM
+        JS (the campaign flow only USES secrets, never accepts them from
+        the user). Per ``docs/PYWEBVIEW_SECURITY.md`` §3:
+
+        - boundary validation BEFORE the use-case runs (Pydantic
+          pattern: we do NOT trust JS types/values — provider_code and
+          api_key are explicit str checks);
+        - the return ``dict`` is JSON-serializable and NEVER contains
+          the api_key (input or echoed/masked);
+        - the api_key is NEVER logged — only ``provider_code`` and
+          exception class names appear in log lines.
+
+        Like ``create_campaign_and_generate_plan``, this method NEVER
+        raises into JS — every error path returns a result dict with
+        ``ok=False`` and a stable ``error_code``.
+        """
+        # 1. Boundary validation. Any failure here is a
+        #    ``VALIDATION_ERROR`` and we have NOT touched the secret
+        #    store yet.
+        if not isinstance(raw_payload, dict):
+            return self._provider_err(
+                _ERROR_VALIDATION, "Pošiljka nije objekat."
+            )
+
+        provider_code_raw = raw_payload.get("provider_code")
+        api_key_raw = raw_payload.get("api_key")
+        if not isinstance(provider_code_raw, str) or not provider_code_raw.strip():
+            return self._provider_err(
+                _ERROR_VALIDATION, "provider_code je obavezan (string)."
+            )
+        if not isinstance(api_key_raw, str) or not api_key_raw.strip():
+            return self._provider_err(
+                _ERROR_VALIDATION, "api_key je obavezan (string)."
+            )
+
+        provider_code = provider_code_raw.strip().upper()
+
+        # 2. Call the existing ConfigureProvider use-case. This is the
+        #    ONLY place in the bridge that actually writes to the
+        #    SecretStore (real OS keyring in production thanks to the
+        #    ``settings=AppSettings(environment="production")`` default
+        #    in ``__init__``).
+        try:
+            ConfigureProvider(
+                provider_registry=self._bootstrap.provider_registry,
+                provider_config_repo=self._provider_config_repo,
+                secret_store=self._bootstrap.secret_store,
+            ).execute(provider_code, api_key_raw.strip())
+        except (InvariantViolation, RegistryError) as exc:
+            # ``RegistryError``: unknown provider_code (registry does
+            # not know the code).
+            # ``InvariantViolation``: provider exists but does not
+            # require an API key (e.g. a future local-only provider).
+            # Both map to VALIDATION_ERROR — the input was wrong, not
+            # the backend. The provider_code is NOT a secret and is
+            # safe to surface; the api_key never appears in the
+            # message.
+            return self._provider_err(_ERROR_VALIDATION, str(exc))
+        except Exception as exc:
+            # ``SecretStoreError`` from the keyring backend (or any
+            # other backend error) lands here. We deliberately do NOT
+            # surface ``str(exc)`` — the message could theoretically
+            # contain backend-specific details.
+            #
+            # ACS-GUI-007 BF-3: we use ``logger.error`` (not
+            # ``logger.exception``) so the traceback + ``str(exc)``
+            # are NOT logged. ``logger.exception`` would log the full
+            # exception text, which could contain the api_key if any
+            # future SecretStore adapter / test backend / downstream
+            # change accidentally inlined the value into the
+            # exception message. The docstring promise "NEVER logged"
+            # holds structurally: ``logger.error("format", *args)``
+            # writes ONLY the formatted message + the (safe) args —
+            # never the exception object, never traceback. Same shape
+            # as the ``create_campaign_and_generate_plan``
+            # GENERATION_FAILED branch.
+            self._bootstrap.logger.error(
+                "configure_provider failed for provider %s (err=%s)",
+                provider_code,
+                type(exc).__name__,
+            )
+            return self._provider_err(
+                _ERROR_INTERNAL,
+                "Konfiguracija provajdera nije uspjela (interna greška).",
+            )
+
+        return asdict(
+            ProviderConfigResultUiModel(
+                ok=True,
+                provider_code=provider_code,
+                error_code=None,
+                error_message=None,
+            )
+        )
+
     # --- helpers (internal, not exposed to JS) ---
 
     def _ensure_brand(self):
@@ -411,6 +545,37 @@ class CampaignBridgeApi:
                 ok=False,
                 campaign_id=None,
                 plan_item_count=None,
+                error_code=code,
+                error_message=message,
+            )
+        )
+
+    @staticmethod
+    def _provider_err(code: str, message: str) -> dict:
+        """Error result for ``configure_provider`` only.
+
+        Uses ``ProviderConfigResultUiModel`` (NOT the shared
+        ``_err()`` which is hard-coded to
+        ``CampaignPlanResultUiModel``) so the return dict has the
+        EXACT shape the JS caller expects: ``{ok, provider_code,
+        error_code, error_message}`` and nothing else (no
+        ``campaign_id`` / ``plan_item_count`` leakage from the
+        campaign flow).
+
+        ACS-GUI-007 BF-1: the prior code re-used ``_err()`` here and
+        every ``configure_provider`` error came back with
+        ``campaign_id`` / ``plan_item_count`` keys (both ``None``).
+        That broke the contract for the JS caller (which keys to read)
+        AND silently violated the structural no-``api_key``-field
+        guarantee for the new DTO. Fixed by introducing this dedicated
+        helper and routing all three error paths
+        (validation / RegistryError+InvariantViolation / generic
+        exception) through it.
+        """
+        return asdict(
+            ProviderConfigResultUiModel(
+                ok=False,
+                provider_code=None,
                 error_code=code,
                 error_message=message,
             )

@@ -148,7 +148,75 @@ def _language_picker() -> str:
     return "".join(parts)
 
 
+# Map fixture `Provider.code` (lowercase) to the real UPPERCASE
+# `provider_code` used everywhere else in the registry / bridge.
+# ``openai_compatible`` is intentionally NOT mapped — that row keeps
+# its toast stub because the production wiring for it needs both
+# `base_url` and `model_id` and a different form shape (out of scope
+# for ACS-GUI-007; explicit "not in scope" per contract).
+_PROVIDER_CODE_MAP: dict[str, str] = {
+    "openai": "OPENAI",
+    "anthropic": "ANTHROPIC",
+    "google": "GOOGLE",
+    "deepseek": "DEEPSEEK",
+    "openrouter": "OPENROUTER",
+}
+
+
 def _provider_row(p: Provider, podesi_toast: str) -> str:
+    """Render one provider row in the Podešavanja → AI provajderi panel.
+
+    For 5 mapped providers (openai/anthropic/google/deepseek/openrouter)
+    the row carries a real toggle-and-save input form: clicking
+    "Podesi" reveals a password input + "Sačuvaj" button. The button
+    fires ``data-action="provider-save"`` with ``data-provider-code``
+    set to the UPPERCASE code; ``app.js`` reads the matching
+    ``#provider-key-<CODE>`` input and calls
+    ``window.pywebview.api.configure_provider``.
+
+    For the unmapped ``openai_compatible`` row, the original toast
+    stub is kept — that provider needs ``base_url`` + ``model_id`` in
+    a different form shape and is explicitly out of scope here.
+    """
+    if p.code == "openai_compatible":
+        return (
+            '<div class="provider">'
+            '<div class="left">'
+            f'<div class="logo">{html.escape(p.logo_initials)}</div>'
+            "<div>"
+            f"<b>{html.escape(p.display_name)}</b>"
+            f'<div class="small muted">{html.escape(p.status_label)}</div>'
+            "</div>"
+            "</div>"
+            f'<button class="btn" data-action="toast" '
+            f'data-message="{html.escape(podesi_toast)}">'
+            "Podesi"
+            "</button>"
+            "</div>"
+        )
+
+    uppercase_code = _PROVIDER_CODE_MAP.get(p.code)
+    if uppercase_code is None:
+        # Defensive fallback for any future provider that the screen
+        # does not know how to wire yet. Renders the toast stub
+        # rather than failing the render.
+        return (
+            '<div class="provider">'
+            '<div class="left">'
+            f'<div class="logo">{html.escape(p.logo_initials)}</div>'
+            "<div>"
+            f"<b>{html.escape(p.display_name)}</b>"
+            f'<div class="small muted">{html.escape(p.status_label)}</div>'
+            "</div>"
+            "</div>"
+            f'<button class="btn" data-action="toast" '
+            f'data-message="{html.escape(podesi_toast)}">'
+            "Podesi"
+            "</button>"
+            "</div>"
+        )
+
+    safe_code = html.escape(uppercase_code)
     return (
         '<div class="provider">'
         '<div class="left">'
@@ -158,10 +226,21 @@ def _provider_row(p: Provider, podesi_toast: str) -> str:
         f'<div class="small muted">{html.escape(p.status_label)}</div>'
         "</div>"
         "</div>"
-        f'<button class="btn" data-action="toast" '
-        f'data-message="{html.escape(podesi_toast)}">'
+        '<div class="provider-actions">'
+        f'<button class="btn" data-action="provider-toggle" '
+        f'data-provider-code="{safe_code}">'
         "Podesi"
         "</button>"
+        "</div>"
+        f'<div class="provider-input-row" id="provider-input-{safe_code}" hidden>'
+        f'<input type="password" class="input" '
+        f'id="provider-key-{safe_code}" '
+        f'placeholder="API ključ" autocomplete="off">'
+        f'<button class="btn" data-action="provider-save" '
+        f'data-provider-code="{safe_code}">'
+        "Sačuvaj"
+        "</button>"
+        "</div>"
         "</div>"
     )
 

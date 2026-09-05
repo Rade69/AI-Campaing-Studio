@@ -7,6 +7,7 @@ from ai_campaign_studio.presentation.ui_models import (
     CampaignPlanResultUiModel,
     NotificationLevel,
     NotificationUiModel,
+    ProviderConfigResultUiModel,
     ProviderStatusUiModel,
 )
 
@@ -123,3 +124,89 @@ def test_campaign_plan_result_is_frozen() -> None:
     except dataclasses.FrozenInstanceError:
         return
     raise AssertionError("CampaignPlanResultUiModel must be frozen")
+
+
+# --- ACS-GUI-007: ProviderConfigResultUiModel ---------------------------
+
+
+def test_provider_config_result_success_shape() -> None:
+    """Success case: ok=True, provider_code normalized UPPERCASE,
+    error fields None."""
+    result = ProviderConfigResultUiModel(
+        ok=True,
+        provider_code="OPENAI",
+        error_code=None,
+        error_message=None,
+    )
+    blob = asdict(result)
+    assert blob == {
+        "ok": True,
+        "provider_code": "OPENAI",
+        "error_code": None,
+        "error_message": None,
+    }
+
+
+def test_provider_config_result_error_shape() -> None:
+    """Error case: ok=False, success fields None, error fields populated."""
+    result = ProviderConfigResultUiModel(
+        ok=False,
+        provider_code=None,
+        error_code="VALIDATION_ERROR",
+        error_message="provider_code je obavezan (string).",
+    )
+    blob = asdict(result)
+    assert blob == {
+        "ok": False,
+        "provider_code": None,
+        "error_code": "VALIDATION_ERROR",
+        "error_message": "provider_code je obavezan (string).",
+    }
+
+
+def test_provider_config_result_carries_no_api_key_field() -> None:
+    """Structural guarantee: the DTO has NO field that could hold an
+    API key — by design, not by convention. A future maintainer cannot
+    accidentally add an ``api_key_preview`` field and pass review,
+    because this test would have to be updated AND it documents the
+    intent."""
+    fields = {f.name for f in ProviderConfigResultUiModel.__dataclass_fields__.values()}
+    assert "api_key" not in fields
+    assert "api_key_preview" not in fields
+    assert "api_key_masked" not in fields
+    # The only fields the DTO exposes are: ok, provider_code, error_code,
+    # error_message. Assert that explicitly so the test catches
+    # accidental additions.
+    assert fields == {"ok", "provider_code", "error_code", "error_message"}
+
+
+def test_provider_config_result_is_json_serializable() -> None:
+    cases = [
+        ProviderConfigResultUiModel(
+            ok=True, provider_code="OPENAI",
+            error_code=None, error_message=None,
+        ),
+        ProviderConfigResultUiModel(
+            ok=False, provider_code=None,
+            error_code="INTERNAL_ERROR", error_message="...",
+        ),
+    ]
+    for case in cases:
+        roundtripped = json.loads(json.dumps(asdict(case)))
+        assert roundtripped == asdict(case)
+
+
+def test_provider_config_result_is_frozen() -> None:
+    """The DTO is immutable; accidental mutation after the bridge has
+    shipped the dict to JS would silently corrupt the user-visible
+    state."""
+    import dataclasses
+    result = ProviderConfigResultUiModel(
+        ok=True, provider_code="OPENAI",
+        error_code=None, error_message=None,
+    )
+    try:
+        result.provider_code = "DEEPSEEK"  # type: ignore[misc]
+    except dataclasses.FrozenInstanceError:
+        return
+    raise AssertionError("ProviderConfigResultUiModel must be frozen")
