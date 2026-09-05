@@ -3,7 +3,21 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **A20 exit evaluation ZAKLJUČEN — G10
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-036 task contract napisan i
+otvoren** (nije implementiran, implementer=TBD, MEDIUM risk) — **PRVI Slice 1.5-track task, ALI
+NIJE P1.5-G1.** Prije pisanja, pročitana OBA obavezna Performance/Analytics dokumenta (Faza 0.7 +
+Faza 1 v1.5) — otkriven stvaran tehnički dug: `ACS-F1-034` (A15 export, mergovan) NEMA
+`manifest.json`/`content_revision_id`/`analytics_match_key` koje Faza 1 v1.5 §5-6, 11-12 eksplicitno
+traže kao dio ISTE Faza 1 implementacije, prije G10 — propušteno jer taj task nije bio prepoznat
+kao "Performance/Analytics-dodirujući" u trenutku pisanja (koordinatorov propust, transparentno
+priznat). `analytics_match_key` je preduslov za SVE buduće P1.5 gate-ove (P1.5-G3/G4 CSV
+import/matching nema šta da matchuje bez njega) — zato ide PRVO, prije P1.5-G1 Performance Domain.
+Kontrakt: nov `domain/analytics/match_key.py` (čista, deterministička funkcija) + dopuna (NE
+prepisivanje) `ExportCampaign`-a sa novim `manifest.json` ZIP unosom (postojeći `campaign.json`/
+`telemetry`/`content-NN` OSTAJU nepromijenjeni, regresija zabranjena). Vidi
+`agent_reports/ACS-F1-036-task-contract.md`.
+
+Prethodni entry (2026-09-05): **A20 exit evaluation ZAKLJUČEN — G10
 Vertical Slice Gate = PASS (Human Owner odluka, "Proceed").** Vidi detaljnu sekciju "G10 Vertical
 Slice Gate — PASS" niže u ovom fajlu za punu dokaznu osnovu (R1 rezultat preko 5 modela, A19 dvaput
 potvrđen, 5 stvarnih bugova nađeno i popravljeno kroz review proces). **Performance/Analytics
