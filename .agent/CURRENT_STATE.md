@@ -3,7 +3,19 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-037 (P1.5-G1 Performance Domain)
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-038 task contract napisan i
+otvoren** (nije implementiran, implementer=TBD, MEDIUM risk) — **P1.5-G2 Persistence** (Faza 1 v1.5
+§17). Nova migracija `0004_performance_foundation.sql` (SAMO tri tabele:
+`performance_import_batches`, `distribution_instances`, `performance_snapshots` — `PerformanceSnapshot`-ovih
+9 canonical metrika su ZASEBNE kolone, ne JSON blob, `raw_metrics_json` samo za platform-specific).
+Nov `PerformanceRepositoryPort` (namjerno minimalan — samo save/get po sopstvenom id-u za sva tri
+entiteta, isti obrazac kao layout_specs foundation prije nego što je RenderPost stvarno zatrebao
+query-po-vezanom-entitetu metodu). **Namjerna odluka**: `performance_import_rows` (četvrta tabela iz
+plana) NIJE u ovom tasku — nema domain entiteta za nju (ACS-F1-037 je namjerno nije modelovao), pravi
+se tek u P1.5-G3 (CSV Import) kad stvaran oblik postane jasan iz stvarnog parsing koda — isti obrazac
+kao odgođena `render_artifacts` tabela. Vidi `agent_reports/ACS-F1-038-task-contract.md`.
+
+Prethodni entry (2026-09-05): **ACS-F1-037 (P1.5-G1 Performance Domain)
 merged u main.** `DistributionInstance`/`PerformanceSnapshot`/`PerformanceImportBatch`/
 `CanonicalMetricSet`/`MetricPeriod` + dva odvojena enuma (`DistributionSource` sa EXPORT,
 `PerformanceSource` bez njega) — čisto domain, bez perzistencije, tri aditivne linije u
