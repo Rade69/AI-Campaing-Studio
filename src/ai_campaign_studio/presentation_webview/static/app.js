@@ -54,6 +54,79 @@
     const name=el.querySelector('.lang-name')?.textContent||code;
     showToast(`Jezik sadržaja: ${name}.`);
   }));
+
+  // --- ACS-GUI-007: provider toggle / save (Podešavanja → AI provajderi) ---
+  // The Podesavanja screen renders 5 mappable providers (openai /
+  // anthropic / google / deepseek / openrouter) with a real "Podesi"
+  // button that reveals a password input + "Sačuvaj" button. Clicking
+  // "Podesi" toggles the matching input row; clicking "Sačuvaj" calls
+  // ``window.pywebview.api.configure_provider``. The input is always
+  // cleared on both success AND failure so the API key never lingers
+  // in the DOM after the click.
+  document.querySelectorAll('[data-action="provider-toggle"]').forEach(el=>el.addEventListener('click',()=>{
+    const code=el.dataset.providerCode;
+    if(!code) return;
+    const row=document.getElementById(`provider-input-${code}`);
+    if(!row) return;
+    row.hidden=!row.hidden;
+    if(!row.hidden){
+      const input=document.getElementById(`provider-key-${code}`);
+      if(input) input.focus();
+    }
+  }));
+  document.querySelectorAll('[data-action="provider-save"]').forEach(el=>el.addEventListener('click',async ()=>{
+    const code=el.dataset.providerCode;
+    if(!code) return;
+    const input=document.getElementById(`provider-key-${code}`);
+    const row=document.getElementById(`provider-input-${code}`);
+    if(!input||!row) return;
+    // ACS-GUI-007 BF-2: read the apiKey into a local FIRST, then run
+    // the entire flow inside a try/finally that ALWAYS clears the
+    // input. The previous version had three separate ``input.value=''``
+    // calls plus an early ``return`` for the "bridge not available"
+    // case where the input was never cleared — the api_key would stay
+    // in the DOM. The try/finally makes that structural-impossible:
+    // once we have a non-empty apiKey in scope, the input is guaranteed
+    // to be cleared before this handler returns, regardless of which
+    // error path runs.
+    const apiKey=(input.value||'').trim();
+    if(!apiKey){
+      showToast('Unesite API ključ.');
+      return;
+    }
+    el.disabled=true;
+    let result;
+    try{
+      if(!window.pywebview||!window.pywebview.api||typeof window.pywebview.api.configure_provider!=='function'){
+        showToast('Interna greška: bridge nije dostupan. Ponovo pokreni aplikaciju.');
+        result=null;
+      } else {
+        result=await window.pywebview.api.configure_provider({provider_code: code, api_key: apiKey});
+      }
+    }catch(err){
+      showToast('Interna greška pri pozivu: '+(err&&err.message?err.message:'nepoznato.'));
+      result=null;
+    }finally{
+      // ALWAYS clear the input once we entered the "user gave us a
+      // key" branch. The api_key must not sit in the DOM any longer
+      // than the click itself — explicit ask from the contract (Codex
+      // adversarial focus on BF-2).
+      input.value='';
+      el.disabled=false;
+    }
+    if(result && result.ok){
+      showToast(`Provajder ${code} je sačuvan.`);
+      // Hide the row on success so the key is gone from view entirely.
+      row.hidden=true;
+    } else if(result){
+      const msg=(result&&result.error_message)||'Spremanje nije uspjelo.';
+      showToast(`Provajder ${code}: ${msg}`);
+      // Leave the row visible so the user can retry, but the input
+      // is already cleared (the typed key is gone, the user types it
+      // again from scratch on retry).
+    }
+  }));
+
   function showToast(msg){let t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';Object.assign(t.style,{position:'fixed',right:'24px',bottom:'24px',background:'#0f172a',color:'white',padding:'12px 16px',borderRadius:'10px',fontSize:'13px',zIndex:99,boxShadow:'0 10px 30px rgba(0,0,0,.18)'});document.body.appendChild(t)}t.textContent=msg;t.style.display='block';clearTimeout(window.__tt);window.__tt=setTimeout(()=>t.style.display='none',2200)}
 
 // --- ACS-GUI-005: save-and-plan bridge call ---

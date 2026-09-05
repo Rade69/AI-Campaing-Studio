@@ -103,15 +103,88 @@ def test_render_body_renders_six_provider_rows() -> None:
 
 
 def test_render_body_podesi_buttons_are_toast_stubs() -> None:
+    """Only the ``openai_compatible`` row keeps the toast stub. The other
+    5 providers (openai/anthropic/google/deepseek/openrouter) now carry
+    a real toggle-and-save input form (ACS-GUI-007) and are tested
+    separately in ``test_render_body_provider_save_forms_for_mapped_providers``.
+    """
     body = render_body()
-    # One "Podesi" per provider.
+    # Six "Podesi" buttons total — one per provider row.
     assert body.count(">Podesi<") == 6
-    # Each is a button[data-action="toast"].
+    # Exactly one is the toast stub (openai_compatible).
     podesi_buttons = re.findall(
         r'<button class="btn" data-action="toast"[^>]*>Podesi</button>',
         body,
     )
-    assert len(podesi_buttons) == 6
+    assert len(podesi_buttons) == 1
+
+
+def test_render_body_provider_save_forms_for_mapped_providers() -> None:
+    """5 mapped providers each get a ``provider-toggle`` button +
+    a hidden ``provider-input-<CODE>`` row with a password input
+    and a ``provider-save`` button (ACS-GUI-007)."""
+    body = render_body()
+    expected_codes = ("OPENAI", "ANTHROPIC", "GOOGLE", "DEEPSEEK", "OPENROUTER")
+    for code in expected_codes:
+        # Toggle button with the UPPERCASE provider_code.
+        toggle_pattern = (
+            rf'data-action="provider-toggle" data-provider-code="{code}"'
+        )
+        assert toggle_pattern in body, (
+            f"missing provider-toggle for {code}"
+        )
+        # Hidden input row with id ``provider-input-<CODE>``.
+        row_pattern = rf'id="provider-input-{code}"'
+        assert row_pattern in body, f"missing input row for {code}"
+        # Password input with matching id.
+        input_pattern = rf'id="provider-key-{code}"'
+        assert input_pattern in body, f"missing password input for {code}"
+        # Save button with the UPPERCASE provider_code.
+        save_pattern = (
+            rf'data-action="provider-save" data-provider-code="{code}"'
+        )
+        assert save_pattern in body, f"missing provider-save for {code}"
+    # The input is type="password" so the typed key is masked in the
+    # browser. All 5 mapped providers must use the same type.
+    for code in expected_codes:
+        assert (
+            f'id="provider-key-{code}" placeholder="API ključ" '
+            f'autocomplete="off"'
+        ) in body or (
+            f'id="provider-key-{code}"'
+        ) in body  # tolerant
+        # The input element is type=password, not text.
+        assert (
+            f'type="password" class="input" id="provider-key-{code}"'
+        ) in body
+
+
+def test_render_body_openai_compatible_keeps_toast_stub() -> None:
+    """The ``openai_compatible`` provider needs base_url + model_id and
+    a different form shape (out of scope for ACS-GUI-007). It keeps
+    the original ``data-action="toast"`` stub."""
+    body = render_body()
+    # The toast stub exists.
+    assert 'data-action="toast"' in body
+    # And the openai_compatible row does NOT carry the new
+    # provider-toggle / provider-save wiring.
+    assert "data-provider-code=\"OPENAI_COMPATIBLE\"" not in body
+    assert "id=\"provider-input-OPENAI_COMPATIBLE\"" not in body
+
+
+def test_render_body_provider_codes_are_uppercase_in_html() -> None:
+    """The screen fixture uses lowercase ``code`` ("openai" etc.) but
+    the rendered HTML carries the UPPERCASE registry code (the
+    contract for JS->bridge contract is UPPERCASE)."""
+    body = render_body()
+    # We should NOT see lowercase provider codes in data attributes
+    # that JS reads back.
+    for lowercase in ("openai", "anthropic", "google", "deepseek", "openrouter"):
+        # The toggle/save data-provider-code attributes must be UPPERCASE.
+        # (The lowercase codes may legitimately appear in CSS classes or
+        # elsewhere, so we only assert that ``data-provider-code="openai"``
+        # does not appear.)
+        assert f'data-provider-code="{lowercase}"' not in body
 
 
 def test_render_body_no_anchor_href() -> None:

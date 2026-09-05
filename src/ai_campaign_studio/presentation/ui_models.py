@@ -57,3 +57,22 @@ class CampaignPlanResultUiModel:
     plan_item_count: int | None
     error_code: str | None
     error_message: str | None
+
+
+@dataclass(frozen=True)
+class ProviderConfigResultUiModel:
+    """Result of a "Sačuvaj" click on the Podešavanja → AI provajderi
+    panel (ACS-GUI-007 bridge).
+
+    Returned by ``CampaignBridgeApi.configure_provider``. Converted to
+    a plain ``dict`` before crossing the pywebview ``js_api`` boundary.
+    **NEVER carries the API key** — neither the input key, nor an
+    echoed/masked/preview copy. The ``provider_code`` is the
+    normalized UPPERCASE registry code (e.g. ``"OPENAI"``); it is not
+    a secret.
+    """
+
+    ok: bool
+    provider_code: str | None
+    error_code: str | None
+    error_message: str | None
