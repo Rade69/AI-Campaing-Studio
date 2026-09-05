@@ -22,6 +22,8 @@ artifacts/*
 !artifacts/.gitkeep
 # P0 gate report (ACS-P0-008) is committed when status == PASS.
 !artifacts/phase0_foundation_gate.json
+# A14 renderer spike decision record (ACS-F1-032).
+!artifacts/renderer_spike_result.json
 
 # Logs
 *.log
