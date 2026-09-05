@@ -3,7 +3,23 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-028 (claim_linter morfološke
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-029 (`GenerateVisualSystem`, A13,
+plan sekcija 39) merged u main.** Nov `application/visual/generate_visual_system.py` povezuje
+VEĆ POSTOJEĆU A13 fundaciju (domain/visual/, `VisualRepositoryPort`, `campaign_visual_systems`
+tabela, `visual_direction/v1.yaml` prompt) — jedan AI poziv, perzistuje `CampaignVisualSystem`,
+vraća `LayoutSpec` in-memory (BEZ perzistencije — `layout_specs` tabela ne postoji, A13 dio 2 je
+zaseban budući task). Zahtijeva `APPROVED` plan; enum-only vrijednosti garantovane boundary
+schema-om + kod-nivo `style` vokabular provjera. Runda 1 (Claude review) našla test-coverage gap:
+parametrizovani "missing entity" test je spojio `campaign`/`brief` u istu granu, pa `brief is None`
+put nije imao nijedan test. Pi popravio (genuine zaseban brief-missing fixture); koordinator
+mutation-testirao fix (privremeno onemogućio `brief is None` provjeru u produkcijskom kodu — novi
+test je pao kako treba, kod vraćen, potvrđen byte-identičan). Post-merge: 835 passed,
+ruff/mypy(149)/boundaries svi čisti. MEDIUM risk, §29 Claude-only review → odmah merge. Worktree
+uklonjen. **Sljedeći korak ka `G10 Vertical Slice PASS`**: A13 dio 2 (`plan_post_layout.py`/
+`validate_layout.py`, sekcija 40-41 — per-post `LayoutSpec` generacija/perzistencija, zahtijeva
+NOVU `layout_specs` migraciju), zatim A14 (renderer spike + produkcijski renderer), A15 (export).
+
+Prethodni entry (2026-09-05): **ACS-F1-028 (claim_linter morfološke
 varijante garant- korijena) merged u main** (merge commit direktno nakon `0bfa905`). MiniMax
 dodao 6 varijanti (`garantovano`, `garantovan`, `garantuje`, `garantujem`, `garantuju`, `garancija`)
 u `resources/claim_rules/default_v1.yaml` + 10 novih testova u `test_claim_linter.py` — data-only,
