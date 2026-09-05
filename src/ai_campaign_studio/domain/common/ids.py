@@ -20,6 +20,9 @@ PostId = NewType("PostId", str)
 RevisionId = NewType("RevisionId", str)
 VisualSystemId = NewType("VisualSystemId", str)
 LayoutSpecId = NewType("LayoutSpecId", str)
+DistributionInstanceId = NewType("DistributionInstanceId", str)
+PerformanceSnapshotId = NewType("PerformanceSnapshotId", str)
+PerformanceImportBatchId = NewType("PerformanceImportBatchId", str)
 
 
 def new_id() -> str:
