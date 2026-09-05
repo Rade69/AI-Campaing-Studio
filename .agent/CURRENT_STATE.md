@@ -3,7 +3,42 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-04 (coordinator: claude) — **ACS-F1-020 BF-2 i ACS-F1-025
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-GUI-007 (Podešavanja →
+AI provajderi, stvarno povezivanje) merged u main** (`f911fe5`, merge `19d5c67`) — **praktičan
+usability blocker zatvoren: korisnik sada MOŽE stvarno podesiti API ključ kroz aplikaciju, ne
+samo preko ručne skripte.**
+
+`CampaignBridgeApi` dobio `settings` test seam (simetričan postojećem `paths`) — default u
+produkciji je `AppSettings(environment="production")`, pa se koristi pravi `KeyringSecretStore`
+umjesto read-only dev adaptera. `bootstrap.py`-ov default OSTAJE "development" za sve ostale
+pozivaoce (potvrđeno: `settings.environment` ima TAČNO JEDNO mjesto čitanja u cijelom kodu). Nova
+`configure_provider` js_api metoda — prva gdje secret string ide OD JS-a U bridge (do sad je samo
+IZLAZIO iz njega). Podešavanja ekran dobio real input+Sačuvaj tok za 5 provajdera (OpenAI,
+Anthropic, Google, DeepSeek, OpenRouter); "OpenAI kompatibilan" ostaje stub (treba i base_url).
+
+HIGH risk, pun ciklus: koordinator PASS uz live end-to-end test (konfigurisan pravi provider kroz
+bridge sa produkcijskim default-om, potvrđeno direktnim čitanjem OS keyring-a, pa u SVJEŽOJ bridge
+instanci `create_campaign_and_generate_plan` automatski pronašao provider i završio pravi Gemini
+poziv — prvi put da ovaj tok radi bez ručnog seed-ovanja baze). Codex adversarial: TRI runde prije
+`PASS_WITH_NOTES` — BF-1 (`configure_provider` error putevi vraćali pogrešan DTO shape preko
+dijeljenog helper-a hardkodiranog na campaign-flow model — koordinatoru je ovo promaklo u
+sopstvenom review-u), BF-2 (bridge-unavailable JS grana ostavljala uneseni ključ u DOM-u, fix:
+try/finally restructure), BF-3 (`logger.exception()` u generic exception grani mogao upisati
+secret-bearing exception poruku u log fajl iako je JS povratna vrijednost ostajala čista, fix:
+`logger.error()` sa ograničenim metapodacima). Sva tri nezavisno reprodukovana od koordinatora
+prije i poslije svakog fixa. Post-merge: 794 passed, ruff/mypy(140)/boundaries(18)/secrets svi
+čisti. Worktree uklonjen.
+
+**Poznato preostalo ograničenje**: real-time status refresh na Podešavanja ekranu nije urađen
+(status label ostaje statičan "Nije povezano" i nakon uspješnog Sačuvaj-a) — uspjeh se vidi kroz
+toast + činjenicu da naredni "Sačuvaj i napravi plan" poziv stvarno pronalazi ključ, ne kroz
+vizuelni status na samom ekranu. "OpenAI kompatibilan" real wiring (treba base_url+model_id,
+drugačiji oblik forme) takođe ostaje van scope-a, budući task.
+
+**Sljedeći korak (Human Owner odluka 2026-09-04)**: G10 evaluation harness (Control A vs System
+B, A16-A20) — dizajn već postoji u planskim dokumentima, nije još implementiran.
+
+Prethodni entry (2026-09-04): **ACS-F1-020 BF-2 i ACS-F1-025
 (cross-post sličnost) merged u main** (`c106fda`, merges `7dbbf77`/`1837032`+`11289bf`).
 
 **ACS-F1-020 BF-2**: `_contains_word` dobio `allow_digit_adjacent` keyword — cifra zalijepljena
