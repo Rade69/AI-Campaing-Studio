@@ -3,7 +3,21 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-030 (`layout_specs` foundation,
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-031 task contract napisan i
+otvoren** (nije implementiran, implementer=TBD, MEDIUM risk) — **A13 dio 2b, plan sekcije 40-41**,
+posljednji A13 komad prije A14 (renderer). `PlanPostLayout` use-case: AI poziv preko novog prompta
+`post_layout/v1.yaml` (reuse postojećeg `LayoutSpecCandidate` schema-e), bira layout primitiv SAMO
+iz kampanjski VEĆ ODLUČENOG skupa (`CampaignVisualSystem.primary_layout_family` [+ secondary]) —
+primitiv van tog skupa je STVARNO odbijen (`InvariantViolation`, ništa perzistovano). `format` polje
+iz AI odgovora se IGNORIŠE, uvijek prepisano na Slice-1 konstantu `"1080x1350"` (nema platform
+registry→pixel mapiranja u kodu). `validate_layout.py` provjerava SAMO headline dužinu (HERO/SPLIT,
+tačne brojke iz plan §41) — NIJE fatalno (predug headline se perzistuje sa
+`validation_status="INVALID"`, za razliku od primitiv-pripadnosti koja JESTE fatalna). Namjerno NE
+konstruiše pun domain `ContentSlotContract` (bounding_box/font_family nisu specificirani u planu,
+to je A14 renderer posao). Zavisi od ACS-F1-029+030 (oba već mergovana) — UNBLOCKED. Vidi
+`agent_reports/ACS-F1-031-task-contract.md`.
+
+Prethodni entry (2026-09-05): **ACS-F1-030 (`layout_specs` foundation,
 A13 dio 2 prereq) merged u main.** `LayoutSpecId`, tri nova OPCIONA polja na `LayoutSpec`
 (`id`/`content_piece_id`/`validation_status`, default `None` — ACS-F1-029 konstrukcija bez njih i
 dalje radi), migracija `0005_layout_specs.sql`, `VisualRepositoryPort.save_layout_spec`/
