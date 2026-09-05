@@ -3,27 +3,55 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**HITNO — CI je CRVEN na main-u od 2026-09-05 ~13:53** (potvrđeno preko
-`gh run list`/`gh run view` uživo na GitHub-u, ne pretpostavka). Svih
-zadnjih 8 push-eva na main (od ACS-F1-036 merge-a naovamo, uključujući
-ACS-F1-037/038/039) je `failure`. Uzrok: renderer ima hardkodovanu
-Windows-only putanju do fonta (`C:\Windows\Fonts\seguisb.ttf`,
-`selected_renderer.py:65-66`) sa TIHIM fallback-om na
-`ImageFont.load_default()` kad fajl ne postoji (`.github/workflows/ci.yml`
-koristi `runs-on: ubuntu-latest`, gdje taj font ne postoji). Fallback font
-ima drugačije metrike teksta → 2 testa padaju na piksel-tačnim
-provjerama (`test_hero_and_split_produce_visibly_different_pngs`,
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **CI POPRAVLJEN —
+ACS-F1-040 (bundle open-license fonta) merged u main, GitHub Actions
+STVARNO zeleno.** CI je bio crven na main-u od ~13:53 (svih 8 push-eva,
+uključujući ACS-F1-037/038/039 -- vidi prethodni entry za detaljan root
+cause). Rješenje: `resources/fonts/NotoSans-{Regular,Bold}.ttf` (SIL OFL
+1.1, licenca bundle-ovana kao `resources/fonts/OFL.txt`) zamjenjuju
+hardkodovanu `C:\Windows\Fonts\...` putanju; `_FONT_PATH_BOLD`/`_REG` sad
+izvedeni preko `AppPaths().resources_dir / "fonts"` (isti obrazac kao
+i18n/platforms/prompts/migrations). Fallback na
+`ImageFont.load_default()` ostaje kao ODBRAMBENA mjera, ali sad glasan
+(`warnings.warn`) umjesto tih -- ne bi trebalo nikad da se aktivira u
+normalnom checkout-u. Koordinator nezavisno potvrdio: (1) lokalno
+960/960 + ruff/mypy čisti, (2) vizuelno, stvarnim renderom -- svi BHS
+Latin dijakritici (č ć š đ ž, uključujući velika slova, i u CTA dugmetu)
+ispravno prikazani sa novim fontom, (3) **CI STVARNO zeleno na
+GitHub-u** -- prvo na task branch-u prije merge-a (`gh run watch`, run
+33989426459), zatim na main-u NAKON merge-a (run 33992131980, svi
+koraci uključujući ruff/mypy/pytest/health-check zeleni). Ovo je bio
+jači acceptance uslov nego uobičajen §29 -- namjerno, jer je bug po
+prirodi bio nevidljiv lokalno na Windows-u. Usput otkriveno: implementer
+je (vjerovatno) prvo radio direktno u main working tree prije
+worktree/branch-a -- ostavio identičan uncommit-ovan diff u glavnom
+repou koji je koordinator morao stash-ovati prije merge-a (bezopasno,
+sadržaj identičan onome što je već pregledano i mergovano). Worktree i
+branch uklonjeni, GitHub PR #1 auto-mergovan. **Sljedeći korak**:
+P1.5-G3 CSV Import (nezavisno od ovog CI fix-a, vidi prethodni entry).
+
+Prethodni entry (2026-09-05): **HITNO -- CI je bio CRVEN na main-u od
+~13:53** (potvrđeno preko `gh run list`/`gh run view` uživo na
+GitHub-u, ne pretpostavka). Svih zadnjih 8 push-eva na main (od
+ACS-F1-036 merge-a naovamo, uključujući ACS-F1-037/038/039) je bilo
+`failure`. Uzrok: renderer ima hardkodovanu Windows-only putanju do
+fonta (`C:\Windows\Fonts\seguisb.ttf`, `selected_renderer.py:65-66`) sa
+TIHIM fallback-om na `ImageFont.load_default()` kad fajl ne postoji
+(`.github/workflows/ci.yml` koristi `runs-on: ubuntu-latest`, gdje taj
+font ne postoji). Fallback font ima drugačije metrike teksta → 2 testa
+padaju na piksel-tačnim provjerama
+(`test_hero_and_split_produce_visibly_different_pngs`,
 `test_long_cta_text_wraps_instead_of_clipping`), + 1 kaskadni fail
 (`test_gate_report_against_current_repo_passes`, pokreće `pytest -q`
-kao podproces). Ovo je NIJE bio propust implementacije (fallback je bio
+kao podproces). Ovo NIJE bio propust implementacije (fallback je bio
 NAMJERAN i dokumentovan u ACS-F1-033 kao "known acceptance-stage
 limitation") — propust je što niko (uključujući koordinatora, cijelu ovu
 sesiju) nije provjerio da CI stvarno prolazi na GitHub-u, samo lokalno
 na Windows-u. Nalaz je originalno prijavljen preko nezavisne web-Claude
 provjere 2026-09-05, koordinator ga nezavisno reprodukovao uživo prije
-prihvatanja. **Task contract za popravku: vidi ACS-F1-040 ispod.**
+prihvatanja. **RIJEŠENO -- vidi entry iznad (ACS-F1-040).**
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-039 (ExportCampaign snima
+Prethodni entry (2026-09-05): **ACS-F1-039 (ExportCampaign snima
 DistributionInstance) merged u main — preduslov za P1.5-G3 CSV Import zatvoren.** `ExportCampaign`
 sad, u ISTOJ petlji koja gradi `manifest.json`, snima jedan `DistributionInstance` po eksportovanom
 (ne preskočenom) piece-u preko novog obaveznog `performance_repo: PerformanceRepositoryPort`
