@@ -3,7 +3,20 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-036 task contract napisan i
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-036 (export manifest
+analytics-ready retrofit) merged u main — preduslov za Slice 1.5 zatvoren.** `manifest.json`
+(schema_version, campaign_id, campaign_plan_id, exported_at, items[] sa svih 7 pod-polja uključujući
+`content_revision_id`/`analytics_match_key`) sad postoji u ZIP izlazu, potpuno ADITIVNO —
+`campaign.json`/`telemetry`/`content-NN` nepromijenjeni. Nov `domain/analytics/match_key.py`
+(čista, deterministička SHA-256 funkcija). Piece bez ijedne Revizije → `InvariantViolation`
+(podatak-integritet bug, ne skip). Integration test upoređuje `content_revision_id` sa STVARNOM
+Revizijom iz baze preko `RevisionRepositoryPort`, ne izmišljenom vrijednošću — koordinator to
+nezavisno potvrdio čitanjem koda. Post-merge: 935 passed, ruff/mypy(163) čisti. MEDIUM risk, §29 →
+odmah merge, BEZ nalaza. Worktree uklonjen. **Sljedeći korak**: P1.5-G1 Performance Domain
+(`DistributionInstance`, `PerformanceSnapshot`, `PerformanceImportBatch`, `CanonicalMetricSet`,
+`MetricPeriod`, `PerformanceSource` — domain-only, bez perzistencije, per Faza 1 v1.5 §16).
+
+Prethodni entry (2026-09-05): **ACS-F1-036 task contract napisan i
 otvoren** (nije implementiran, implementer=TBD, MEDIUM risk) — **PRVI Slice 1.5-track task, ALI
 NIJE P1.5-G1.** Prije pisanja, pročitana OBA obavezna Performance/Analytics dokumenta (Faza 0.7 +
 Faza 1 v1.5) — otkriven stvaran tehnički dug: `ACS-F1-034` (A15 export, mergovan) NEMA
