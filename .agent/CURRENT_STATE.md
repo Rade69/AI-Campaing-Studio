@@ -3,7 +3,32 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-039 task contract napisan i
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-039 (ExportCampaign snima
+DistributionInstance) merged u main — preduslov za P1.5-G3 CSV Import zatvoren.** `ExportCampaign`
+sad, u ISTOJ petlji koja gradi `manifest.json`, snima jedan `DistributionInstance` po eksportovanom
+(ne preskočenom) piece-u preko novog obaveznog `performance_repo: PerformanceRepositoryPort`
+konstruktorskog parametra (treći put da se javni potpis ovog use-case-a dopunjuje: 034 export, 036
+manifest, sad 039 distribution instance — ali PRVI put da dopuna mijenja `__init__` potpis, ne samo
+aditivno polje). `content_revision_id` je JEDAN zajednički izračun dijeljen između manifest entry-ja
+i `DistributionInstance`-a (nema dva odvojena izračuna koja bi mogla divergirati) —
+koordinator to nezavisno potvrdio čitanjem koda, ne samo test-tvrdnjom. `distribution_source` je
+UVIJEK `EXPORT`. `ExportResult` dobio `distribution_instance_ids` (isti redoslijed kao
+`exported_content_piece_ids`). Implementer je transparentno prijavio i ispravio jedan
+OUT_OF_SCOPE nalaz (`tests/unit/ports/test_export.py` direktno konstruiše `ExportResult` i nije bio
+u kontraktovom popisu postojećih pozivalaca — mehanička dopuna, ne promjena testne namjere).
+GitNexus impact provjera: MCP indeks je 126 commit-a zastario i ne prepoznaje simbol
+`ExportCampaign` uopšte (nema dostupnog re-index alata u ovoj sesiji) — koordinator to nadomjestio
+punim repo-wide grep-om (`ExportCampaign(` preko `src/`+`tests/`), potvrđujući STVARNO nula
+produkcijskih pozivalaca, samo 3 test-instanciranja (sva već ažurirana). Post-merge: 960 passed,
+ruff/mypy(168) čisti. MEDIUM risk, §29 → odmah merge. Worktree uklonjen. **Sljedeći korak**:
+P1.5-G3 CSV Import (Faza 1 v1.5 §18 — `ImportPerformanceCsv`/`PreviewPerformanceMapping`/
+`ConfirmPerformanceImport`), sad ima STVARNE `DistributionInstance` redove da matchuje. Reference
+obrasci: korisnikov `deklarant_pro` projekat (COLUMN_MAP alias-mapping, `ImportResult.validate()`
+odvojen od parsiranja — vidi razgovor 2026-09-05). **Napomena van scope-a ovog taska**: GitNexus
+indeks za ovaj repo treba `npx gitnexus analyze` prije sljedeće impact provjere — 126 commit-a je
+predaleko zaostao da bude koristan.
+
+Prethodni entry (2026-09-05): **ACS-F1-039 task contract napisan i
 otvoren** (nije implementiran, implementer=TBD, MEDIUM risk) — **PRIJE P1.5-G3 CSV Import, NIJE
 CSV Import.** Provjereno (grep) da NIŠTA u kodu ne poziva `save_distribution_instance` niti
 konstruiše `DistributionInstance` — P1.5-G1/G2 su definisali pojam i dali mu mjesto u bazi, ali
