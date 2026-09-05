@@ -94,6 +94,22 @@ _HEADLINE_FONT_PX: dict[tuple[LayoutPrimitive, HeadlineScale], float] = {
     (LayoutPrimitive.SPLIT, HeadlineScale.LARGE): 64.0,
 }
 
+# --- CTA geometry constants (ACS-F1-035). ---
+# The CTA button is fixed at 540px wide. The MIN height of 84px
+# preserves the original one-line layout (verified by the regression
+# test in ``test_short_cta_button_height_unchanged``). When the CTA
+# text wraps to multiple lines, the button GROWS in height by exactly
+# ``line_h`` per extra line -- never wider, never smaller than 84px.
+#
+# ``_CTA_PADDING_X`` and ``_CTA_PADDING_Y`` are the internal margins
+# between the text and the button edge. They match the headline
+# layout's left/right ``80`` margin aesthetic but at a smaller scale
+# (24/20) so the button looks like a real button, not a banner.
+_CTA_FONT_SIZE = 36
+_CTA_MIN_HEIGHT = 84
+_CTA_PADDING_X = 24
+_CTA_PADDING_Y = 20
+
 # Max headline lines per primitive (from validate_layout).
 _MAX_LINES: dict[LayoutPrimitive, int] = {
     LayoutPrimitive.HERO: 2,
@@ -189,7 +205,7 @@ def _draw_overlay(
 
 def _draw_cta(
     draw: ImageDraw.ImageDraw,
-    text: str,
+    lines: list[str],
     x: int,
     y: int,
     w: int,
@@ -197,38 +213,67 @@ def _draw_cta(
     style: CtaStyle,
     font: ImageFont.FreeTypeFont,
 ) -> None:
-    """Render the CTA element in one of three visibly distinct styles."""
+    """Render the CTA element in one of three visibly distinct styles.
+
+    The CTA button is fixed at the caller's ``w`` pixels wide. The
+    caller pre-wraps the text with ``_wrap_text`` so each ``line`` is
+    GUARANTEED to fit inside ``(w - 2 * _CTA_PADDING_X)`` -- that is
+    the contract the caller relies on. Without that pre-wrap, a long
+    CTA sentence would overflow the button on the left edge (the
+    ACS-F1-035 bug: the original code centred a too-wide string with
+    ``(w - tw) // 2`` which goes negative when ``tw > w``).
+
+    Vertically: lines are stacked from top, each line ``line_h`` px
+    tall (the caller's responsibility to pass an ``h`` that fits
+    them). When ``h`` is larger than the text stack (the one-line
+    case with the 84px minimum), the text is centred vertically too.
+    """
+    # Per-line height matches the headline wrap convention so a
+    # multi-line CTA has the same vertical rhythm as a multi-line
+    # headline (visually consistent).
+    line_h = int(_CTA_FONT_SIZE * _LINE_HEIGHT)
+    total_text_h = len(lines) * line_h
+    # Vertical placement: if the button is taller than the text
+    # stack, centre; otherwise start at the top padding.
+    if total_text_h + 2 * _CTA_PADDING_Y <= h:
+        text_block_y = y + (h - total_text_h) // 2
+    else:
+        text_block_y = y + _CTA_PADDING_Y
+
+    # The inner text area has the X-padding on each side; the
+    # caller-supplied ``w`` is the BUTTON width, not the text width.
+    text_x_start = x + _CTA_PADDING_X
+    text_x_max = x + w - _CTA_PADDING_X
+
     if style is CtaStyle.SOLID:
         draw.rounded_rectangle((x, y, x + w, y + h), radius=18, fill=_NEUTRAL_ACCENT)
-        bbox = draw.textbbox((0, 0), text, font=font)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        draw.text(
-            (x + (w - tw) // 2, y + (h - th) // 2 - bbox[1]),
-            text,
-            fill=(255, 255, 255),
-            font=font,
-        )
+        for i, line in enumerate(lines):
+            bbox = draw.textbbox((0, 0), line, font=font)
+            tw = bbox[2] - bbox[0]
+            line_x = text_x_start + ((text_x_max - text_x_start) - tw) // 2
+            # ``bbox[1]`` is the glyph ascent offset; subtract it so the
+            # visual top of the glyphs sits on the target ``y``.
+            line_y = text_block_y + i * line_h - bbox[1]
+            draw.text((line_x, line_y), line, fill=(255, 255, 255), font=font)
         return
     if style is CtaStyle.OUTLINE:
         draw.rounded_rectangle(
             (x, y, x + w, y + h), radius=18,
             outline=_NEUTRAL_ACCENT, width=4,
         )
-        bbox = draw.textbbox((0, 0), text, font=font)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        draw.text(
-            (x + (w - tw) // 2, y + (h - th) // 2 - bbox[1]),
-            text,
-            fill=_NEUTRAL_ACCENT,
-            font=font,
-        )
+        for i, line in enumerate(lines):
+            bbox = draw.textbbox((0, 0), line, font=font)
+            tw = bbox[2] - bbox[0]
+            line_x = text_x_start + ((text_x_max - text_x_start) - tw) // 2
+            line_y = text_block_y + i * line_h - bbox[1]
+            draw.text((line_x, line_y), line, fill=_NEUTRAL_ACCENT, font=font)
         return
-    # TEXT
-    bbox = draw.textbbox((0, 0), text, font=font)
-    th = bbox[3] - bbox[1]
-    draw.text((x, y + (h - th) // 2 - bbox[1]), text, fill=_NEUTRAL_ACCENT, font=font)
+    # TEXT (no background, no border)
+    for i, line in enumerate(lines):
+        bbox = draw.textbbox((0, 0), line, font=font)
+        line_x = text_x_start
+        line_y = text_block_y + i * line_h - bbox[1]
+        draw.text((line_x, line_y), line, fill=_NEUTRAL_ACCENT, font=font)
 
 
 def _draw_logo(
@@ -457,16 +502,33 @@ class PillowRenderer:
         show_cta = "hide" not in request.visual_system.cta_rule.lower()
         if show_cta and request.content.cta:
             try:
-                cta_font = ImageFont.truetype(_FONT_PATH_BOLD, size=36)
+                cta_font = ImageFont.truetype(_FONT_PATH_BOLD, size=_CTA_FONT_SIZE)
             except OSError:
                 cta_font = self._font_bold
-            cta_w, cta_h = 540, 84
+            cta_w = 540
+            # Pre-wrap the CTA text to the BUTTON's inner width. Each
+            # line is guaranteed to fit inside ``cta_w - 2 * PADDING_X``
+            # by ``_wrap_text``'s contract -- this is what stops a
+            # full-sentence CTA from overflowing the button on the
+            # left edge (the ACS-F1-035 bug).
+            cta_lines = _wrap_text(
+                request.content.cta, cta_font, cta_w - 2 * _CTA_PADDING_X
+            )
+            cta_line_h = int(_CTA_FONT_SIZE * _LINE_HEIGHT)
+            # The button GROWS in height when the text wraps, but
+            # NEVER smaller than the original 84px one-line minimum
+            # (the regression test ``test_short_cta_button_height_unchanged``
+            # pins this).
+            cta_h = max(
+                _CTA_MIN_HEIGHT,
+                len(cta_lines) * cta_line_h + 2 * _CTA_PADDING_Y,
+            )
             cta_y = int(h * 0.85)
             cta_x = _align_x(
                 request.layout_spec.alignment, w - 2 * 80, cta_w,
             ) + 80
             _draw_cta(
-                draw, request.content.cta, cta_x, cta_y, cta_w, cta_h,
+                draw, cta_lines, cta_x, cta_y, cta_w, cta_h,
                 request.layout_spec.cta_style, cta_font,
             )
             measured["cta"] = {
