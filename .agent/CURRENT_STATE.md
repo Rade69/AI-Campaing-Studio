@@ -3,7 +3,29 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-033 task contract napisan i
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-033 (`RendererPort` +
+`PillowRenderer` + `RenderPost`) merged u main — A14 POTPUNO gotov u kodu (plan sekcije 42-45).**
+Prvo stvarno renderovanje slike u produkcijskom kodu: HERO/SPLIT vizuelno stvarno različiti,
+`alignment`/`headline_position`/`overlay`/`cta_style`/`logo_rule`/`cta_rule` svaki dokazano utiče na
+piksele, predug headline → `LAYOUT_VALIDATION_ERROR` ALI PNG se svejedno piše (plan §44 doslovno).
+Koordinator otvorio PNG-ove direktno (HERO/SPLIT/overflow) — BHS dijakritici (č/š) čisti. **Dva
+pyproject.toml fixa VAN deklarisanih `allowed_paths`** — nezavisno provjerena kao stvarno potrebna,
+ne prihvaćena na riječ: (1) Pillow uopšte NIJE bio u `[project.dependencies]` (samo ručno
+instaliran u dijeljeni dev venv) — potvrđeno `grep` PRIJE fixa; (2) `pythonpath=["src"]` +
+`addopts=["--import-mode=importlib"]` u `[tool.pytest.ini_options]` rješavaju STVARAN test-collection
+sudar (dva nova test direktorijuma dijele leaf ime "rendering" pod default prepend import mode-om) —
+koordinator reprodukovao grešku SA vraćenim fixom, potvrdio da `importlib` mode sam rješava problem
+bez potrebe za dodatnim `__init__.py` markerima. Koordinator uklonio dva nepotrebna `__init__.py`
+fajla (za NEPOVEZANE, već postojeće test direktorijume) nakon što je potvrdio da cijeli suite i dalje
+prolazi bez njih (899/899). Koordinator pojednostavio `RenderPost._resolve_logo_path` (radio
+besmislen `get_campaign` poziv koji nikad nije mogao promijeniti povratnu vrijednost — uvijek `None`
+jer `BrandRepositoryPort` nije dio 4-portnog potpisa ovog use-case-a). Post-merge: 899 passed,
+ruff/mypy(156) čisti, `pip install --dry-run` potvrđen (Pillow dodavanje nije pokvarilo packaging
+metadata, ACS-F1-032 lekcija primijenjena). MEDIUM risk, §29 → odmah merge. Worktree uklonjen.
+**Sljedeći korak ka `G10 Vertical Slice PASS`**: A15 (ZIP export + telemetry summary, plan sekcija
+46) — posljednji komad prije A19/A20 (puna vertical slice + exit evaluation).
+
+Prethodni entry (2026-09-05): **ACS-F1-033 task contract napisan i
 otvoren** (nije implementiran, implementer=TBD, MEDIUM risk) — **A14 dio 2, PRVI stvaran renderer**
 (plan sekcije 43-45), nakon ACS-F1-032 odluke (R-B/Pillow). `ports/rendering.py`
 (`RenderRequest`/`RenderResult`/`RenderStatus`/`RendererPort`), `infrastructure/rendering/selected_renderer.py`
