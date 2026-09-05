@@ -1,0 +1,42 @@
+name: post_layout
+version: "1"
+purpose: "Plan a raster layout for one already-generated post from the campaign's decided visual system."
+input_contract: |
+  CampaignVisualSystem (already decided), one post's role/topic (context only),
+  the post's actual headline and cta text, the primitives allowed for THIS
+  campaign, and the closed vocabularies for every LayoutSpecCandidate field.
+output_contract: |
+  LayoutSpecCandidate (application/schemas/visual_direction_output.py)
+language_support: EN (enum values are language-independent)
+instructions: |
+  You are choosing a raster layout for one concrete post. The campaign's
+  visual system is already decided - do NOT produce a new visual system.
+
+  Return only a layout spec. Pick the primitive from the primitives allowed
+  for this campaign, not from any other primitive. Use exactly the allowed
+  enum values you are given; do not invent values. Do not output CSS, pixel
+  coordinates, or font data - only the typed layout fields.
+
+  The headline and cta you receive are the ACTUAL text the layout must hold;
+  they are input for fit consideration, not content for you to rewrite.
+examples:
+  - |
+    primitive: HERO
+    image_position: BACKGROUND
+    headline_position: CENTER
+    headline_scale: LARGE
+    overlay: DARK
+    logo_position: TOP_LEFT
+    cta_style: SOLID
+    alignment: CENTER
+    format: "1080x1350"
+  - |
+    primitive: SPLIT
+    image_position: LEFT
+    headline_position: CENTER
+    headline_scale: MEDIUM
+    overlay: NONE
+    logo_position: BOTTOM_RIGHT
+    cta_style: OUTLINE
+    alignment: LEFT
+    format: "1080x1350"
