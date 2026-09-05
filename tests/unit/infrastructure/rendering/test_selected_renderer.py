@@ -14,6 +14,8 @@ import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 
+from PIL import Image
+
 from ai_campaign_studio.domain.common.ids import (
     CampaignId,
     PostId,
@@ -33,6 +35,10 @@ from ai_campaign_studio.domain.visual.enums import (
 )
 from ai_campaign_studio.domain.visual.layout import LayoutSpec
 from ai_campaign_studio.infrastructure.rendering import PillowRenderer
+from ai_campaign_studio.infrastructure.rendering.selected_renderer import (
+    _NEUTRAL_ACCENT,
+    _NEUTRAL_BG,
+)
 from ai_campaign_studio.ports.rendering import (
     RenderRequest,
     RenderStatus,
@@ -438,3 +444,99 @@ def test_bad_format_returns_render_error_with_sentinel_png(tmp_path: Path) -> No
     assert "bad format" in res.warnings[0].lower()
     # Sentinel PNG still on disk.
     assert Path(res.output_path).is_file()
+
+
+# --- CTA overflow (ACS-F1-035) ---------------------------------------------
+# The original ``_draw_cta`` centred the text with ``(w - tw) // 2``.
+# When ``tw > w`` (full-sentence CTA, as returned by the live AI in the
+# A19 vertical slice), that arithmetic pushed the text origin LEFT of
+# the button, so glyph pixels ended up at the canvas's left edge.
+# The fix pre-wraps the text with ``_wrap_text`` before drawing -- each
+# line is then guaranteed to fit inside the button. The two tests
+# below pin BOTH the bug fix and the regression (short CTA must
+# still produce the original 84px button).
+
+
+def test_long_cta_text_wraps_instead_of_clipping(tmp_path: Path) -> None:
+    """Reproduce the EXACT A19 live case: the AI returned the full
+    sentence ``"Zakažite konsultaciju i otkrijte mogućnosti za vaš
+    osmeh."`` (57 characters) as the CTA text. The original code
+    would have written text glyphs at the canvas's left edge
+    (X=0..10ish). After the fix, ``_wrap_text`` breaks the sentence
+    into multiple lines that fit inside the 540px button -- so the
+    canvas's left edge stays the background colour.
+
+    We assert two things:
+
+    1. The button GROWS in height past the one-line 84px minimum
+       (proves the wrap is actually happening).
+    2. The canvas's leftmost 20 columns inside the CTA Y-range
+       contain ZERO accent-coloured pixels (proves the wrapped text
+       stays inside the button).
+    """
+    r = PillowRenderer()
+    long_cta = "Zakažite konsultaciju i otkrijte mogućnosti za vaš osmeh."
+    assert len(long_cta) == 57  # the exact AI-returned length
+    layout = _make_layout(
+        cta_style=CtaStyle.SOLID,
+        fmt="1080x1350",
+    )
+    payload = _make_payload(cta=long_cta)
+    req = _make_request(
+        tmp_path, layout=layout, payload=payload, fmt="1080x1350"
+    )
+    res = r.render(req)
+    assert res.status is RenderStatus.SUCCESS
+
+    # 1. The button height grew past the 84px minimum -- the wrap
+    #    actually happened (more than one line of text).
+    assert res.measured_slots["cta"]["height_px"] > 84
+
+    # 2. The canvas's leftmost 20 columns inside the CTA Y-range
+    #    contain NO accent pixels -- the button (and its text) is
+    #    fully inside the canvas.
+    img = Image.open(req.output_path)
+    cta_y = int(res.measured_slots["cta"]["y_px"])
+    cta_h = int(res.measured_slots["cta"]["height_px"])
+    bg = _NEUTRAL_BG  # local alias for the assertion loop
+    accent = _NEUTRAL_ACCENT
+    # The button starts at ``cta_x`` (left edge of the button). Any
+    # accent pixel AT or BEFORE ``cta_x - 1`` would mean the text
+    # overflowed the button on the left. The canvas's first 20
+    # columns (X in [0, 19]) are well to the left of the button for
+    # every alignment we use in this test (CTA button is at
+    # ``cta_x >= 80`` for LEFT-aligned or ``cta_x > 200`` for
+    # CENTER-aligned, given the 80px headline margin).
+    for y in range(cta_y, cta_y + cta_h):
+        for x in range(0, 20):
+            pixel = img.getpixel((x, y))
+            assert pixel != accent, (
+                f"accent-coloured pixel at ({x}, {y}) -- CTA text "
+                f"overflowed the left edge of the canvas"
+            )
+            assert pixel == bg, (
+                f"unexpected non-background pixel at ({x}, {y}) -- "
+                f"value {pixel!r}, expected {_NEUTRAL_BG!r}"
+            )
+
+
+def test_short_cta_button_height_unchanged(tmp_path: Path) -> None:
+    """REGRESSION: a short CTA like ``"Zakažite"`` must still produce
+    the original 84px-tall button at the original Y position. The
+    ACS-F1-035 fix is allowed to grow the button when the text
+    overflows -- but it MUST NOT change anything for one-line text.
+    """
+    r = PillowRenderer()
+    layout = _make_layout(cta_style=CtaStyle.SOLID, fmt="1080x1350")
+    payload = _make_payload(cta="Zakažite")
+    req = _make_request(
+        tmp_path, layout=layout, payload=payload, fmt="1080x1350"
+    )
+    res = r.render(req)
+    assert res.status is RenderStatus.SUCCESS
+    # The 84px minimum is the original one-line button height.
+    assert res.measured_slots["cta"]["height_px"] == 84
+    # Y position is anchored at ``int(h * 0.85)`` -- 1147 for a
+    # 1350-tall canvas. Pin this so a future refactor that
+    # accidentally moves the button vertically is caught.
+    assert res.measured_slots["cta"]["y_px"] == int(1350 * 0.85)
