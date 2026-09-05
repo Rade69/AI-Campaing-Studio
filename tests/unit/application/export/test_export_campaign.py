@@ -178,6 +178,7 @@ def _piece(
     item_id: str,
     *,
     with_payload: bool = True,
+    revision_ids: tuple[RevisionId, ...] = (RevisionId("rev-1"),),
 ) -> ContentPiece:
     return ContentPiece(
         id=PostId(piece_id),
@@ -192,6 +193,7 @@ def _piece(
         brand_snapshot_id=BrandSnapshotId("bs-1"),
         created_at=_dt(),
         updated_at=_dt(),
+        revision_ids=revision_ids,
         payload=_payload() if with_payload else None,
     )
 
@@ -492,6 +494,7 @@ def test_happy_path_two_pieces_writes_zip_with_correct_keys() -> None:
     files = writer.last_files or {}
     assert set(files.keys()) == {
         "campaign.json",
+        "manifest.json",
         "telemetry/ai_summary.json",
         "content-01/content.json",
         "content-01/caption.txt",
@@ -858,3 +861,96 @@ def test_export_writer_received_zip_bytes_are_valid_zip(
             "p-1",
             "p-2",
         ]
+
+
+def test_export_manifest_contains_stable_ids() -> None:
+    piece1, piece2, item1, item2 = _build_two_pieces()
+    layouts = {"p-1": _layout_spec("p-1"), "p-2": _layout_spec("p-2")}
+    uc, _, _, _, _, _, writer = _use_case(
+        pieces=(piece1, piece2), plan_items=(item1, item2), layouts=layouts
+    )
+    uc.execute(
+        CampaignId("c-1"),
+        CampaignPlanId("plan-1"),
+        VisualSystemId("vs-1"),
+        "out.zip",
+    )
+    manifest = json.loads(writer.last_files["manifest.json"])
+    assert manifest["campaign_id"] == "c-1"
+    assert manifest["campaign_plan_id"] == "plan-1"
+    assert [i["campaign_item_id"] for i in manifest["items"]] == [
+        "item-1",
+        "item-2",
+    ]
+    assert [i["content_piece_id"] for i in manifest["items"]] == [
+        "p-1",
+        "p-2",
+    ]
+
+
+def test_export_manifest_contains_content_revision_id() -> None:
+    piece1 = _piece("p-1", "item-1", revision_ids=(RevisionId("rev-42"),))
+    item1 = _item("item-1", order=1)
+    layouts = {"p-1": _layout_spec("p-1")}
+    uc, _, _, _, _, _, writer = _use_case(
+        pieces=(piece1,), plan_items=(item1,), layouts=layouts
+    )
+    uc.execute(
+        CampaignId("c-1"),
+        CampaignPlanId("plan-1"),
+        VisualSystemId("vs-1"),
+        "out.zip",
+    )
+    manifest = json.loads(writer.last_files["manifest.json"])
+    assert manifest["items"][0]["content_revision_id"] == "rev-42"
+
+
+def test_export_manifest_contains_target_identity() -> None:
+    piece1, _, item1, _ = _build_two_pieces()
+    layouts = {"p-1": _layout_spec("p-1")}
+    uc, _, _, _, _, _, writer = _use_case(
+        pieces=(piece1,), plan_items=(item1,), layouts=layouts
+    )
+    uc.execute(
+        CampaignId("c-1"),
+        CampaignPlanId("plan-1"),
+        VisualSystemId("vs-1"),
+        "out.zip",
+    )
+    manifest = json.loads(writer.last_files["manifest.json"])
+    item = manifest["items"][0]
+    assert item["channel_code"] == "SOCIAL"
+    assert item["platform_code"] == "INSTAGRAM"
+    assert item["format_code"] == "FEED_POST"
+
+
+def test_manifest_has_schema_version() -> None:
+    piece1, _, item1, _ = _build_two_pieces()
+    layouts = {"p-1": _layout_spec("p-1")}
+    uc, _, _, _, _, _, writer = _use_case(
+        pieces=(piece1,), plan_items=(item1,), layouts=layouts
+    )
+    uc.execute(
+        CampaignId("c-1"),
+        CampaignPlanId("plan-1"),
+        VisualSystemId("vs-1"),
+        "out.zip",
+    )
+    manifest = json.loads(writer.last_files["manifest.json"])
+    assert manifest["schema_version"] == 1
+
+
+def test_piece_without_revision_raises_invariant() -> None:
+    piece1 = _piece("p-1", "item-1", revision_ids=())
+    item1 = _item("item-1", order=1)
+    layouts = {"p-1": _layout_spec("p-1")}
+    uc, _, _, _, _, _, _ = _use_case(
+        pieces=(piece1,), plan_items=(item1,), layouts=layouts
+    )
+    with pytest.raises(InvariantViolation):
+        uc.execute(
+            CampaignId("c-1"),
+            CampaignPlanId("plan-1"),
+            VisualSystemId("vs-1"),
+            "out.zip",
+        )

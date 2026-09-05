@@ -363,6 +363,34 @@ def test_end_to_end_export_writes_valid_zip_with_real_pngs(
         assert summary["models_used"] == ["gemini-2.5-flash"]
         assert "nisu dostupne" in summary["note"].lower()
 
+        # manifest.json: analytics-ready identity. content_revision_id must
+        # match the REAL Revision persisted by GenerateSocialPost (read back
+        # via RevisionRepositoryPort, not a fabricated value).
+        assert "manifest.json" in names
+        manifest = json.loads(zf.read("manifest.json"))
+        assert manifest["schema_version"] == 1
+        assert manifest["campaign_id"] == str(campaign.id)
+        assert manifest["campaign_plan_id"] == str(approved.id)
+        assert len(manifest["items"]) == 2
+        for i, piece in enumerate(pieces):
+            item = manifest["items"][i]
+            assert item["content_piece_id"] == str(piece.id)
+            assert item["campaign_item_id"] == str(piece.campaign_item_id)
+            assert item["channel_code"] == "SOCIAL"
+            assert item["platform_code"] == "INSTAGRAM"
+            assert item["format_code"] == "FEED_POST"
+            assert len(item["analytics_match_key"]) == 32
+            assert item["artifacts"] == [
+                f"content-{i + 1:02d}/feed.png",
+                f"content-{i + 1:02d}/caption.txt",
+                f"content-{i + 1:02d}/content.json",
+            ]
+            revisions = revision_repo.list_entity_revisions(
+                "ContentPiece", str(piece.id)
+            )
+            assert revisions, f"piece {piece.id} has no revisions"
+            assert item["content_revision_id"] == str(revisions[-1].id)
+
     connection.close()
 
 

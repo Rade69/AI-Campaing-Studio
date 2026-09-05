@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ai_campaign_studio.application.rendering import RenderPost
+from ai_campaign_studio.domain.analytics.match_key import compute_analytics_match_key
 from ai_campaign_studio.domain.campaign.entities import (
     Campaign,
     CampaignBrief,
@@ -161,7 +162,43 @@ class ExportCampaign:
 
         exported_ids = tuple(str(e.piece.id) for e in exports)
 
-        # 8. Telemetry aggregation: ``list_entity_revisions("ContentPiece", piece.id)``
+        # 8. manifest.json — analytics-ready per-item identity (Faza 1 v1.5
+        #    §5). ``content_revision_id`` is the LATEST revision; a piece
+        #    with no revision at all is a data-integrity bug (not a skip
+        #    reason), so it raises ``InvariantViolation``.
+        manifest_items = []
+        for e in exports:
+            content_revision_id = _latest_revision_id(e.piece)
+            manifest_items.append(
+                {
+                    "campaign_item_id": str(e.piece.campaign_item_id),
+                    "content_piece_id": str(e.piece.id),
+                    "content_revision_id": content_revision_id,
+                    "channel_code": e.piece.target.channel,
+                    "platform_code": e.piece.target.platform_code,
+                    "format_code": e.piece.target.format_code,
+                    "analytics_match_key": compute_analytics_match_key(
+                        str(e.piece.id),
+                        content_revision_id,
+                        e.piece.target.platform_code,
+                        e.piece.target.format_code,
+                    ),
+                    "artifacts": [
+                        f"{e.folder_name}/feed.png",
+                        f"{e.folder_name}/caption.txt",
+                        f"{e.folder_name}/content.json",
+                    ],
+                }
+            )
+        manifest = {
+            "schema_version": 1,
+            "campaign_id": str(campaign.id),
+            "campaign_plan_id": str(plan.id),
+            "exported_at": utc_now().isoformat(),
+            "items": manifest_items,
+        }
+
+        # 9. Telemetry aggregation: ``list_entity_revisions("ContentPiece", piece.id)``
         #    returns the audit trail. ONLY revisions that have BOTH
         #    ``provider`` and ``model`` set count (some are MANUAL or
         #    SYSTEM without AI attribution). The note is REQUIRED —
@@ -194,7 +231,7 @@ class ExportCampaign:
             ),
         }
 
-        # 9. campaign.json — campaign identity + brief + plan_version.
+        # 10. campaign.json — campaign identity + brief + plan_version.
         #    ``content_piece_ids`` lists ONLY exported pieces, in the
         #    SAME order as the folders, so a downstream consumer can
         #    recover the export order without re-running the
@@ -216,8 +253,11 @@ class ExportCampaign:
             "exported_at": utc_now().isoformat(),
         }
 
-        # 10. Assemble the full files dict and write the ZIP.
-        files: dict[str, bytes] = {"campaign.json": _json_bytes(campaign_json)}
+        # 11. Assemble the full files dict and write the ZIP.
+        files: dict[str, bytes] = {
+            "campaign.json": _json_bytes(campaign_json),
+            "manifest.json": _json_bytes(manifest),
+        }
         files["telemetry/ai_summary.json"] = _json_bytes(ai_summary)
         for e in exports:
             files[f"{e.folder_name}/content.json"] = _json_bytes(
@@ -376,6 +416,23 @@ class ExportCampaign:
 # -- module-level helpers ---------------------------------------------------
 
 
+def _latest_revision_id(piece: ContentPiece) -> str:
+    """Return the latest revision id for a piece, or raise.
+
+    A piece with NO revision at all is a data-integrity bug (the current
+    ``GenerateSocialPost`` always creates a Revision on first generation),
+    not a normal "not ready yet" skip reason — so it raises
+    ``InvariantViolation`` rather than silently exporting an un-identifiable
+    item.
+    """
+    if not piece.revision_ids:
+        raise InvariantViolation(
+            f"content piece {piece.id} has no revisions — cannot derive"
+            " content_revision_id for export"
+        )
+    return str(piece.revision_ids[-1])
+
+
 def _json_bytes(obj: object) -> bytes:
     """Serialize ``obj`` to compact JSON bytes (UTF-8, no ASCII escape).
 
@@ -432,6 +489,7 @@ def _content_json(export: _PieceExport) -> dict:
         ],
         "render_status": export.render_status,
         "render_warnings": list(export.render_warnings),
+        "content_revision_id": _latest_revision_id(export.piece),
         "created_at": export.piece.created_at.isoformat(),
         "updated_at": export.piece.updated_at.isoformat(),
     }
