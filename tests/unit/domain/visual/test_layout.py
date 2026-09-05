@@ -41,6 +41,43 @@ def test_layout_spec_fields_are_typed_enums() -> None:
     assert spec.format == "FEED_POST"
 
 
+def test_layout_spec_persisted_identity_fields_default_none() -> None:
+    spec = LayoutSpec(
+        primitive=LayoutPrimitive.SPLIT,
+        image_position=ImagePosition.LEFT,
+        headline_position=HeadlinePosition.TOP,
+        headline_scale=HeadlineScale.MEDIUM,
+        overlay=Overlay.NONE,
+        logo_position=LogoPosition.TOP_RIGHT,
+        cta_style=CtaStyle.OUTLINE,
+        alignment=Alignment.LEFT,
+        format="STORY_POST",
+    )
+    assert spec.id is None
+    assert spec.content_piece_id is None
+    assert spec.validation_status is None
+
+
+def test_layout_spec_persisted_identity_fields_hold_values() -> None:
+    spec = LayoutSpec(
+        primitive=LayoutPrimitive.SPLIT,
+        image_position=ImagePosition.LEFT,
+        headline_position=HeadlinePosition.TOP,
+        headline_scale=HeadlineScale.MEDIUM,
+        overlay=Overlay.NONE,
+        logo_position=LogoPosition.TOP_RIGHT,
+        cta_style=CtaStyle.OUTLINE,
+        alignment=Alignment.LEFT,
+        format="STORY_POST",
+        id="ls-1",
+        content_piece_id="piece-1",
+        validation_status="VALID",
+    )
+    assert spec.id == "ls-1"
+    assert spec.content_piece_id == "piece-1"
+    assert spec.validation_status == "VALID"
+
+
 def test_campaign_visual_system_constructs_and_coerces_style() -> None:
     system = CampaignVisualSystem(
         id="vs1",

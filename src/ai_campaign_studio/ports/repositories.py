@@ -21,6 +21,7 @@ from ai_campaign_studio.domain.common.ids import (
     CampaignId,
     CampaignPlanId,
     FactId,
+    LayoutSpecId,
     PostId,
     RevisionId,
     VisualSystemId,
@@ -29,6 +30,7 @@ from ai_campaign_studio.domain.content.entities import ContentPiece
 from ai_campaign_studio.domain.content.revisions import Revision
 from ai_campaign_studio.domain.facts.entities import ApprovedFact
 from ai_campaign_studio.domain.visual.entities import CampaignVisualSystem
+from ai_campaign_studio.domain.visual.layout import LayoutSpec
 
 
 @runtime_checkable
@@ -138,6 +140,18 @@ class VisualRepositoryPort(Protocol):
     def get_visual_system(
         self, visual_system_id: VisualSystemId
     ) -> CampaignVisualSystem | None: ...
+
+    def save_layout_spec(self, layout_spec: LayoutSpec) -> None:
+        """Persist one per-post raster layout (A13 dio 2b foundation).
+
+        Requires ``layout_spec.id``, ``layout_spec.content_piece_id`` and
+        ``layout_spec.validation_status`` to all be set (not ``None``) before
+        the call — an in-memory ``LayoutSpec`` (ACS-F1-029 style) is NOT
+        persistable. Adapters raise ``ValueError`` on a missing required
+        field rather than storing an unidentifiable row.
+        """
+
+    def get_layout_spec(self, layout_spec_id: LayoutSpecId) -> LayoutSpec | None: ...
 
 
 @runtime_checkable

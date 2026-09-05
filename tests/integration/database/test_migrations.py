@@ -122,3 +122,21 @@ def test_migration_does_not_rollback_caller_transaction(tmp_path: Path) -> None:
     assert conn.execute("SELECT COUNT(*) FROM caller_table").fetchone()[0] == 1
     conn.execute("ROLLBACK")
     conn.close()
+
+
+def test_fresh_db_applies_layout_specs_migration(tmp_path: Path) -> None:
+    db_path = tmp_path / "test.db"
+    conn = create_connection(db_path)
+    applied = run_migrations(conn, MIGRATIONS_DIR)
+    conn.close()
+
+    assert 5 in applied
+
+    conn2 = create_connection(db_path)
+    assert "layout_specs" in _table_names(conn2)
+    versions = {
+        row["version"]
+        for row in conn2.execute("SELECT version FROM schema_migrations").fetchall()
+    }
+    conn2.close()
+    assert 5 in versions
