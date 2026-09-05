@@ -3,7 +3,21 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-034 task contract napisan i
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-034 (`ExportCampaign`) merged u
+main — A15 gotov, plan sekcije 39-46 (A13-A15) POTPUNO gotove u kodu.** ZIP export: `campaign.json`
+(bez secreta) + `content-NN/{content.json, caption.txt, feed.png}` + `telemetry/ai_summary.json`
+(pošteno — samo provider/model agregacija iz `Revision` redova, eksplicitna napomena da token/cost
+podaci nisu dostupni, NE izmišljeni). Folder numeracija prati `CampaignItem.order` (dokazano testom
+sa namjerno obrnutim repo redoslijedom). `ExportCampaign` interno konstruiše `RenderPost` iz sirovih
+portova (isti obrazac kao `run_system_b.py`), nula novih metoda na postojećim portovima. Koordinator
+pokrenuo PUN live export kroz pravi pipeline (fixture→2×post→visual_system→2×layout→export),
+otvorio stvaran ZIP direktno — struktura tačna, BHS dijakritici (š č ć) očuvani, PNG stvaran i
+validan. Post-merge: 924 passed, ruff/mypy(161) čisti. MEDIUM risk, §29 → odmah merge, BEZ nalaza
+(prvi put u ovoj A13-A15 seriji da review nije tražio nikakav fix). Worktree uklonjen. **Sljedeći
+korak ka `G10 Vertical Slice PASS`**: A19 (puna vertical slice — koordinatorova live provjera, ne
+novi kod) i A20 (exit evaluation, Kill/Pivot/Proceed odluka Human Owner-a).
+
+Prethodni entry (2026-09-05): **ACS-F1-034 task contract napisan i
 otvoren** (nije implementiran, implementer=TBD, MEDIUM risk) — **A15, ZIP export + telemetry
 summary** (plan sekcija 46), POSLJEDNJI application-layer komad prije G10 vertical slice provjere.
 `ExportCampaign` (novi `ports/export.py::ExportWriterPort` + `infrastructure/export/zip_exporter.py`
