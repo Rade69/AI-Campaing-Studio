@@ -3,7 +3,22 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-031 (`PlanPostLayout` +
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-032 task contract napisan i
+otvoren** (nije implementiran, implementer=TBD, MEDIUM risk) — **A14 dio 1, RENDERER SPIKE** (plan
+sekcija 42), prvi korak ka stvarnom renderovanju slika. Human Owner eksplicitno odabrao PUN spike
+(oba kandidata stvarno izgrađena i uporeñena — R-A HTML/CSS+Playwright vs R-B SVG-based), NASUPROT
+skraćivanju kao kod G9 (pywebview odabran bez punog PySide6 poređenja). Izlaz NIJE običan
+application-layer kod — throwaway spike pod `spikes/renderer/` (van `src/`/`tests/`, ne prolazi
+kroz pytest), plus `artifacts/renderer_spike_result.json` (tačna polja iz plana: candidate,
+render_success, overflow_detection, bhs_glyphs_ok, avg_render_ms, memory_notes, packaging_notes,
+implementation_notes, decision). `pyproject.toml` dozvoljen SAMO za ruff-exclude spike foldera +
+novu `renderer-spike` opcionu zavisnost grupu (Playwright browser binary, itd.) — glavni
+`dependencies` niz netaknut, pobjednička zavisnost postaje trajna tek u BUDUĆEM A14 dio 2 tasku.
+`ports/rendering.py`/`infrastructure/rendering/selected_renderer.py`/`application/rendering/`
+NAMJERNO van scope-a — plan eksplicitno zabranjuje produkcijski renderer prije ove odluke. Vidi
+`agent_reports/ACS-F1-032-task-contract.md`.
+
+Prethodni entry (2026-09-05): **ACS-F1-031 (`PlanPostLayout` +
 `validate_layout`, A13 dio 2b) merged u main — A13 je time POTPUNO gotov u kodu (plan sekcije
 39-41).** Crush implementirao čisto na prvi pokušaj — nema nalaza u review-u (naučeno iz
 ACS-F1-029/030 rundi: svih 5 "entity not found" scenarija su genuinno odvojena, nema spojenih grana).
