@@ -270,3 +270,144 @@ def test_save_layout_spec_preserves_created_at_on_resave(tmp_path: Path) -> None
     assert loaded is not None
     assert loaded.validation_status == "INVALID"
     connection.close()
+
+
+# ---------------------------------------------------------------------------
+# get_layout_spec_by_content_piece (ACS-F1-033, A14 dio 2)
+# ---------------------------------------------------------------------------
+
+
+def test_get_layout_spec_by_content_piece_missing_returns_none(
+    tmp_path: Path,
+) -> None:
+    """No layout spec has been saved -> the lookup returns ``None``."""
+    connection = _setup_db(tmp_path)
+    _seed_campaign(connection)
+    _seed_content_piece(connection)
+    repo = SqliteVisualRepository(connection)
+    result = repo.get_layout_spec_by_content_piece(PostId("piece-1"))
+    assert result is None
+    connection.close()
+
+
+def test_get_layout_spec_by_content_piece_single_row_returns_that_row(
+    tmp_path: Path,
+) -> None:
+    """One layout spec for the post -> the lookup returns that exact spec."""
+    connection = _setup_db(tmp_path)
+    _seed_campaign(connection)
+    _seed_content_piece(connection)
+    repo = SqliteVisualRepository(connection)
+    spec = _layout_spec()
+    repo.save_layout_spec(spec)
+    result = repo.get_layout_spec_by_content_piece(PostId("piece-1"))
+    assert result == spec
+    connection.close()
+
+
+def test_get_layout_spec_by_content_piece_multiple_rows_returns_newest(
+    tmp_path: Path,
+) -> None:
+    """When multiple layout specs exist for one post (re-layout flow),
+    the lookup returns the MOST RECENT one -- the "latest wins" rule
+    documented on the port. We pin two distinct rows for the same
+    ``content_piece_id`` with controlled ``created_at`` values, save
+    the OLDER row first, then the NEWER one, and assert the lookup
+    returns the newer row's id.
+    """
+    connection = _setup_db(tmp_path)
+    _seed_campaign(connection)
+    _seed_content_piece(connection)
+    repo = SqliteVisualRepository(connection)
+
+    older = replace(
+        _layout_spec(),
+        id=LayoutSpecId("ls-old"),
+        primitive=LayoutPrimitive.HERO,
+    )
+    newer = replace(
+        _layout_spec(),
+        id=LayoutSpecId("ls-new"),
+        primitive=LayoutPrimitive.SPLIT,
+    )
+
+    # Save the OLDER row first (January).
+    with patch(
+        "ai_campaign_studio.infrastructure.database.repositories."
+        "sqlite_visual_repository.utc_now",
+        return_value=datetime(2026, 1, 1, tzinfo=UTC),
+    ):
+        repo.save_layout_spec(older)
+
+    # Then the NEWER row (February). Both reference the same post.
+    with patch(
+        "ai_campaign_studio.infrastructure.database.repositories."
+        "sqlite_visual_repository.utc_now",
+        return_value=datetime(2026, 2, 1, tzinfo=UTC),
+    ):
+        repo.save_layout_spec(newer)
+
+    result = repo.get_layout_spec_by_content_piece(PostId("piece-1"))
+    assert result is not None
+    assert result.id == LayoutSpecId("ls-new")
+    assert result.primitive is LayoutPrimitive.SPLIT
+    connection.close()
+
+
+def test_get_layout_spec_by_content_piece_scoped_to_post(
+    tmp_path: Path,
+) -> None:
+    """The lookup filters by ``content_piece_id`` -- a layout spec for
+    a DIFFERENT post is never returned. This guards against the
+    naive ``ORDER BY created_at DESC LIMIT 1`` accidentally ignoring
+    the WHERE clause."""
+    connection = _setup_db(tmp_path)
+    _seed_campaign(connection)
+    _seed_content_piece(connection)
+    # Seed a SECOND content piece so we have something to filter against.
+    connection.execute(
+        "INSERT INTO content_pieces (id, campaign_item_id, target_channel,"
+        " target_platform_code, target_format_code, payload_type, status,"
+        " brand_snapshot_id, facts_allowed_json, revision_ids_json,"
+        " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "piece-2",
+            "item-1",
+            "SOCIAL",
+            "INSTAGRAM",
+            "FEED_POST",
+            "SOCIAL_POST",
+            "DRAFT",
+            "snap-1",
+            "[]",
+            "[]",
+            _CREATED_AT.isoformat(),
+            _CREATED_AT.isoformat(),
+        ),
+    )
+    repo = SqliteVisualRepository(connection)
+
+    spec_for_p1 = replace(
+        _layout_spec(), id=LayoutSpecId("ls-p1"), primitive=LayoutPrimitive.HERO
+    )
+    spec_for_p2 = replace(
+        _layout_spec(),
+        id=LayoutSpecId("ls-p2"),
+        primitive=LayoutPrimitive.SPLIT,
+        content_piece_id=PostId("piece-2"),
+    )
+    repo.save_layout_spec(spec_for_p1)
+    repo.save_layout_spec(spec_for_p2)
+
+    # Look up piece-1 -- must NOT return piece-2's spec.
+    result_p1 = repo.get_layout_spec_by_content_piece(PostId("piece-1"))
+    assert result_p1 is not None
+    assert result_p1.id == LayoutSpecId("ls-p1")
+    assert result_p1.primitive is LayoutPrimitive.HERO
+
+    # Look up piece-2 -- must return piece-2's spec.
+    result_p2 = repo.get_layout_spec_by_content_piece(PostId("piece-2"))
+    assert result_p2 is not None
+    assert result_p2.id == LayoutSpecId("ls-p2")
+    assert result_p2.primitive is LayoutPrimitive.SPLIT
+    connection.close()

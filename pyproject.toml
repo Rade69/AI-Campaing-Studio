@@ -33,6 +33,14 @@ dependencies = [
     # test suite against real anthropic.types.Message / TextBlock / Usage
     # / ModelInfo instances.
     "anthropic>=1.0",
+    # A14 dio 2 (ACS-F1-033): PillowRenderer is the production
+    # RendererPort implementation (R-B winner from the renderer spike
+    # in ACS-F1-032). Pillow >= 10.0 is required for ``Image.alpha_composite``
+    # (used in the overlay tint path) and the ``size`` keyword on
+    # ``ImageFont.truetype`` (used in the headline font selection).
+    # 12.3.0 is the dev-environment version; the lower bound 10.0
+    # covers any 2-year-old Pillow still in wide use.
+    "pillow>=10.0",
 ]
 
 [project.optional-dependencies]
@@ -65,6 +73,29 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The package source tree. Without this, the phase0 gate report's
+# subprocess ``pytest -q`` invocation (which sets no env vars) cannot
+# find ``ai_campaign_studio.*`` and fails every test with
+# ``ModuleNotFoundError``. Local runs that set ``PYTHONPATH=src``
+# work without it; CI and the gate subprocess rely on this.
+pythonpath = ["src"]
+# ACS-F1-033: switch to ``importlib`` mode so test modules in two
+# different test paths that share a leaf name (e.g.
+# ``tests/unit/infrastructure/rendering/`` and
+# ``tests/integration/application/rendering/``) do not collide in
+# ``sys.modules`` under their shared parent (``rendering``). With
+# ``prepend`` (the default), pytest imports the FIRST one it sees
+# and fails to collect the second one with ``ModuleNotFoundError``
+# for the other's test file. ``importlib`` mode imports each test
+# module by its fully-qualified path, so the two ``rendering``
+# packages are kept distinct. This is also what the phase0 gate
+# report's subprocess ``pytest -q`` invocation needs to be green
+# -- the gate calls pytest with no CLI flags, so the config-level
+# default is the only knob that reaches the subprocess.
+# NOTE: pytest 8.x does NOT accept ``import_mode`` as an ini key, so
+# we use ``addopts`` (which IS prepended to every invocation,
+# including the gate's subprocess ``pytest -q``) instead.
+addopts = ["--import-mode=importlib"]
 
 [tool.ruff]
 line-length = 88

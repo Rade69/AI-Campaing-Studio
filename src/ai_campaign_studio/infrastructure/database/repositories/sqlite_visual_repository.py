@@ -164,3 +164,38 @@ class SqliteVisualRepository:
             content_piece_id=PostId(row["content_piece_id"]),
             validation_status=row["validation_status"],
         )
+
+
+    def get_layout_spec_by_content_piece(
+        self, content_piece_id: PostId
+    ) -> LayoutSpec | None:
+        """Most recently created layout spec for one content piece.
+
+        See ``VisualRepositoryPort.get_layout_spec_by_content_piece`` for
+        the "latest wins" rationale. SQL: ``ORDER BY created_at DESC LIMIT 1``.
+        Layout_specs has no UNIQUE constraint on ``content_piece_id`` (by
+        design, see ACS-F1-030), so multiple rows for the same post are
+        legal -- the latest-wins rule is the documented simplification.
+        """
+        row = self._connection.execute(
+            "SELECT * FROM layout_specs WHERE content_piece_id = ?"
+            " ORDER BY created_at DESC LIMIT 1",
+            (content_piece_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        payload = json.loads(row["payload_json"])
+        return LayoutSpec(
+            primitive=LayoutPrimitive(payload["primitive"]),
+            image_position=ImagePosition(payload["image_position"]),
+            headline_position=HeadlinePosition(payload["headline_position"]),
+            headline_scale=HeadlineScale(payload["headline_scale"]),
+            overlay=Overlay(payload["overlay"]),
+            logo_position=LogoPosition(payload["logo_position"]),
+            cta_style=CtaStyle(payload["cta_style"]),
+            alignment=Alignment(payload["alignment"]),
+            format=row["format"],
+            id=LayoutSpecId(row["id"]),
+            content_piece_id=PostId(row["content_piece_id"]),
+            validation_status=row["validation_status"],
+        )

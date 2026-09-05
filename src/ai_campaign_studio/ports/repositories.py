@@ -153,6 +153,20 @@ class VisualRepositoryPort(Protocol):
 
     def get_layout_spec(self, layout_spec_id: LayoutSpecId) -> LayoutSpec | None: ...
 
+    def get_layout_spec_by_content_piece(
+        self, content_piece_id: PostId
+    ) -> LayoutSpec | None:
+        """Most recently created layout spec for one content piece.
+
+        ``layout_specs.content_piece_id`` has no unique constraint
+        (ACS-F1-030) — if multiple rows exist (e.g. the post was re-planned),
+        return the NEWEST one (ORDER BY created_at DESC). This is a
+        documented simplification, not a full de-duplication /
+        superseding scheme; the application layer (RenderPost) is the
+        single caller, and the latest-wins rule is what it needs.
+        """
+
+
 
 @runtime_checkable
 class RevisionRepositoryPort(Protocol):
