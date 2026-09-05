@@ -3,7 +3,22 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-030 task contract napisan i
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-030 (`layout_specs` foundation,
+A13 dio 2 prereq) merged u main.** `LayoutSpecId`, tri nova OPCIONA polja na `LayoutSpec`
+(`id`/`content_piece_id`/`validation_status`, default `None` — ACS-F1-029 konstrukcija bez njih i
+dalje radi), migracija `0005_layout_specs.sql`, `VisualRepositoryPort.save_layout_spec`/
+`get_layout_spec` implementirani u `SqliteVisualRepository`. Runda 1 (Claude review) našla stvaran
+correctness bug: `save_layout_spec`-ov `ON CONFLICT DO UPDATE` je prepisivao `created_at` na
+trenutni "now" pri svakom re-save-u istog id-a (audit timestamp korupcija) — koordinator live
+reprodukovao PRIJE i POSLIJE fixa (isti id, dva save-a razmaknuta 1.2s: `created_at` se mijenjao
+prije fixa, identičan poslije). Pi izbacio `created_at` iz UPDATE seta + dodao regresioni test.
+Post-merge: 842 passed, ruff/mypy(149) čisti. MEDIUM risk, §29 → odmah merge. Worktree uklonjen.
+**Sada je otvoren put za A13 dio 2b**: `plan_post_layout.py`/`validate_layout.py` (plan sekcije
+40-41 — AI-generisan per-post `LayoutSpec` preko novog prompta + deterministička provjera da
+headline tekst staje u odabrani layout prema Slice-1 `ContentSlotContract` defaultima) — sljedeći
+kandidat za task contract.
+
+Prethodni entry (2026-09-05): **ACS-F1-030 task contract napisan i
 otvoren** (nije implementiran, implementer=TBD, MEDIUM risk) — **A13 dio 2, foundation korak**
 (plan sekcija 24: `layout_specs` tabela). Namjerno ODVOJEN od stvarnog use-case-a
 (`plan_post_layout.py`/`validate_layout.py`, sekcije 40-41) — isti obrazac kao što je
