@@ -3,7 +3,20 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-033 (`RendererPort` +
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-034 task contract napisan i
+otvoren** (nije implementiran, implementer=TBD, MEDIUM risk) — **A15, ZIP export + telemetry
+summary** (plan sekcija 46), POSLJEDNJI application-layer komad prije G10 vertical slice provjere.
+`ExportCampaign` (novi `ports/export.py::ExportWriterPort` + `infrastructure/export/zip_exporter.py`
++ `application/export/export_campaign.py`) komponuje POSTOJEĆI `RenderPost` (ACS-F1-033) interno,
+isti obrazac kao `run_system_b.py`. Istraga PRIJE koda otkrila: (1) nijedan port ne treba novu
+metodu — sve READ operacije već postoje; (2) `telemetry/ai_summary.json` MOŽE SAMO agregirati
+provider/model iz `Revision` redova (grep potvrdio: SAMO `generate_social_post.py`/
+`revise_content_piece.py` ikad snime Revision sa provider/model; `Revision` tabela nema token/cost/
+latency kolone uopšte) — token/cost brojke se NE izmišljaju, eksplicitna napomena u JSON-u da nisu
+dostupne; (3) `plan_id`/`visual_system_id` idu kao eksplicitni parametri (isti obrazac kao
+PlanPostLayout/RenderPost). Vidi `agent_reports/ACS-F1-034-task-contract.md`.
+
+Prethodni entry (2026-09-05): **ACS-F1-033 (`RendererPort` +
 `PillowRenderer` + `RenderPost`) merged u main — A14 POTPUNO gotov u kodu (plan sekcije 42-45).**
 Prvo stvarno renderovanje slike u produkcijskom kodu: HERO/SPLIT vizuelno stvarno različiti,
 `alignment`/`headline_position`/`overlay`/`cta_style`/`logo_rule`/`cta_rule` svaki dokazano utiče na
