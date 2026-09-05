@@ -3,7 +3,17 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-036 (export manifest
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-037 task contract napisan i
+otvoren** (nije implementiran, implementer=TBD, LOW risk) — **P1.5-G1 Performance Domain** (Faza 1
+v1.5 §15-16), prvi pravi Slice 1.5 gate. Čisto domain-nivo: `DistributionInstance`,
+`PerformanceSnapshot`, `PerformanceImportBatch`, `CanonicalMetricSet`, `MetricPeriod`,
+`PerformanceSource` — svi polja tačno po Faza 0.7 §3/§5/§6/§13, bez perzistencije (P1.5-G2 je
+sljedeći). Namjerno ODVOJENA dva enuma: `DistributionSource` (kako je sadržaj DISTRIBUIRAN —
+uključuje EXPORT) vs `PerformanceSource` (odakle DOLAZE performance podaci — bez EXPORT, jer
+metrika ulazi u sistem, ne izlazi preko exporta). Nula postojećih pozivalaca, nula I/O — potpuno
+izolovan dodatak. Vidi `agent_reports/ACS-F1-037-task-contract.md`.
+
+Prethodni entry (2026-09-05): **ACS-F1-036 (export manifest
 analytics-ready retrofit) merged u main — preduslov za Slice 1.5 zatvoren.** `manifest.json`
 (schema_version, campaign_id, campaign_plan_id, exported_at, items[] sa svih 7 pod-polja uključujući
 `content_revision_id`/`analytics_match_key`) sad postoji u ZIP izlazu, potpuno ADITIVNO —
