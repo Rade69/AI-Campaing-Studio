@@ -3,7 +3,36 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-GUI-007 (Podešavanja →
+**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **ACS-F1-026 (A/B evaluation
+harness — Control A + System B + determinističke metrike) merged u main** (`b000aa5`, merge
+`b39851d`) — **G10/A16 iz Faza 1 v1.4 §47-48, prva stvarna implementacija.**
+
+Human Owner odobrio G10 kao prioritet 2026-09-04. Koordinator prvo istražio tačnu specifikaciju
+(§47-50, A16-A20, PROJECT_MAP.md §7) prije pisanja kontrakta — otkrio da A19 (puna vertical slice
+kroz render+export) i A20 (višestruki runovi + finalna odluka) zahtijevaju module koji NE POSTOJE
+u kodu (nema `application/render/`, `application/export/`), pa je scope namjerno sveden SAMO na
+A16 (dio koji stvarno odgovara na R1 pitanje — da li je struktura vrijedna, ne zavisi od
+render/export prezentacije). `human_eval.py` (§49) je zaseban budući task (ACS-F1-027).
+
+Novi `application/evaluation/` paket: `run_control_a.py` (naivan single-call baseline, koristi VEĆ
+POSTOJEĆI `resources/prompts/ab_control/v1.yaml` prompt koji je neko ranije pripremio a niko nije
+koristio, bez DB pisanja), `run_system_b.py` (tanak orchestration wrapper oko VEĆ POSTOJEĆEG
+pravog pipeline-a — Create→GeneratePlan→**Approve**→GeneratePost×N; uključuje `ApproveCampaignPlan`
+korak koji GUI bridge danas NE poziva, ali System B mora jer `GenerateSocialPost` zahtijeva
+APPROVED plan), `deterministic_metrics.py` (11 metrika + heuristic_near_duplicate koji ponovo
+koristi `content_similarity.jaccard_similarity` iz ACS-F1-025 — tačno ono što §48 traži: "jednostavna
+lexical/Jaccard metrika... heuristic only"). Claim-bazirane metrike čitaju već-lintovane claim-ove
+(ponovo koriste `claim_linter.py`, ne dupliraju logiku). `None` vs `0` dosljedno za nemjerljive
+metrike (`layout_failure_count` uvijek `None` — vizuelni sistem ne postoji; `unique_role_count`/
+`duplicate_topic_count` `None` za Control A). Nijedan postojeći use-case potpis nije mijenjan.
+
+Post-merge: 804 passed, ruff/mypy(146)/boundaries(18)/secrets svi čisti. §29 MEDIUM, Claude-only
+review. Worktree uklonjen.
+
+**Sljedeći korak**: ACS-F1-027 (`human_eval.py`, §49 — blind A/B poređenje paket) — zavisi od
+`EvaluationPost` oblika zaključanog ovim taskom.
+
+Prethodni entry (2026-09-05): **ACS-GUI-007 (Podešavanja →
 AI provajderi, stvarno povezivanje) merged u main** (`f911fe5`, merge `19d5c67`) — **praktičan
 usability blocker zatvoren: korisnik sada MOŽE stvarno podesiti API ključ kroz aplikaciju, ne
 samo preko ručne skripte.**
