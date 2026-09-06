@@ -3,7 +3,59 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-05 (coordinator: claude) — **CI POPRAVLJEN —
+**Zadnje ažurirano:** 2026-09-06 (coordinator: claude) — **Nezavisna
+ChatGPT provjera + dvije Human Owner odluke.** Nakon ACS-F1-040 CI fix-a,
+druga nezavisna review (ChatGPT) potvrdila je popravku ali dodala 6
+konkretnih, provjerenih nalaza (vidi memory
+`project_g10_ci_chatgpt_review.md` za pun kontekst):
+
+- **G10 scope nuance (prihvaćena korekcija)**: G10 dokazuje da
+  fact-first pipeline pobjeđuje jedan direktan LLM poziv u
+  factual-grounding/claim-safety (potvrđeno čitanjem `run_control_a.py`
+  — Control A dobija IDENTIČAN `BrandSnapshot`/`CampaignBrief`/sve
+  `snapshot_facts`, prolazi kroz isti `lint_claim`, nije oslabljen
+  baseline). NE dokazuje još bolji copy/brand-voice/kreativnost/
+  konverziju/UX/willingness-to-pay. Buduće sažetke treba formulisati
+  preciznije (tehnički R1 odgovor, ne cijelo tržišno pitanje).
+- **Branch protection potvrđeno isključen** (`gh api
+  repos/.../branches/main/protection` → 404 "Branch not protected") —
+  crven CI tehnički ne blokira merge, što se i desilo 4 puta zaredom
+  prije ACS-F1-040. **Human Owner odluka (2026-09-06)**: zadržati
+  postojeći direktan-push-na-main workflow BEZ GitHub branch
+  protection-a, uz uslov da koordinator OBAVEZNO provjerava `gh run
+  list --branch main` poslije SVAKOG push-a na main (vidi memory
+  `feedback_check_ci_after_main_push.md`) — ovo postaje stalan korak
+  post-merge rutine, ne opciono.
+- **ACS-F1-040 kontrakt je imao tehničku grešku** (potvrđeno čitanjem
+  `.github/workflows/ci.yml`): CI se pokreće SAMO na
+  `push:[main]`/`pull_request:[main]` — obična `git push` na task
+  branch NE pokreće CI. U praksi je PR već postojao kad je koordinator
+  provjeravao (CI provjera je bila validna), ali sam kontrakt je davao
+  pogrešno uputstvo. Ispravljeno za ubuduće (memory
+  `feedback_ci_verification_needs_pr.md`) — svaki budući kontrakt koji
+  traži živi CI dokaz mora eksplicitno tražiti PR, ne samo push.
+- **Font-missing fallback je i dalje arhitektonski slab**: čak i
+  nakon ACS-F1-040, `_load_font` bi na nedostajući/oštećen font i
+  dalje tiho vratio `RenderStatus.SUCCESS` (uz `warnings.warn`, koji se
+  lako izgubi) umjesto `RENDER_ERROR`. **Napisan task contract
+  ACS-F1-041** (font-missing → `RENDER_ERROR`/`FONT_RESOURCE_MISSING`,
+  plus font provjera dodata u `scripts/validate_resources.py`) — čeka
+  implementera, MEDIUM risk, nije hitno (font već postoji u svakom
+  checkout-u nakon 040, ovo je odbrambeno pojačanje).
+- **Packaging dug zabilježen, nije scope**: `resources/` (uključujući
+  `resources/fonts/`) se učitava preko repo-relativne putanje
+  (`AppPaths._default_resources_dir`), bez `package_data`/
+  `MANIFEST.in` — radi za trenutni dev/CI checkout, NIJE dokazano za
+  budući instalirani desktop paket. Buduć packaging gate, ne sada.
+- **Roadmap pitanje postavljeno i riješeno**: Human Owner odluka
+  (2026-09-06) — nastaviti **P1.5-G3 CSV Import kako je planirano**,
+  NE prelaziti na Website/Brand Ingestion sada, uprkos ChatGPT-jevoj
+  fer primjedbi da je G10 testiran samo protiv kontrolisanog brand
+  fixture-a, ne stvarne web stranice.
+
+**Sljedeći korak (potvrđeno)**: P1.5-G3 CSV Import (Faza 1 v1.5 §18).
+
+Prethodni entry (2026-09-05): **CI POPRAVLJEN —
 ACS-F1-040 (bundle open-license fonta) merged u main, GitHub Actions
 STVARNO zeleno.** CI je bio crven na main-u od ~13:53 (svih 8 push-eva,
 uključujući ACS-F1-037/038/039 -- vidi prethodni entry za detaljan root
