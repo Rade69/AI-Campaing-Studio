@@ -88,6 +88,13 @@ class StudioSadrzajaFixture:
     # wired to the bridge; when it is missing, the button stays hidden
     # (the legacy "fixture-only" preview path).
     campaign_id: str | None = None
+    # ACS-GUI-008 (review feedback): the JS handler also needs
+    # ``plan_id`` (forwarded by ``create_campaign_and_generate_plan``).
+    # When BOTH ids are present, the button carries both as data
+    # attributes and the bridge call carries both. When EITHER is
+    # missing, the live button is hidden and only the legacy toast
+    # stub remains — the bridge contract requires plan_id.
+    plan_id: str | None = None
 
 
 DEFAULT_FIXTURE = StudioSadrzajaFixture(
@@ -172,18 +179,20 @@ def _edit_card(fx: StudioSadrzajaFixture) -> str:
         f"{html.escape(label)}</button>"
         for label, action in QUICK_ACTIONS
     )
-    # ACS-GUI-008: when a real campaign is open (``campaign_id`` is set),
-    # render the live "Generiši sadržaj" button (wired to the bridge in
-    # ``static/app.js``) AND a ``data-generate-result`` element that the
-    # JS handler fills with the result. The element is always emitted
-    # (with a hidden initial state) so the JS does not have to
-    # ``querySelector`` for a possibly-missing node. When no
-    # ``campaign_id`` is set, the button is hidden — the legacy
-    # fixture-preview path is preserved for offline SSR rendering.
-    if fx.campaign_id:
+    # ACS-GUI-008: when a real campaign is open (``campaign_id`` AND
+    # ``plan_id`` set), render the live "Generiši sadržaj" button
+    # (wired to the bridge in ``static/app.js``) AND a
+    # ``data-generate-result`` element that the JS handler fills
+    # with the result. The element is always emitted (with a hidden
+    # initial state) so the JS does not have to ``querySelector``
+    # for a possibly-missing node. When either id is missing, the
+    # button is hidden — the legacy fixture-preview path is
+    # preserved for offline SSR rendering.
+    if fx.campaign_id and fx.plan_id:
         generate_button = (
             '<button class="btn primary" data-action="generate-content" '
-            f'data-campaign-id="{html.escape(fx.campaign_id)}">'
+            f'data-campaign-id="{html.escape(fx.campaign_id)}" '
+            f'data-plan-id="{html.escape(fx.plan_id)}">'
             "Generiši sadržaj"
             "</button>"
         )

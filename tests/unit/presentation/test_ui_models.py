@@ -54,11 +54,12 @@ def test_provider_status_ui_model() -> None:
 
 
 def test_campaign_plan_result_success_shape() -> None:
-    """Success case: ok=True with campaign_id + plan_item_count set,
-    error fields explicitly None."""
+    """Success case: ok=True with campaign_id + plan_id (ACS-GUI-008)
+    + plan_item_count set, error fields explicitly None."""
     result = CampaignPlanResultUiModel(
         ok=True,
         campaign_id="cmp_abc123",
+        plan_id="plan_xyz789",
         plan_item_count=3,
         error_code=None,
         error_message=None,
@@ -67,6 +68,7 @@ def test_campaign_plan_result_success_shape() -> None:
     assert blob == {
         "ok": True,
         "campaign_id": "cmp_abc123",
+        "plan_id": "plan_xyz789",
         "plan_item_count": 3,
         "error_code": None,
         "error_message": None,
@@ -74,10 +76,13 @@ def test_campaign_plan_result_success_shape() -> None:
 
 
 def test_campaign_plan_result_error_shape() -> None:
-    """Error case: ok=False, success fields None, error fields populated."""
+    """Error case: ok=False, success fields None, error fields populated.
+    ``plan_id`` is also None on errors (the bridge only knows the
+    plan_id after a successful run)."""
     result = CampaignPlanResultUiModel(
         ok=False,
         campaign_id=None,
+        plan_id=None,
         plan_item_count=None,
         error_code="NO_PROVIDER_CONFIGURED",
         error_message="Nijedan AI provajder nije podešen.",
@@ -86,6 +91,7 @@ def test_campaign_plan_result_error_shape() -> None:
     assert blob == {
         "ok": False,
         "campaign_id": None,
+        "plan_id": None,
         "plan_item_count": None,
         "error_code": "NO_PROVIDER_CONFIGURED",
         "error_message": "Nijedan AI provajder nije podešen.",
@@ -98,11 +104,12 @@ def test_campaign_plan_result_is_json_serializable() -> None:
     ``json.dumps`` and ``json.loads`` without surprises."""
     cases = [
         CampaignPlanResultUiModel(
-            ok=True, campaign_id="cmp_1", plan_item_count=2,
+            ok=True, campaign_id="cmp_1", plan_id="plan_1",
+            plan_item_count=2,
             error_code=None, error_message=None,
         ),
         CampaignPlanResultUiModel(
-            ok=False, campaign_id=None, plan_item_count=None,
+            ok=False, campaign_id=None, plan_id=None, plan_item_count=None,
             error_code="VALIDATION_ERROR", error_message="offer: required",
         ),
     ]
@@ -117,7 +124,7 @@ def test_campaign_plan_result_is_frozen() -> None:
     to JS — by then the user is looking at a stale value."""
     import dataclasses
     result = CampaignPlanResultUiModel(
-        ok=True, campaign_id="cmp_1", plan_item_count=1,
+        ok=True, campaign_id="cmp_1", plan_id="plan_1", plan_item_count=1,
         error_code=None, error_message=None,
     )
     try:

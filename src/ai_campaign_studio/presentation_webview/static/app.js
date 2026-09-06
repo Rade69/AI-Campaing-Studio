@@ -219,8 +219,16 @@ async function saveAndPlan(button) {
       showToast('Plan generisan (' + n + ' stavki). Preusmjeravam…');
       // Give the toast a brief moment to register visually before
       // navigating; the user gets feedback that the click landed.
+      // ACS-GUI-008: also forward ``plan_id`` in the query string so
+      // the next screen (Studio sadržaja) can attach it to the
+      // ``generate_content`` bridge call without needing a fresh
+      // server lookup.
+      const planQs = result.plan_id
+        ? '&plan=' + encodeURIComponent(result.plan_id)
+        : '';
       setTimeout(function() {
-        window.location.href = '../plan_kampanje/index.html?campaign=' + encodeURIComponent(result.campaign_id);
+        window.location.href = '../plan_kampanje/index.html?campaign='
+          + encodeURIComponent(result.campaign_id) + planQs;
       }, 600);
     } else {
       const msg = (result && result.error_message) ? result.error_message : 'Generisanje plana nije uspjelo.';
@@ -256,6 +264,17 @@ async function generateContent(button) {
     showToast('Nedostaje campaign_id. Ponovo pokreni "Sačuvaj i napravi plan".');
     return;
   }
+  // ACS-GUI-008 (review feedback): the bridge also needs the
+  // ``plan_id`` — the click handler reads it from the same data
+  // attribute (``data-plan-id``) the SSR put on the button. The
+  // bridge refuses to fall back to a SQL lookup; if the attribute
+  // is missing (offline preview path), we surface that explicitly
+  // to the user instead of silently building a half-broken call.
+  const planId = (button.dataset.planId || '').trim();
+  if (!planId) {
+    showToast('Nedostaje plan_id. Ponovo pokreni "Sačuvaj i napravi plan".');
+    return;
+  }
   button.disabled = true;
   const originalLabel = button.textContent;
   button.textContent = 'Generiram objave…';
@@ -266,7 +285,10 @@ async function generateContent(button) {
       showToast('Interna greška: bridge nije dostupan. Ponovo pokreni aplikaciju.');
       return;
     }
-    const result = await api.generate_campaign_content({campaign_id: campaignId});
+    const result = await api.generate_campaign_content({
+      campaign_id: campaignId,
+      plan_id: planId,
+    });
     if (result && result.ok) {
       const n = result.generated_count;
       const f = result.failed_count;

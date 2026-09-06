@@ -397,6 +397,10 @@ class CampaignBridgeApi:
                 CampaignPlanResultUiModel(
                     ok=True,
                     campaign_id=str(campaign.id),
+                    # ACS-GUI-008: forward the plan_id so the next
+                    # call (``generate_campaign_content``) does not
+                    # have to look it up.
+                    plan_id=str(plan.id),
                     plan_item_count=len(plan.items),
                     error_code=None,
                     error_message=None,
@@ -442,7 +446,22 @@ class CampaignBridgeApi:
             return self._generate_err(
                 _ERROR_VALIDATION, "campaign_id je obavezan (string)."
             )
+        # ACS-GUI-008 (review feedback): the JS caller is REQUIRED to
+        # pass ``plan_id`` too — the bridge got the plan_id from the
+        # earlier ``create_campaign_and_generate_plan`` response and
+        # MUST forward it here, instead of having the bridge do raw
+        # SQL to look it up. This is the boundary that prevents the
+        # bridge from having to know about the campaign_plans SQL
+        # schema. ``plan_id`` is NOT a secret.
+        plan_id_raw = raw_payload.get("plan_id")
+        if not isinstance(plan_id_raw, str) or not plan_id_raw.strip():
+            return self._generate_err(
+                _ERROR_VALIDATION,
+                "plan_id je obavezan (string). "
+                "Ponovo pokreni 'Sačuvaj i napravi plan'.",
+            )
         campaign_id = CampaignId(campaign_id_raw.strip())
+        plan_id = CampaignPlanId(plan_id_raw.strip())
 
         # -- 2. Campaign + brief + plan + targets (all-or-nothing up
         #    to this point -- still inside the per-method try/except
@@ -460,33 +479,29 @@ class CampaignBridgeApi:
                     _ERROR_VALIDATION,
                     f"Brief {campaign.brief_id} ne postoji.",
                 )
-            # Plan lookup: this bridge method cannot add a new port
-            # method (forbidden_paths blocks ``ports/``), so we use
-            # the existing ``database_connection`` directly. The SQL
-            # matches the schema in
-            # ``resources/migrations/0002_campaign_plans.sql`` —
-            # "newest plan wins" (the plan with the latest
-            # ``created_at`` is the current plan for the campaign;
-            # older plans are revision history).
-            plan_row = self._bootstrap.database_connection.execute(
-                "SELECT id FROM campaign_plans WHERE campaign_id = ?"
-                " ORDER BY created_at DESC LIMIT 1",
-                (str(campaign_id),),
-            ).fetchone()
-            if plan_row is None:
-                return self._generate_err(
-                    _ERROR_VALIDATION,
-                    f"Kampanja {campaign_id} nema plan. "
-                    "Ponovo pokreni 'Sačuvaj i napravi plan'.",
-                )
-            plan_id = CampaignPlanId(plan_row["id"])
+            # Plan lookup: ACS-GUI-008 review feedback. The plan_id
+            # is REQUIRED in the payload (validated above); the bridge
+            # uses the existing ``CampaignRepositoryPort.get_plan``
+            # (already in the allowed path of the project) instead of
+            # raw SQL. This keeps the bridge inside the
+            # ``ports -> infrastructure`` boundary AND lets the JS
+            # caller tell the bridge which plan to operate on (the
+            # same plan it just created two clicks ago).
             plan = self._campaign_repo.get_plan(plan_id)
             if plan is None:
-                # Defensive: race between the SELECT and the
-                # ``get_plan`` call. Same error as above.
                 return self._generate_err(
                     _ERROR_VALIDATION,
-                    f"Plan {plan_id} nestao iz baze (race condition).",
+                    f"Plan {plan_id} ne postoji. "
+                    "Ponovo pokreni 'Sačuvaj i napravi plan'.",
+                )
+            if plan.campaign_id != campaign_id:
+                # The plan does not belong to this campaign -- the JS
+                # caller mixed up ids (or someone tampered with the
+                # payload). Same defensive pattern as
+                # ``ExportCampaign._validate_plan_campaign_match``.
+                return self._generate_err(
+                    _ERROR_VALIDATION,
+                    f"Plan {plan_id} ne pripada kampanji {campaign_id}.",
                 )
             targets = _targets_from_brief(brief)
         except (EntityNotFound, InvariantViolation, ValueError, TypeError) as exc:
@@ -968,6 +983,10 @@ class CampaignBridgeApi:
             CampaignPlanResultUiModel(
                 ok=False,
                 campaign_id=None,
+                # ACS-GUI-008: ``plan_id`` is None on error paths (the
+                # bridge only knows the plan_id after a successful
+                # ``GenerateCampaignPlan``).
+                plan_id=None,
                 plan_item_count=None,
                 error_code=code,
                 error_message=message,

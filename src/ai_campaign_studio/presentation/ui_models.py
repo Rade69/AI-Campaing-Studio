@@ -42,7 +42,8 @@ class ProviderStatusUiModel:
 
 @dataclass(frozen=True)
 class CampaignPlanResultUiModel:
-    """Result of a "Sačuvaj i napravi plan" click (ACS-GUI-005 bridge).
+    """Result of a "Sačuvaj i napravi plan" click (ACS-GUI-005 bridge,
+    extended in ACS-GUI-008 with ``plan_id``).
 
     Returned by ``CampaignBridgeApi.create_campaign_and_generate_plan``.
     Converted to a plain ``dict`` before crossing the pywebview ``js_api``
@@ -50,10 +51,18 @@ class CampaignPlanResultUiModel:
     so the bridge calls ``dataclasses.asdict`` on this model). Every
     field is JSON-safe by construction — no ``SecretStore`` content,
     no traceback strings, no file paths.
+
+    ACS-GUI-008 added ``plan_id`` so the JS caller can forward it to
+    ``generate_campaign_content`` on the next step (Studio sadržaja
+    screen), removing the need for the bridge to do raw SQL to look
+    up "the current plan for this campaign". The new field is added
+    AFTER the existing ones (aditive — old fields and old test
+    expectations stay untouched).
     """
 
     ok: bool
     campaign_id: str | None
+    plan_id: str | None
     plan_item_count: int | None
     error_code: str | None
     error_message: str | None

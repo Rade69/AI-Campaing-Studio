@@ -1096,7 +1096,7 @@ def test_generate_content_happy_path_creates_all_pieces(tmp_path) -> None:
     """2+ items, all AI calls succeed -> ``ok=True``, all pieces in DB."""
     bridge = _isolated_bridge(tmp_path)
     _configure_provider(bridge._provider_config_repo, "OPENAI")
-    campaign_id, _plan_id = _seed_brand_and_campaign(bridge, num_items=3)
+    campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=3)
 
     with patch.object(
         bridge._bootstrap.secret_store, "get_secret", return_value="sk-test"
@@ -1104,7 +1104,9 @@ def test_generate_content_happy_path_creates_all_pieces(tmp_path) -> None:
         "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
         _fake_ai_factory(_valid_social_payload()),
     ):
-        result = bridge.generate_campaign_content({"campaign_id": campaign_id})
+        result = bridge.generate_campaign_content(
+            {"campaign_id": campaign_id, "plan_id": plan_id}
+        )
 
     assert result["ok"] is True
     assert result["campaign_id"] == campaign_id
@@ -1122,7 +1124,7 @@ def test_generate_content_partial_failure_ok_true(tmp_path) -> None:
     ``failed_count=1``. The user can retry for the failed item."""
     bridge = _isolated_bridge(tmp_path)
     _configure_provider(bridge._provider_config_repo, "OPENAI")
-    campaign_id, _plan_id = _seed_brand_and_campaign(bridge, num_items=2)
+    campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
 
     class _FailOnSecondItem:
         """Adapter that raises on the 2nd call, succeeds on the 1st."""
@@ -1154,7 +1156,9 @@ def test_generate_content_partial_failure_ok_true(tmp_path) -> None:
         "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
         _factory,
     ):
-        result = bridge.generate_campaign_content({"campaign_id": campaign_id})
+        result = bridge.generate_campaign_content(
+            {"campaign_id": campaign_id, "plan_id": plan_id}
+        )
 
     assert result["ok"] is True
     assert result["generated_count"] == 1
@@ -1171,7 +1175,7 @@ def test_generate_content_idempotent_re_click_does_not_duplicate(tmp_path) -> No
     """
     bridge = _isolated_bridge(tmp_path)
     _configure_provider(bridge._provider_config_repo, "OPENAI")
-    campaign_id, _plan_id = _seed_brand_and_campaign(bridge, num_items=3)
+    campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=3)
 
     with patch.object(
         bridge._bootstrap.secret_store, "get_secret", return_value="sk-test"
@@ -1179,9 +1183,13 @@ def test_generate_content_idempotent_re_click_does_not_duplicate(tmp_path) -> No
         "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
         _fake_ai_factory(_valid_social_payload()),
     ):
-        first = bridge.generate_campaign_content({"campaign_id": campaign_id})
+        first = bridge.generate_campaign_content(
+            {"campaign_id": campaign_id, "plan_id": plan_id}
+        )
         assert first["generated_count"] == 3
-        second = bridge.generate_campaign_content({"campaign_id": campaign_id})
+        second = bridge.generate_campaign_content(
+            {"campaign_id": campaign_id, "plan_id": plan_id}
+        )
     # Second click: nothing to do.
     assert second["ok"] is True
     assert second["generated_count"] == 0
@@ -1206,7 +1214,9 @@ def test_generate_content_already_approved_plan_works(tmp_path) -> None:
         "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
         _fake_ai_factory(_valid_social_payload()),
     ):
-        result = bridge.generate_campaign_content({"campaign_id": campaign_id})
+        result = bridge.generate_campaign_content(
+            {"campaign_id": campaign_id, "plan_id": plan_id}
+        )
 
     assert result["ok"] is True
     assert result["generated_count"] == 2
@@ -1216,9 +1226,15 @@ def test_generate_content_already_approved_plan_works(tmp_path) -> None:
 def test_generate_content_campaign_not_found_returns_validation_error(
     tmp_path,
 ) -> None:
+    """The campaign check runs BEFORE the plan check (campaign is
+    looked up first; plan only after campaign exists). A
+    non-existent campaign_id yields a clear 'campaign does not
+    exist' message even when plan_id is also non-sensical."""
     bridge = _isolated_bridge(tmp_path)
     _configure_provider(bridge._provider_config_repo, "OPENAI")
-    result = bridge.generate_campaign_content({"campaign_id": "non-existent"})
+    result = bridge.generate_campaign_content(
+        {"campaign_id": "non-existent", "plan_id": "any"}
+    )
     assert result["ok"] is False
     assert result["error_code"] == "VALIDATION_ERROR"
     assert "ne postoji" in result["error_message"].lower()
@@ -1237,10 +1253,71 @@ def test_generate_content_no_provider_returns_no_provider_error(
     both.
     """
     bridge = _isolated_bridge(tmp_path)
-    campaign_id, _plan_id = _seed_brand_and_campaign(bridge, num_items=2)
-    result = bridge.generate_campaign_content({"campaign_id": campaign_id})
+    campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
+    result = bridge.generate_campaign_content(
+        {"campaign_id": campaign_id, "plan_id": plan_id}
+    )
     assert result["ok"] is False
     assert result["error_code"] == "NO_PROVIDER_CONFIGURED"
+
+
+def test_generate_content_plan_id_missing_returns_validation_error(
+    tmp_path,
+) -> None:
+    """ACS-GUI-008 (review feedback): ``plan_id`` is REQUIRED in the
+    payload -- the bridge got the plan_id from the earlier
+    ``create_campaign_and_generate_plan`` response and must forward
+    it. A missing ``plan_id`` is a boundary error, not a DB lookup."""
+    bridge = _isolated_bridge(tmp_path)
+    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
+    result = bridge.generate_campaign_content({"campaign_id": campaign_id})
+    assert result["ok"] is False
+    assert result["error_code"] == "VALIDATION_ERROR"
+    assert "plan_id" in result["error_message"]
+
+
+def test_generate_content_plan_id_not_found_returns_validation_error(
+    tmp_path,
+) -> None:
+    """``plan_id`` is in the payload but does not exist in the
+    database (deleted, or wrong id). The bridge refuses to silently
+    re-approve anything — the user must re-run
+    ``Sačuvaj i napravi plan``."""
+    bridge = _isolated_bridge(tmp_path)
+    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
+    result = bridge.generate_campaign_content(
+        {"campaign_id": campaign_id, "plan_id": "plan-does-not-exist"}
+    )
+    assert result["ok"] is False
+    assert result["error_code"] == "VALIDATION_ERROR"
+    assert "ne postoji" in result["error_message"].lower()
+
+
+def test_generate_content_plan_id_does_not_belong_to_campaign(
+    tmp_path,
+) -> None:
+    """The plan exists, but it belongs to a DIFFERENT campaign than
+    the one in the payload. The bridge refuses to mix-and-match;
+    the user mixed up ids (or the payload was tampered with).
+
+    Mirrors ``ExportCampaign._validate_plan_campaign_match`` from
+    ACS-F1-034 (the same defensive pattern)."""
+    bridge = _isolated_bridge(tmp_path)
+    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
+    # Plant a SECOND campaign with its OWN plan in the same DB.
+    campaign2_id, plan2_id = _seed_brand_and_campaign(
+        bridge, num_items=1, item_topic_prefix="OTHER"
+    )
+    # Cross-pollinate: use campaign #2's plan_id with campaign #1.
+    result = bridge.generate_campaign_content(
+        {"campaign_id": campaign_id, "plan_id": plan2_id}
+    )
+    assert result["ok"] is False
+    assert result["error_code"] == "VALIDATION_ERROR"
+    assert "ne pripada" in result["error_message"].lower()
 
 
 def test_generate_content_non_dict_payload_returns_validation_error(
@@ -1268,7 +1345,7 @@ def test_generate_content_carries_no_api_key_in_result(tmp_path) -> None:
     the result blob is key-free."""
     bridge = _isolated_bridge(tmp_path)
     _configure_provider(bridge._provider_config_repo, "OPENAI")
-    campaign_id, _plan_id = _seed_brand_and_campaign(bridge, num_items=2)
+    campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
     sentinel_key = "sk-SENTINEL-EXAMPLE-redacted-9999"
 
     with patch.object(
@@ -1277,7 +1354,9 @@ def test_generate_content_carries_no_api_key_in_result(tmp_path) -> None:
         "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
         _fake_ai_factory(_valid_social_payload()),
     ):
-        result = bridge.generate_campaign_content({"campaign_id": campaign_id})
+        result = bridge.generate_campaign_content(
+            {"campaign_id": campaign_id, "plan_id": plan_id}
+        )
 
     blob = json.dumps(result)
     assert sentinel_key not in blob
@@ -1296,7 +1375,7 @@ def test_generate_content_round_robin_assignment_matches_run_system_b(
     documents it for future maintainers."""
     bridge = _isolated_bridge(tmp_path)
     _configure_provider(bridge._provider_config_repo, "OPENAI")
-    campaign_id, _plan_id = _seed_brand_and_campaign(bridge, num_items=3, num_targets=1)
+    campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=3, num_targets=1)
 
     captured_targets: list[tuple[str, str, str]] = []   # (channel, platform, format)
 
@@ -1326,7 +1405,9 @@ def test_generate_content_round_robin_assignment_matches_run_system_b(
         "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
         _factory,
     ):
-        bridge.generate_campaign_content({"campaign_id": campaign_id})
+        bridge.generate_campaign_content(
+            {"campaign_id": campaign_id, "plan_id": plan_id}
+        )
 
     # Pull back the persisted ContentPiece rows and check the
     # ``target`` column on each one. All 3 should be the same (the
@@ -1355,7 +1436,7 @@ def test_generate_content_unexpected_exception_in_adapter_factory(
     """
     bridge = _isolated_bridge(tmp_path)
     _configure_provider(bridge._provider_config_repo, "OPENAI")
-    campaign_id, _plan_id = _seed_brand_and_campaign(bridge, num_items=2)
+    campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
 
     with patch.object(
         bridge._bootstrap.secret_store, "get_secret", return_value="sk-test"
@@ -1363,7 +1444,9 @@ def test_generate_content_unexpected_exception_in_adapter_factory(
         "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
         side_effect=RuntimeError("factory exploded unexpectedly"),
     ):
-        result = bridge.generate_campaign_content({"campaign_id": campaign_id})
+        result = bridge.generate_campaign_content(
+            {"campaign_id": campaign_id, "plan_id": plan_id}
+        )
 
     assert result["ok"] is False
     # The exact code is implementation-defined; what matters is

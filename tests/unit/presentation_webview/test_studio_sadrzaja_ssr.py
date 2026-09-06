@@ -299,10 +299,14 @@ def test_render_body_with_campaign_id_emits_generate_content_button() -> None:
         sacuvaj_nacrt_toast="t1",
         posalji_reviziju_toast="t2",
         campaign_id="cmp-real-id",
+        plan_id="plan-real-id",
     )
     body = render_body(fx)
     assert 'data-action="generate-content"' in body
     assert 'data-campaign-id="cmp-real-id"' in body
+    # ACS-GUI-008 (review feedback): plan_id is REQUIRED for the live
+    # button — the bridge refuses to do raw SQL to look it up.
+    assert 'data-plan-id="plan-real-id"' in body
     # The result callout must be emitted (hidden by default) so the
     # JS handler does not have to querySelector for a missing node.
     assert "data-generate-result" in body
@@ -315,9 +319,48 @@ def test_render_body_default_fixture_keeps_legacy_toast_stub() -> None:
     """
     body = render_body()  # DEFAULT_FIXTURE has campaign_id=None
     assert 'data-action="generate-content"' not in body
+    assert 'data-campaign-id' not in body
+    assert 'data-plan-id' not in body
     # The toast-stub button for "no campaign" is still present so
     # the user gets a friendly message.
     assert "Nema otvorene kampanje" in body
+
+
+def test_render_body_with_only_plan_id_keeps_legacy_toast_stub() -> None:
+    """ACS-GUI-008 (review feedback): the live button requires BOTH
+    ``campaign_id`` AND ``plan_id``. If only one is set (e.g. the
+    plan_id is in the URL but the campaign_id is missing because the
+    caller forgot to forward it), the body falls back to the legacy
+    toast stub rather than emitting a half-broken live button.
+    """
+    fx = StudioSadrzajaFixture(
+        campaign_name="X",
+        badge_variant="ok",
+        badge_label="X",
+        item_index=1,
+        item_total=1,
+        role="PROBLEM",
+        platform="X",
+        format="X",
+        planned_date="X",
+        status_variant="ok",
+        status_label="X",
+        hook="X",
+        hook_char_count=1,
+        hook_char_limit=1,
+        body_text="X",
+        cta="X",
+        preview_label="X",
+        facts=[],
+        compliance_checks=[],
+        sacuvaj_nacrt_toast="X",
+        posalji_reviziju_toast="X",
+        campaign_id=None,
+        plan_id="plan-only",
+    )
+    body = render_body(fx)
+    assert 'data-action="generate-content"' not in body
+    assert 'data-plan-id="plan-only"' not in body
 
 
 def test_render_body_generate_content_button_escapes_campaign_id() -> None:
