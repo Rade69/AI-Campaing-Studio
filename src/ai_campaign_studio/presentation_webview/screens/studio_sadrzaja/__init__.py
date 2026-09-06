@@ -179,35 +179,27 @@ def _edit_card(fx: StudioSadrzajaFixture) -> str:
         f"{html.escape(label)}</button>"
         for label, action in QUICK_ACTIONS
     )
-    # ACS-GUI-008: when a real campaign is open (``campaign_id`` AND
-    # ``plan_id`` set), render the live "Generiši sadržaj" button
-    # (wired to the bridge in ``static/app.js``) AND a
-    # ``data-generate-result`` element that the JS handler fills
-    # with the result. The element is always emitted (with a hidden
-    # initial state) so the JS does not have to ``querySelector``
-    # for a possibly-missing node. When either id is missing, the
-    # button is hidden — the legacy fixture-preview path is
-    # preserved for offline SSR rendering.
-    if fx.campaign_id and fx.plan_id:
-        generate_button = (
-            '<button class="btn primary" data-action="generate-content" '
-            f'data-campaign-id="{html.escape(fx.campaign_id)}" '
-            f'data-plan-id="{html.escape(fx.plan_id)}">'
-            "Generiši sadržaj"
-            "</button>"
-        )
-        result_node = (
-            '<div class="callout" data-generate-result hidden></div>'
-        )
-    else:
-        generate_button = (
-            '<button class="btn primary" data-action="toast" '
-            'data-message="Nema otvorene kampanje. Pokreni '
-            "'Sačuvaj i napravi plan' iz prethodnog ekrana.\">"
-            "Generiši sadržaj"
-            "</button>"
-        )
-        result_node = ""
+    # ACS-GUI-008 fix-brief-2 BF-1: the live "Generiši sadržaj" button
+    # and the ``data-generate-result`` callout are ALWAYS emitted in
+    # the static HTML, even when ``campaign_id``/``plan_id`` are
+    # unknown at build time. The ``app.js`` boot IIFE (which reads
+    # ``?campaign=`` and ``?plan=`` from ``location.search``) fills in
+    # the data attributes and reveals the button at RUNTIME. Without
+    # this, the BUILD-TIME SSR can never carry the live control — the
+    # ids are RUNTIME concepts (they are produced by
+    # ``create_campaign_and_generate_plan`` and forwarded via the
+    # URL). The button is ``hidden`` by default so the fixture-only
+    # preview path is preserved when no campaign/plan URL is supplied.
+    generate_button = (
+        '<button class="btn primary" data-action="generate-content" '
+        f'data-campaign-id="{html.escape(fx.campaign_id or "")}" '
+        f'data-plan-id="{html.escape(fx.plan_id or "")}" hidden>'
+        "Generiši sadržaj"
+        "</button>"
+    )
+    result_node = (
+        '<div class="callout" data-generate-result hidden></div>'
+    )
     return (
         '<div class="card">'
         "<h3>Uredi sadržaj</h3>"

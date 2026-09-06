@@ -312,26 +312,40 @@ def test_render_body_with_campaign_id_emits_generate_content_button() -> None:
     assert "data-generate-result" in body
 
 
-def test_render_body_default_fixture_keeps_legacy_toast_stub() -> None:
-    """Without a campaign_id (legacy / no-campaign path), the body
-    must NOT contain the live bridge button — the screen stays a
-    fixture preview, with the "no campaign" toast stub instead.
+def test_render_body_default_fixture_emits_hidden_live_button() -> None:
+    """ACS-GUI-008 fix-brief-2 BF-1: even without a campaign_id, the
+    static HTML carries the live "Generiši sadržaj" button so the
+    ``app.js`` boot IIFE can wire it at RUNTIME when ``?campaign=``
+    and ``?plan=`` are present in the URL. The button is ``hidden``
+    by default; the result callout is emitted (also hidden) so the
+    JS handler does not have to querySelector for a missing node.
+
+    The legacy "Nema otvorene kampanje" toast stub is GONE — it was
+    a build-time-only fallback that could never have worked in
+    production (the static HTML never sees the runtime ids).
     """
     body = render_body()  # DEFAULT_FIXTURE has campaign_id=None
-    assert 'data-action="generate-content"' not in body
-    assert 'data-campaign-id' not in body
-    assert 'data-plan-id' not in body
-    # The toast-stub button for "no campaign" is still present so
-    # the user gets a friendly message.
-    assert "Nema otvorene kampanje" in body
+    assert 'data-action="generate-content"' in body
+    # Both ids are present as empty placeholders (so the JS can
+    # populate them when the URL carries the runtime values).
+    assert 'data-campaign-id=""' in body
+    assert 'data-plan-id=""' in body
+    # The button is hidden in the no-campaign case.
+    assert 'data-action="generate-content"' in body
+    assert body.count('hidden>Generi') >= 1
+    # The result callout is always emitted (also hidden) so the JS
+    # handler has a stable querySelector target.
+    assert "data-generate-result" in body
+    # The legacy "no campaign" toast stub is gone.
+    assert "Nema otvorene kampanje" not in body
 
 
-def test_render_body_with_only_plan_id_keeps_legacy_toast_stub() -> None:
-    """ACS-GUI-008 (review feedback): the live button requires BOTH
-    ``campaign_id`` AND ``plan_id``. If only one is set (e.g. the
-    plan_id is in the URL but the campaign_id is missing because the
-    caller forgot to forward it), the body falls back to the legacy
-    toast stub rather than emitting a half-broken live button.
+def test_render_body_with_only_plan_id_emits_button_with_empty_campaign_id() -> None:
+    """ACS-GUI-008 fix-brief-2 BF-1: the live button is ALWAYS emitted
+    in the static HTML, but it stays ``hidden`` until BOTH
+    ``campaign_id`` AND ``plan_id`` are known. The
+    ``app.js`` boot IIFE is responsible for revealing it (and
+    populating the data attributes) when the URL carries both.
     """
     fx = StudioSadrzajaFixture(
         campaign_name="X",
@@ -359,8 +373,19 @@ def test_render_body_with_only_plan_id_keeps_legacy_toast_stub() -> None:
         plan_id="plan-only",
     )
     body = render_body(fx)
-    assert 'data-action="generate-content"' not in body
-    assert 'data-plan-id="plan-only"' not in body
+    # The button is emitted (the JS IIFE can show it when the URL
+    # carries the missing campaign id), but stays ``hidden`` because
+    # the bridge requires both.
+    assert 'data-action="generate-content"' in body
+    assert 'data-campaign-id=""' in body
+    # The plan_id is interpolated verbatim — the JS IIFE will leave
+    # it alone (it overwrites only when the URL has both values).
+    assert 'data-plan-id="plan-only"' in body
+    # The button carries the ``hidden`` attribute (no live button
+    # without both ids).
+    assert 'data-action="generate-content" data-campaign-id=""' in body
+    # The result callout is always emitted.
+    assert "data-generate-result" in body
 
 
 def test_render_body_generate_content_button_escapes_campaign_id() -> None:

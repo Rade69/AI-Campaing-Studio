@@ -334,9 +334,27 @@ async function generateContent(button) {
 })();
 
 (function(){
-  const campaign=new URLSearchParams(location.search).get('campaign');
-  if(!campaign) return;
-  document.querySelectorAll('[data-campaign-only]').forEach(el=>el.hidden=false);
-  document.querySelectorAll('[data-campaign-hide]').forEach(el=>el.hidden=true);
-  document.querySelectorAll('[data-campaign-name]').forEach(el=>el.textContent=campaign);
+  const params=new URLSearchParams(location.search);
+  const campaign=params.get('campaign');
+  const plan=params.get('plan');
+  if(campaign){
+    document.querySelectorAll('[data-campaign-only]').forEach(el=>el.hidden=false);
+    document.querySelectorAll('[data-campaign-hide]').forEach(el=>el.hidden=true);
+    document.querySelectorAll('[data-campaign-name]').forEach(el=>el.textContent=campaign);
+  }
+  // ACS-GUI-008 fix-brief-2 BF-1: the live "Generiši sadržaj" button
+  // is part of the build-time static HTML, but its data attributes +
+  // visibility depend on the RUNTIME URL. When BOTH ``?campaign=`` AND
+  // ``?plan=`` are present, populate the data attributes the bridge
+  // expects (``data-campaign-id``, ``data-plan-id``) and reveal the
+  // button. Otherwise the button stays hidden (the fixture-only
+  // preview path). The two are checked together because the bridge
+  // contract requires both, and exposing a half-wired button would
+  // surface a confusing "Nedostaje plan_id" toast on every click.
+  const btn=document.querySelector('[data-action="generate-content"]');
+  if(btn && campaign && plan){
+    btn.dataset.campaignId=campaign;
+    btn.dataset.planId=plan;
+    btn.hidden=false;
+  }
 })();

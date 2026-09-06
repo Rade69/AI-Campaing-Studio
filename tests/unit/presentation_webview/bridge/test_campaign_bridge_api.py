@@ -15,6 +15,7 @@ against a real SQLite DB with a fake AI port) lives in
 from __future__ import annotations
 
 import json
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Thread
@@ -26,11 +27,10 @@ from ai_campaign_studio.infrastructure.database.connection import create_connect
 from ai_campaign_studio.infrastructure.database.migrations import run_migrations
 from ai_campaign_studio.infrastructure.database.repositories import (
     SqliteCampaignRepository,
-    SqliteContentRepository,
-    SqliteFactRepository,
-    SqliteRevisionRepository,
     SqliteProviderConfigRepository,
-    SqliteRevisionRepository,
+)
+from ai_campaign_studio.infrastructure.database.unit_of_work import (
+    SqliteUnitOfWork,
 )
 from ai_campaign_studio.ports.ai import AIRequest, AIResponse
 from ai_campaign_studio.ports.provider_config import ProviderConfig
@@ -1009,7 +1009,12 @@ def _seed_brand_and_campaign(
     from ai_campaign_studio.domain.common.ids import CampaignItemId
 
     # 1. Brand fixture (real; we exercise the same path the live app uses).
-    brand_id, snapshot_id = bridge._ensure_brand()
+    # ``_ensure_brand`` reads/writes through ``self._brand_repo``/``_fact_repo``/
+    # ``_uow`` properties which require an active ``_resource_scope``. Open
+    # one for the call, close it before opening a separate connection
+    # for the campaign/plan seed below.
+    with bridge._resource_scope():
+        brand_id, snapshot_id = bridge._ensure_brand()
 
     # 2. Campaign with N target variants (round-robin will pick from
     #    this list). Default 1 target = the typical Instagram-FEED_POST
@@ -1031,33 +1036,40 @@ def _seed_brand_and_campaign(
         "content_piece_count": num_items,
         "content_language_context": "BHS_LATIN",
     }
-    campaign = CreateCampaign(
-        campaign_repo=bridge._campaign_repo,
-        unit_of_work=bridge._uow,
-    ).execute(brand_id, snapshot_id, raw_brief)
+    connection = create_connection(bridge._bootstrap.paths.database_path)
+    try:
+        campaign_repo = SqliteCampaignRepository(connection)
+        uow = SqliteUnitOfWork(connection)
+        campaign = CreateCampaign(
+            campaign_repo=campaign_repo,
+            unit_of_work=uow,
+        ).execute(brand_id, snapshot_id, raw_brief)
 
-    # 3. Plan with N items (DRAFT — the bridge approves it).
-    plan_items: list[CampaignItem] = []
-    for i in range(num_items):
-        plan_items.append(
-            CampaignItem(
-                id=CampaignItemId(f"item-{i+1}"),
-                order=i + 1,
-                role=CampaignRole.PROBLEM if i == 0 else CampaignRole.EDUCATION,
-                topic=f"{item_topic_prefix}{i+1}",
-                goal="awareness",
-                status=CampaignItemStatus.PLANNED,
+        # 3. Plan with N items (DRAFT — the bridge approves it).
+        plan_items: list[CampaignItem] = []
+        for i in range(num_items):
+            plan_items.append(
+                CampaignItem(
+                    id=CampaignItemId(f"item-{i+1}"),
+                    order=i + 1,
+                    role=CampaignRole.PROBLEM if i == 0 else CampaignRole.EDUCATION,
+                    topic=f"{item_topic_prefix}{i+1}",
+                    goal="awareness",
+                    status=CampaignItemStatus.PLANNED,
+                )
             )
+        plan = CampaignPlan(
+            id="plan-1",
+            campaign_id=campaign.id,
+            version=1,
+            status=CampaignPlanStatus.DRAFT,
+            created_at=datetime.now(UTC),
+            items=tuple(plan_items),
         )
-    plan = CampaignPlan(
-        id="plan-1",
-        campaign_id=campaign.id,
-        version=1,
-        status=CampaignPlanStatus.DRAFT,
-        created_at=datetime.now(UTC),
-        items=tuple(plan_items),
-    )
-    bridge._campaign_repo.save_plan(plan)
+        campaign_repo.save_plan(plan)
+        connection.commit()
+    finally:
+        connection.close()
 
     return str(campaign.id), str(plan.id)
 
@@ -1073,29 +1085,38 @@ def _approve_plan(bridge: CampaignBridgeApi, plan_id: str) -> None:
     # type ApproveCampaignPlan expects.
     from ai_campaign_studio.domain.common.ids import CampaignPlanId
 
-    ApproveCampaignPlan(
-        campaign_repo=bridge._campaign_repo,
-        unit_of_work=bridge._uow,
-    ).execute(CampaignPlanId(plan_id))
+    connection = create_connection(bridge._bootstrap.paths.database_path)
+    try:
+        ApproveCampaignPlan(
+            campaign_repo=SqliteCampaignRepository(connection),
+            unit_of_work=SqliteUnitOfWork(connection),
+        ).execute(CampaignPlanId(plan_id))
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def _count_content_pieces(bridge: CampaignBridgeApi, campaign_id_str: str) -> int:
     """Direct DB count of content_pieces for a campaign — the strongest
     evidence the bridge actually wrote the rows (not just returned
     them in the result dict)."""
-    row = bridge._bootstrap.database_connection.execute(
-        "SELECT COUNT(*) AS c FROM content_pieces WHERE campaign_item_id IN"
-        " (SELECT id FROM campaign_items WHERE plan_id IN"
-        "  (SELECT id FROM campaign_plans WHERE campaign_id = ?))",
-        (campaign_id_str,),
-    ).fetchone()
-    return int(row["c"])
+    connection = create_connection(bridge._bootstrap.paths.database_path)
+    try:
+        row = connection.execute(
+            "SELECT COUNT(*) AS c FROM content_pieces WHERE campaign_item_id IN"
+            " (SELECT id FROM campaign_items WHERE plan_id IN"
+            "  (SELECT id FROM campaign_plans WHERE campaign_id = ?))",
+            (campaign_id_str,),
+        ).fetchone()
+        return int(row["c"])
+    finally:
+        connection.close()
 
 
 def test_generate_content_happy_path_creates_all_pieces(tmp_path) -> None:
     """2+ items, all AI calls succeed -> ``ok=True``, all pieces in DB."""
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=3)
 
     with patch.object(
@@ -1123,7 +1144,7 @@ def test_generate_content_partial_failure_ok_true(tmp_path) -> None:
     """1 of 2 AI calls raise -> ``ok=True``, ``generated_count=1``,
     ``failed_count=1``. The user can retry for the failed item."""
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
 
     class _FailOnSecondItem:
@@ -1174,7 +1195,7 @@ def test_generate_content_idempotent_re_click_does_not_duplicate(tmp_path) -> No
     and a friendly 'already done' message is the contract.
     """
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=3)
 
     with patch.object(
@@ -1204,7 +1225,7 @@ def test_generate_content_already_approved_plan_works(tmp_path) -> None:
     during a previous click) does not blow up. The bridge
     re-approves; that's idempotent at the domain level."""
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
     _approve_plan(bridge, plan_id)
 
@@ -1231,7 +1252,7 @@ def test_generate_content_campaign_not_found_returns_validation_error(
     non-existent campaign_id yields a clear 'campaign does not
     exist' message even when plan_id is also non-sensical."""
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     result = bridge.generate_campaign_content(
         {"campaign_id": "non-existent", "plan_id": "any"}
     )
@@ -1269,7 +1290,7 @@ def test_generate_content_plan_id_missing_returns_validation_error(
     ``create_campaign_and_generate_plan`` response and must forward
     it. A missing ``plan_id`` is a boundary error, not a DB lookup."""
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
     result = bridge.generate_campaign_content({"campaign_id": campaign_id})
     assert result["ok"] is False
@@ -1285,7 +1306,7 @@ def test_generate_content_plan_id_not_found_returns_validation_error(
     re-approve anything — the user must re-run
     ``Sačuvaj i napravi plan``."""
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
     result = bridge.generate_campaign_content(
         {"campaign_id": campaign_id, "plan_id": "plan-does-not-exist"}
@@ -1305,7 +1326,7 @@ def test_generate_content_plan_id_does_not_belong_to_campaign(
     Mirrors ``ExportCampaign._validate_plan_campaign_match`` from
     ACS-F1-034 (the same defensive pattern)."""
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
     # Plant a SECOND campaign with its OWN plan in the same DB.
     campaign2_id, plan2_id = _seed_brand_and_campaign(
@@ -1344,7 +1365,7 @@ def test_generate_content_carries_no_api_key_in_result(tmp_path) -> None:
     API key. Even on a 100-piece success run with a sentinel key,
     the result blob is key-free."""
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
     sentinel_key = "sk-SENTINEL-EXAMPLE-redacted-9999"
 
@@ -1374,7 +1395,7 @@ def test_generate_content_round_robin_assignment_matches_run_system_b(
     all indices 0, 1, 2). The contract is implicit but the test
     documents it for future maintainers."""
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=3, num_targets=1)
 
     captured_targets: list[tuple[str, str, str]] = []   # (channel, platform, format)
@@ -1412,10 +1433,14 @@ def test_generate_content_round_robin_assignment_matches_run_system_b(
     # Pull back the persisted ContentPiece rows and check the
     # ``target`` column on each one. All 3 should be the same (the
     # only target in the brief).
-    rows = bridge._bootstrap.database_connection.execute(
-        "SELECT target_channel, target_platform_code, target_format_code"
-        " FROM content_pieces ORDER BY created_at"
-    ).fetchall()
+    connection = create_connection(bridge._bootstrap.paths.database_path)
+    try:
+        rows = connection.execute(
+            "SELECT target_channel, target_platform_code, target_format_code"
+            " FROM content_pieces ORDER BY created_at"
+        ).fetchall()
+    finally:
+        connection.close()
     del captured_targets  # (suppress lint: used only for the comment)
     assert len(rows) == 3
     expected = ("SOCIAL", "INSTAGRAM", "FEED_POST")
@@ -1435,7 +1460,7 @@ def test_generate_content_unexpected_exception_in_adapter_factory(
     the caller never sees the SDK exception text.
     """
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
 
     with patch.object(
@@ -1455,3 +1480,178 @@ def test_generate_content_unexpected_exception_in_adapter_factory(
     assert result["error_code"] != "VALIDATION_ERROR"
     assert "factory exploded unexpectedly" not in result["error_message"]
     assert "RuntimeError" not in result["error_message"]
+
+
+# ----------------------------------------------------------------------
+# ACS-GUI-008 fix-brief-2 — new regression tests for BF-3, BF-4, and
+# the per-method worker-thread dispatch required by HOTFIX-002.
+# ----------------------------------------------------------------------
+
+
+def test_generate_content_works_from_fresh_worker_thread(tmp_path) -> None:
+    """ACS-GUI-008 fix-brief-2 (HOTFIX-002 follow-up): the same
+    pywebview thread-dispatch pattern that BROKE every other bridge
+    method pre-HOTFIX-002 must also work for the new
+    ``generate_campaign_content`` method. Without the
+    ``@_with_call_resources`` decorator, ``self._content_repo`` /
+    ``self._revision_repo`` (now ``@property`` getters backed by a
+    ``ContextVar``) would raise ``RuntimeError("SQLite resources
+    require an active bridge call")`` outside the main thread.
+    """
+    bridge = _isolated_bridge(tmp_path)
+    _configure_provider(bridge, "OPENAI")
+    campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
+
+    with patch.object(
+        bridge._bootstrap.secret_store, "get_secret", return_value="sk-test"
+    ), patch(
+        "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
+        _fake_ai_factory(_valid_social_payload()),
+    ):
+        result = _call_on_fresh_thread(
+            bridge.generate_campaign_content,
+            {"campaign_id": campaign_id, "plan_id": plan_id},
+        )
+
+    assert result["ok"] is True, result
+    assert result["generated_count"] == 2
+    assert _count_content_pieces(bridge, campaign_id) == 2
+
+
+def test_generate_content_concurrent_threads_serialize_via_lock(
+    tmp_path,
+) -> None:
+    """ACS-GUI-008 fix-brief-2 BF-3: two pywebview worker threads
+    hitting ``generate_campaign_content`` for the SAME
+    ``(campaign_id, plan_id)`` must be serialized. Without the
+    per-pair lock, both threads can read the "empty existing-pieces"
+    snapshot before either writes, and BOTH call
+    ``GenerateSocialPost`` for the same ``CampaignItem`` -- duplicates
+    in the user's pipeline.
+
+    Uses ``threading.Barrier`` to guarantee the two threads actually
+    overlap inside the locked region (not just back-to-back), same
+    pattern as the HOTFIX-002 review test.
+    """
+    bridge = _isolated_bridge(tmp_path)
+    _configure_provider(bridge, "OPENAI")
+    campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
+
+    barrier = threading.Barrier(2)
+    results: list[dict] = []
+    errors: list[BaseException] = []
+
+    def _run() -> None:
+        try:
+            barrier.wait(timeout=5)
+            with patch.object(
+                bridge._bootstrap.secret_store,
+                "get_secret",
+                return_value="sk-test",
+            ), patch(
+                "ai_campaign_studio.presentation_webview.bridge"
+                ".build_text_generation_adapter",
+                _fake_ai_factory(_valid_social_payload()),
+            ):
+                results.append(
+                    bridge.generate_campaign_content(
+                        {"campaign_id": campaign_id, "plan_id": plan_id}
+                    )
+                )
+        except BaseException as exc:  # pragma: no cover
+            errors.append(exc)
+
+    threads = [Thread(target=_run) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    assert not errors, f"thread raised: {errors!r}"
+    assert len(results) == 2
+
+    # Both calls return ok=True. The count of NEWLY generated pieces
+    # is 0 for the second call (idempotency: pieces already exist).
+    # The first call may report 2, the second 0; what matters is the
+    # TOTAL rows in the DB == num_items, not 2*num_items.
+    total_generated = sum(r["generated_count"] for r in results)
+    assert total_generated == 2, (
+        f"expected exactly 2 pieces total across both calls "
+        f"(no duplicates), got {total_generated}"
+    )
+    assert _count_content_pieces(bridge, campaign_id) == 2
+
+
+def test_generate_content_superseded_plan_rejected_no_ai_calls(
+    tmp_path,
+) -> None:
+    """ACS-GUI-008 fix-brief-2 BF-4: a plan in ``SUPERSEDED`` state
+    (replaced by a future ``EditCampaignPlan`` flow) must be
+    REJECTED up-front with ``VALIDATION_ERROR`` and ZERO AI calls.
+    Before the fix, ``SUPERSEDED`` silently fell through the
+    ``else: approved = plan`` branch and the bridge happily called
+    ``GenerateSocialPost`` for an inactive plan -- wasting AI calls
+    and creating content_pieces that point at a "tombstoned" plan.
+    """
+    bridge = _isolated_bridge(tmp_path)
+    _configure_provider(bridge, "OPENAI")
+    campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
+
+    # Force the plan into SUPERSEDED state directly via the repo
+    # (no GUI flow for this exists today, but the test must cover
+    # the BF-4 branch). ``CampaignPlan`` is a frozen dataclass, so
+    # we use ``dataclasses.replace`` to build a new instance.
+    from dataclasses import replace
+
+    from ai_campaign_studio.domain.campaign.enums import (
+        CampaignPlanStatus,
+    )
+    from ai_campaign_studio.domain.common.ids import CampaignPlanId
+
+    connection = create_connection(bridge._bootstrap.paths.database_path)
+    try:
+        repo = SqliteCampaignRepository(connection)
+        plan = repo.get_plan(CampaignPlanId(plan_id))
+        assert plan is not None
+        superseded_plan = replace(plan, status=CampaignPlanStatus.SUPERSEDED)
+        repo.save_plan(superseded_plan)
+        connection.commit()
+    finally:
+        connection.close()
+
+    ai_call_count = 0
+    original = bridge._generate_campaign_content_locked  # sanity check
+
+    def _counting_factory(payload: dict):
+        def _factory(
+            provider_code: str, api_key: str, *, base_url: str | None = None
+        ):
+            nonlocal ai_call_count
+            ai_call_count += 1
+            return _FakeAiAdapter(payload)
+        return _factory
+
+    with patch.object(
+        bridge._bootstrap.secret_store, "get_secret", return_value="sk-test"
+    ), patch(
+        "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
+        _counting_factory(_valid_social_payload()),
+    ):
+        result = bridge.generate_campaign_content(
+            {"campaign_id": campaign_id, "plan_id": plan_id}
+        )
+
+    # The bridge must reject with VALIDATION_ERROR (BF-4) and make
+    # ZERO AI calls -- the user is told to make a new plan.
+    assert result["ok"] is False, result
+    assert result["error_code"] == "VALIDATION_ERROR", result
+    assert "SUPERSEDED" in result["error_message"], result
+    assert "novi plan" in result["error_message"].lower(), result
+    assert ai_call_count == 0, (
+        f"BF-4 violation: bridge called AI {ai_call_count} time(s) "
+        f"for a SUPERSEDED plan; expected exactly 0"
+    )
+    # No content_pieces were written.
+    assert _count_content_pieces(bridge, campaign_id) == 0
+    # Sanity: the wrapped method exists (this test would be silently
+    # useless if the helper disappeared).
+    assert callable(original)

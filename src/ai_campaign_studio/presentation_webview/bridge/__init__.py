@@ -28,6 +28,7 @@ factory, and a brand-seeding cache.
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -109,6 +110,11 @@ class _CallResources:
     fact_repo: SqliteFactRepository
     campaign_repo: SqliteCampaignRepository
     provider_config_repo: SqliteProviderConfigRepository
+    # ACS-GUI-008: ``generate_campaign_content`` reads pieces and writes
+    # revisions; both repos live in the per-call graph (same lifetime
+    # as the rest).
+    content_repo: SqliteContentRepository
+    revision_repo: SqliteRevisionRepository
     uow: SqliteUnitOfWork
 
 
@@ -263,6 +269,18 @@ class CampaignBridgeApi:
         self._brand_fixture_path = (
             self._bootstrap.paths.resources_dir / "fixtures" / "brightsmile.json"
         )
+        # ACS-GUI-008 (fix-brief-2 BF-3): in-process lock per
+        # ``(campaign_id, plan_id)`` pair. Without this, two pywebview
+        # worker threads can both read the "empty existing-pieces"
+        # snapshot before either writes, and BOTH call
+        # ``GenerateSocialPost`` for the same ``CampaignItem`` (duplicate
+        # content in the pipeline). The lock is created lazily on first
+        # access, then reused; different ``(campaign_id, plan_id)`` pairs
+        # do not block each other. The single live ``CampaignBridgeApi``
+        # instance per process makes the instance-level dict the right
+        # scope (no need for a process-global).
+        self._generation_locks: dict[tuple[str, str], threading.Lock] = {}
+        self._generation_locks_guard = threading.Lock()
 
     # --- js_api surface ---
 
@@ -463,6 +481,33 @@ class CampaignBridgeApi:
         campaign_id = CampaignId(campaign_id_raw.strip())
         plan_id = CampaignPlanId(plan_id_raw.strip())
 
+        # -- 2. The rest of the method runs under a per-pair lock.
+        #    BF-3 (fix-brief-2): two pywebview worker threads calling
+        #    ``generate_campaign_content`` for the SAME
+        #    ``(campaign_id, plan_id)`` MUST be serialized -- the
+        #    "read existing pieces -> generate -> save" sequence is
+        #    otherwise a TOCTOU race that duplicates content. The lock
+        #    is acquired AFTER boundary validation (so a malformed
+        #    payload returns cheaply without holding the lock for the
+        #    caller) and BEFORE any DB read (so the lookup of the
+        #    plan that we are about to approve+generate is consistent
+        #    with the save).
+        with self._lock_for(str(campaign_id), str(plan_id)):
+            return self._generate_campaign_content_locked(
+                campaign_id, plan_id
+            )
+
+    def _generate_campaign_content_locked(
+        self,
+        campaign_id: CampaignId,
+        plan_id: CampaignPlanId,
+    ) -> dict:
+        """Inner body of ``generate_campaign_content``; runs under the
+        per-``(campaign_id, plan_id)`` lock (BF-3). Split out so the
+        lock scope is small and explicit, and the locked region can be
+        reasoned about (and tested) independently of the JS-facing
+        boundary-validation prologue.
+        """
         # -- 2. Campaign + brief + plan + targets (all-or-nothing up
         #    to this point -- still inside the per-method try/except
         #    so a domain error here maps to VALIDATION_ERROR).
@@ -552,6 +597,24 @@ class CampaignBridgeApi:
             # Already APPROVED (or any other non-DRAFT state — we are
             # tolerant on the read path, strict on the write path).
             approved = plan
+
+        # -- 3b. BF-4 (fix-brief-2): explicit rejection of plans in a
+        #    non-APPROVED state (today: ``SUPERSEDED``, replaced by a
+        #    newer version via the future ``EditCampaignPlan`` flow).
+        #    Without this, a ``SUPERSEDED`` plan falls through the
+        #    ``else: approved = plan`` branch and the bridge calls
+        #    ``GenerateSocialPost`` for a plan the user is no longer
+        #    expected to publish -- wasting AI calls, and creating
+        #    content_pieces that point at a "tombstoned" plan. We
+        #    reject up-front with VALIDATION_ERROR (the input is
+        #    semantically wrong: the plan id is valid but not the
+        #    active one) and 0 AI calls are made.
+        if approved.status is not CampaignPlanStatus.APPROVED:
+            return self._generate_err(
+                _ERROR_VALIDATION,
+                f"Plan {plan_id} je u stanju {approved.status.value}, "
+                "očekivano APPROVED. Napravi novi plan.",
+            )
 
         # -- 4. Provider resolution (reused helper).
         try:
@@ -690,6 +753,7 @@ class CampaignBridgeApi:
                 ),
             )
         )
+    @_with_call_resources
     def configure_provider(self, raw_payload: dict) -> dict:
         """Persist a provider API key into the real SecretStore (ACS-GUI-007).
 
@@ -805,6 +869,8 @@ class CampaignBridgeApi:
             fact_repo=SqliteFactRepository(connection),
             campaign_repo=SqliteCampaignRepository(connection),
             provider_config_repo=SqliteProviderConfigRepository(connection),
+            content_repo=SqliteContentRepository(connection),
+            revision_repo=SqliteRevisionRepository(connection),
             uow=SqliteUnitOfWork(connection),
         )
         token = self._active_resources.set(resources)
@@ -840,7 +906,42 @@ class CampaignBridgeApi:
     def _uow(self) -> SqliteUnitOfWork:
         return self._resources().uow
 
+    @property
+    def _content_repo(self) -> SqliteContentRepository:
+        # ACS-GUI-008: ``generate_campaign_content`` reads existing
+        # pieces (idempotency pre-check) and writes new ones (via
+        # ``GenerateSocialPost``). Same per-call lifetime as the
+        # other repos.
+        return self._resources().content_repo
+
+    @property
+    def _revision_repo(self) -> SqliteRevisionRepository:
+        # ACS-GUI-008: ``GenerateSocialPost`` writes one ``Revision``
+        # row per generated piece. Same per-call lifetime.
+        return self._resources().revision_repo
+
     # --- helpers (internal, not exposed to JS) ---
+
+    def _lock_for(
+        self, campaign_id: str, plan_id: str
+    ) -> threading.Lock:
+        """Return the per-``(campaign_id, plan_id)`` lock, creating it once.
+
+        ACS-GUI-008 fix-brief-2 BF-3: serializes concurrent
+        ``generate_campaign_content`` calls for the same plan so the
+        "read existing pieces -> generate -> save" sequence is atomic
+        with respect to other threads. Different pairs do not block
+        each other (independent locks). Safe under
+        ``threading.Lock`` (CPython GIL protects the dict mutation; the
+        guard is belt-and-braces for free-threading Python).
+        """
+        key = (campaign_id, plan_id)
+        with self._generation_locks_guard:
+            lock = self._generation_locks.get(key)
+            if lock is None:
+                lock = threading.Lock()
+                self._generation_locks[key] = lock
+            return lock
 
     def _ensure_brand(self):
         """Read brand-seed.json; if missing or stale, re-seed from fixture.
