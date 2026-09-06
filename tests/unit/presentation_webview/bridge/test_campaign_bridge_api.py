@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 from datetime import UTC
 from pathlib import Path
+from threading import Thread
 from unittest.mock import patch
 
 from ai_campaign_studio.config.paths import AppPaths
@@ -24,12 +25,9 @@ from ai_campaign_studio.config.settings import AppSettings
 from ai_campaign_studio.infrastructure.database.connection import create_connection
 from ai_campaign_studio.infrastructure.database.migrations import run_migrations
 from ai_campaign_studio.infrastructure.database.repositories import (
-    SqliteBrandRepository,
     SqliteCampaignRepository,
-    SqliteFactRepository,
     SqliteProviderConfigRepository,
 )
-from ai_campaign_studio.infrastructure.database.unit_of_work import SqliteUnitOfWork
 from ai_campaign_studio.ports.ai import AIRequest, AIResponse
 from ai_campaign_studio.ports.provider_config import ProviderConfig
 from ai_campaign_studio.presentation_webview.bridge import CampaignBridgeApi
@@ -37,9 +35,6 @@ from ai_campaign_studio.presentation_webview.bridge import CampaignBridgeApi
 # --- fixtures ---
 
 
-_MIGRATIONS_DIR = (
-    Path(__file__).resolve().parents[4] / "resources" / "migrations"
-)
 _FIXTURE_PATH = (
     Path(__file__).resolve().parents[4] / "resources" / "fixtures" / "brightsmile.json"
 )
@@ -53,9 +48,8 @@ def _isolated_bridge(tmp_path: Path) -> CampaignBridgeApi:
     Uses the explicit ``AppPaths(data_dir_override=tmp_path)`` seam
     that ``create_bootstrap(paths=...)`` accepts — NOT a fake env var,
     because ``AppSettings`` does not actually expose
-    ``data_dir_override`` as an env-driven field. The DB connection
-    is also rebuilt against the test path with migrations applied so
-    every test starts from a clean schema.
+    ``data_dir_override`` as an env-driven field. Bridge construction
+    runs migrations once; each public method opens its own connection.
 
     ACS-GUI-007: also passes ``settings=AppSettings(environment="development")``
     so the test bridge uses the read-only ``EnvironmentSecretStore``
@@ -71,36 +65,36 @@ def _isolated_bridge(tmp_path: Path) -> CampaignBridgeApi:
     )
     settings = AppSettings(environment="development")
     bridge = CampaignBridgeApi(paths=paths, settings=settings)
-    # The bootstrap's DB connection lives at ``paths.database_path``,
-    # which is already inside ``tmp_path`` because we passed the override
-    # in. We close it and reopen against the explicit test path so the
-    # brand/campaign/provider repos share one connection, then re-run
-    # migrations against a fresh schema.
-    bridge._bootstrap.database_connection.close()
-    conn = create_connection(db_path)
-    run_migrations(conn, _MIGRATIONS_DIR)
-    bridge._bootstrap.database_connection = conn
-    bridge._brand_repo = SqliteBrandRepository(conn)
-    bridge._fact_repo = SqliteFactRepository(conn)
-    bridge._campaign_repo = SqliteCampaignRepository(conn)
-    bridge._provider_config_repo = SqliteProviderConfigRepository(conn)
-    bridge._uow = SqliteUnitOfWork(conn)
     bridge._brand_fixture_path = _FIXTURE_PATH
     return bridge
 
 
 def _configure_provider(
-    repo: SqliteProviderConfigRepository, code: str, *, configured: bool = True
+    bridge: CampaignBridgeApi, code: str, *, configured: bool = True
 ) -> None:
     from datetime import datetime
-    repo.save_provider_config(ProviderConfig(
-        provider_code=code,
-        configured=configured,
-        validated=True,
-        credential_ref=f"provider/{code}/api_key",
-        base_url=None,
-        updated_at=datetime.now(UTC),
-    ))
+    connection = create_connection(bridge._bootstrap.paths.database_path)
+    try:
+        repo = SqliteProviderConfigRepository(connection)
+        repo.save_provider_config(ProviderConfig(
+            provider_code=code,
+            configured=configured,
+            validated=True,
+            credential_ref=f"provider/{code}/api_key",
+            base_url=None,
+            updated_at=datetime.now(UTC),
+        ))
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def _scalar(bridge: CampaignBridgeApi, query: str) -> object:
+    connection = create_connection(bridge._bootstrap.paths.database_path)
+    try:
+        return connection.execute(query).fetchone()[0]
+    finally:
+        connection.close()
 
 
 def _valid_brief() -> dict:
@@ -171,6 +165,91 @@ def _valid_ai_payload() -> dict:
     }
 
 
+def _call_on_fresh_thread(call, payload: dict) -> dict:
+    """Mirror pywebview's one-new-thread-per-js_api-call dispatch."""
+    results: list[dict] = []
+    errors: list[BaseException] = []
+
+    def _target() -> None:
+        try:
+            results.append(call(payload))
+        except BaseException as exc:  # pragma: no cover - assertion aid
+            errors.append(exc)
+
+    thread = Thread(target=_target)
+    thread.start()
+    thread.join()
+
+    assert not errors, f"js_api method raised from worker thread: {errors!r}"
+    assert len(results) == 1
+    return results[0]
+
+
+def test_js_api_methods_work_from_fresh_worker_threads(tmp_path) -> None:
+    """ACS-HOTFIX-002: reproduce real pywebview thread dispatch."""
+    bridge = _isolated_bridge(tmp_path)
+
+    with patch.object(bridge._bootstrap.secret_store, "set_secret"):
+        configured = _call_on_fresh_thread(
+            bridge.configure_provider,
+            {"provider_code": "openai", "api_key": "placeholder"},
+        )
+    assert configured["ok"] is True, configured
+
+    _configure_provider(bridge, "OPENAI")
+    with patch.object(
+        bridge._bootstrap.secret_store, "get_secret", return_value="placeholder"
+    ), patch(
+        "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
+        _fake_ai_factory(_valid_ai_payload()),
+    ):
+        generated = _call_on_fresh_thread(
+            bridge.create_campaign_and_generate_plan,
+            _valid_brief(),
+        )
+    assert generated["ok"] is True, generated
+
+
+def test_migrations_run_once_at_bridge_startup_not_per_js_api_call(tmp_path) -> None:
+    """Per-call connections reuse the schema prepared at startup."""
+    with patch(
+        "ai_campaign_studio.bootstrap.run_migrations", wraps=run_migrations
+    ) as migration_runner:
+        bridge = _isolated_bridge(tmp_path)
+        with patch.object(bridge._bootstrap.secret_store, "set_secret"):
+            first = bridge.configure_provider(
+                {"provider_code": "openai", "api_key": "placeholder"}
+            )
+            second = bridge.configure_provider(
+                {"provider_code": "openai", "api_key": "placeholder"}
+            )
+
+    assert first["ok"] is True
+    assert second["ok"] is True
+    assert migration_runner.call_count == 1
+
+
+def test_connection_failure_never_raises_or_leaks_secret_to_js(tmp_path) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    sentinel_key = "test-secret-connection-failure-sentinel"
+
+    with patch(
+        "ai_campaign_studio.presentation_webview.bridge.create_connection",
+        side_effect=RuntimeError(f"failed while handling {sentinel_key}"),
+    ):
+        configured = bridge.configure_provider(
+            {"provider_code": "openai", "api_key": sentinel_key}
+        )
+        generated = bridge.create_campaign_and_generate_plan(_valid_brief())
+
+    assert configured["ok"] is False
+    assert configured["error_code"] == "INTERNAL_ERROR"
+    assert generated["ok"] is False
+    assert generated["error_code"] == "INTERNAL_ERROR"
+    assert sentinel_key not in json.dumps(configured)
+    assert sentinel_key not in json.dumps(generated)
+
+
 # --- boundary validation (PYWEBVIEW_SECURITY §3) ---
 
 
@@ -207,7 +286,7 @@ def test_no_provider_configured_returns_no_provider_error(tmp_path) -> None:
 
 def test_configured_provider_but_no_key_returns_key_missing(tmp_path) -> None:
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     with patch.object(bridge._bootstrap.secret_store, "get_secret", return_value=""):
         result = bridge.create_campaign_and_generate_plan(_valid_brief())
     assert result["ok"] is False
@@ -216,8 +295,8 @@ def test_configured_provider_but_no_key_returns_key_missing(tmp_path) -> None:
 
 def test_provider_fallback_uses_second_when_first_has_no_key(tmp_path) -> None:
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
-    _configure_provider(bridge._provider_config_repo, "GOOGLE")
+    _configure_provider(bridge, "OPENAI")
+    _configure_provider(bridge, "GOOGLE")
 
     def _fake_get_secret(ref: str) -> str:
         # OPENAI is higher priority but its key is missing; GOOGLE has one.
@@ -248,9 +327,9 @@ def test_provider_fallback_uses_second_when_first_has_no_key(tmp_path) -> None:
 
 def test_provider_fallback_all_missing_keys_returns_key_missing(tmp_path) -> None:
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
-    _configure_provider(bridge._provider_config_repo, "ANTHROPIC")
-    _configure_provider(bridge._provider_config_repo, "GOOGLE")
+    _configure_provider(bridge, "OPENAI")
+    _configure_provider(bridge, "ANTHROPIC")
+    _configure_provider(bridge, "GOOGLE")
     with patch.object(
         bridge._bootstrap.secret_store, "get_secret", return_value=""
     ):
@@ -264,7 +343,7 @@ def test_provider_fallback_all_missing_keys_returns_key_missing(tmp_path) -> Non
 
 def test_happy_path_creates_campaign_and_plan(tmp_path) -> None:
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     with patch.object(
         bridge._bootstrap.secret_store, "get_secret", return_value="sk-test-key"
     ), patch(
@@ -285,7 +364,7 @@ def test_happy_path_creates_campaign_and_plan(tmp_path) -> None:
 def test_brand_seed_reused_on_second_call(tmp_path) -> None:
     """Two consecutive clicks must NOT duplicate the brand (contract)."""
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     with patch.object(
         bridge._bootstrap.secret_store, "get_secret", return_value="sk-test-key"
     ), patch(
@@ -301,17 +380,13 @@ def test_brand_seed_reused_on_second_call(tmp_path) -> None:
             (tmp_path / "brand-seed.json").read_text(encoding="utf-8")
         )
     # Exactly one brand in the DB.
-    count = bridge._bootstrap.database_connection.execute(
-        "SELECT COUNT(*) FROM brands"
-    ).fetchone()[0]
+    count = _scalar(bridge, "SELECT COUNT(*) FROM brands")
     assert count == 1, f"expected 1 brand, got {count}"
     # Same identity across both calls, not just the same row count: the
     # seed file must point at the SAME brand_id both times, and the single
     # DB row must be that same id.
     assert first_seed["brand_id"] == second_seed["brand_id"]
-    db_brand_id = bridge._bootstrap.database_connection.execute(
-        "SELECT id FROM brands"
-    ).fetchone()[0]
+    db_brand_id = _scalar(bridge, "SELECT id FROM brands")
     assert db_brand_id == first_seed["brand_id"]
 
 
@@ -320,7 +395,7 @@ def test_returned_dict_is_json_serializable_and_contains_no_secrets(tmp_path) ->
     and never contain API keys, tokens, or paths.
     """
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     sentinel_key = "sk-EXAMPLE-redacted-1234"
     with patch.object(
         bridge._bootstrap.secret_store, "get_secret", return_value=sentinel_key
@@ -341,7 +416,7 @@ def test_returned_dict_is_json_serializable_and_contains_no_secrets(tmp_path) ->
 
 def test_provider_adapter_construction_failure_returns_key_missing(tmp_path) -> None:
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "GOOGLE")
+    _configure_provider(bridge, "GOOGLE")
     with patch.object(
         bridge._bootstrap.secret_store, "get_secret", return_value="k"
     ), patch(
@@ -399,7 +474,7 @@ def test_orphan_campaign_deleted_when_generate_plan_fails(tmp_path) -> None:
     accumulate a new orphan row.
     """
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     with patch.object(
         bridge._bootstrap.secret_store, "get_secret", return_value="sk-test-key"
     ), patch(
@@ -414,12 +489,11 @@ def test_orphan_campaign_deleted_when_generate_plan_fails(tmp_path) -> None:
     # the bridge is the only API the JS caller sees, and we want to
     # prove the row is actually absent — not just that the function
     # returned a dict.
-    conn = bridge._bootstrap.database_connection
-    assert conn.execute("SELECT COUNT(*) FROM campaigns").fetchone()[0] == 0
+    assert _scalar(bridge, "SELECT COUNT(*) FROM campaigns") == 0
     # Brief created by CreateCampaign is also gone (it was created
     # in the same compensating action — see the docstring on
     # delete_campaign for why this is safe in the bridge's call site).
-    assert conn.execute("SELECT COUNT(*) FROM campaign_briefs").fetchone()[0] == 0
+    assert _scalar(bridge, "SELECT COUNT(*) FROM campaign_briefs") == 0
 
 
 def test_orphan_campaign_deleted_on_domain_error_in_generate_plan(
@@ -432,7 +506,7 @@ def test_orphan_campaign_deleted_on_domain_error_in_generate_plan(
     from ai_campaign_studio.domain.common.errors import InvariantViolation
 
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     with patch.object(
         bridge._bootstrap.secret_store, "get_secret", return_value="sk-test-key"
     ), patch(
@@ -443,8 +517,7 @@ def test_orphan_campaign_deleted_on_domain_error_in_generate_plan(
 
     assert result["ok"] is False
     assert result["error_code"] == "GENERATION_FAILED"
-    conn = bridge._bootstrap.database_connection
-    assert conn.execute("SELECT COUNT(*) FROM campaigns").fetchone()[0] == 0
+    assert _scalar(bridge, "SELECT COUNT(*) FROM campaigns") == 0
 
 
 def test_compensating_delete_failure_does_not_mask_generation_error(
@@ -456,14 +529,14 @@ def test_compensating_delete_failure_does_not_mask_generation_error(
     that hides what the user actually needs to know.
     """
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     with patch.object(
         bridge._bootstrap.secret_store, "get_secret", return_value="sk-test-key"
     ), patch(
         "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
         _failing_ai_factory(RuntimeError("provider down")),
     ), patch.object(
-        bridge._campaign_repo,
+        SqliteCampaignRepository,
         "delete_campaign",
         side_effect=RuntimeError("DB locked"),
     ):
@@ -486,13 +559,13 @@ def test_create_campaign_failure_does_not_call_delete(tmp_path) -> None:
     path (would be a no-op at best, masking the real error at worst).
     """
     bridge = _isolated_bridge(tmp_path)
-    _configure_provider(bridge._provider_config_repo, "OPENAI")
+    _configure_provider(bridge, "OPENAI")
     with patch.object(
         bridge._bootstrap.secret_store, "get_secret", return_value="sk-test-key"
     ), patch.object(
         bridge, "_ensure_brand", side_effect=ValueError("brand seed boom")
     ), patch.object(
-        bridge._campaign_repo, "delete_campaign"
+        SqliteCampaignRepository, "delete_campaign"
     ) as fake_delete:
         result = bridge.create_campaign_and_generate_plan(_valid_brief())
 

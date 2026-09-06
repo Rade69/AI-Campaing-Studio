@@ -28,7 +28,11 @@ factory, and a brand-seeding cache.
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import asdict, dataclass
+from functools import wraps
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +57,7 @@ from ai_campaign_studio.infrastructure.ai.provider_adapter_factory import (
     _PROVIDER_PRIORITY,
     build_text_generation_adapter,
 )
+from ai_campaign_studio.infrastructure.database.connection import create_connection
 from ai_campaign_studio.infrastructure.database.repositories import (
     SqliteBrandRepository,
     SqliteCampaignRepository,
@@ -78,6 +83,48 @@ _ERROR_KEY_MISSING = "PROVIDER_KEY_MISSING"
 _ERROR_VALIDATION = "VALIDATION_ERROR"
 _ERROR_GENERATION = "GENERATION_FAILED"
 _ERROR_INTERNAL = "INTERNAL_ERROR"
+
+
+@dataclass(frozen=True)
+class _CallResources:
+    """SQLite adapters owned by exactly one js_api invocation."""
+
+    brand_repo: SqliteBrandRepository
+    fact_repo: SqliteFactRepository
+    campaign_repo: SqliteCampaignRepository
+    provider_config_repo: SqliteProviderConfigRepository
+    uow: SqliteUnitOfWork
+
+
+def _with_call_resources(method: Callable[..., dict]) -> Callable[..., dict]:
+    """Run one public bridge method with a fresh, thread-local DB graph."""
+
+    @wraps(method)
+    def _wrapped(self: CampaignBridgeApi, *args: Any, **kwargs: Any) -> dict:
+        try:
+            with self._resource_scope():
+                return method(self, *args, **kwargs)
+        except Exception as exc:
+            # Connection open/close failures happen outside the method's
+            # own error mapping. Keep the js_api no-raise contract and do
+            # not log exception text: configure_provider's args may carry
+            # an API key even though the DB exception normally would not.
+            self._bootstrap.logger.error(
+                "bridge resource lifecycle failed for %s (err=%s)",
+                method.__name__,
+                type(exc).__name__,
+            )
+            if method.__name__ == "configure_provider":
+                return self._provider_err(
+                    _ERROR_INTERNAL,
+                    "Konfiguracija provajdera nije uspjela (interna greška).",
+                )
+            return self._err(
+                _ERROR_INTERNAL,
+                "Interna greška — pogledajte log aplikacije.",
+            )
+
+    return _wrapped
 
 
 def _ordered_configured_codes(configured_codes: list[str]) -> list[str]:
@@ -113,8 +160,9 @@ class CampaignBridgeApi:
 
     Lifetime: the bridge is constructed once in ``presentation_webview/
     __main__.py`` and passed to ``webview.create_window(..., js_api=self)``.
-    It owns the full composition root for the click (use-cases,
-    repositories, AI factory) — there is no per-call re-wire.
+    Pywebview dispatches each call on a fresh thread, so the bridge keeps
+    thread-safe shared services only. Every public call creates and closes
+    its own SQLite connection, repositories, and unit of work.
     """
 
     def __init__(
@@ -124,8 +172,9 @@ class CampaignBridgeApi:
         settings: AppSettings | None = None,
     ) -> None:
         # Bootstrap is the single source of truth for settings, paths,
-        # secret store, DB connection, and the registries. Construct it
-        # once; reuse across the lifetime of the bridge.
+        # secret store, DB migrations, and registries. Its connection is
+        # startup-only: create_bootstrap runs migrations exactly once, then
+        # we close it before pywebview starts dispatching worker threads.
         #
         # ``paths`` and ``settings`` are explicit test seams. Production
         # code passes neither, and the defaults below pick the right
@@ -142,12 +191,10 @@ class CampaignBridgeApi:
         if settings is None:
             settings = AppSettings(environment="production")
         self._bootstrap = create_bootstrap(settings=settings, paths=paths)
-        conn = self._bootstrap.database_connection
-        self._brand_repo = SqliteBrandRepository(conn)
-        self._fact_repo = SqliteFactRepository(conn)
-        self._campaign_repo = SqliteCampaignRepository(conn)
-        self._provider_config_repo = SqliteProviderConfigRepository(conn)
-        self._uow = SqliteUnitOfWork(conn)
+        self._bootstrap.database_connection.close()
+        self._active_resources: ContextVar[_CallResources | None] = ContextVar(
+            f"campaign_bridge_resources_{id(self)}", default=None
+        )
         # YamlPromptRepository.from_bundled_resources() reads from the
         # repo's ``resources/prompts/`` dir; this is the same source the
         # integration test uses, so prompts are identical between
@@ -157,8 +204,9 @@ class CampaignBridgeApi:
             self._bootstrap.paths.resources_dir / "fixtures" / "brightsmile.json"
         )
 
-    # --- js_api surface (exactly ONE public method) ---
+    # --- js_api surface ---
 
+    @_with_call_resources
     def create_campaign_and_generate_plan(self, raw_brief: dict) -> dict:
         """End-to-end: validate, persist brand+campaign, generate plan.
 
@@ -303,6 +351,7 @@ class CampaignBridgeApi:
                 "Interna greška — pogledajte log aplikacije.",
             )
 
+    @_with_call_resources
     def configure_provider(self, raw_payload: dict) -> dict:
         """Persist a provider API key into the real SecretStore (ACS-GUI-007).
 
@@ -400,6 +449,58 @@ class CampaignBridgeApi:
                 error_message=None,
             )
         )
+
+    # --- per-call SQLite resources ---
+
+    @contextmanager
+    def _resource_scope(self) -> Iterator[None]:
+        """Bind a fresh connection graph to the current js_api call only.
+
+        SQLite's default ``check_same_thread=True`` remains intact. The
+        connection is created on the pywebview worker thread that uses it
+        and is always closed there. ContextVar prevents concurrent calls
+        from overwriting each other's repositories.
+        """
+        connection = create_connection(self._bootstrap.paths.database_path)
+        resources = _CallResources(
+            brand_repo=SqliteBrandRepository(connection),
+            fact_repo=SqliteFactRepository(connection),
+            campaign_repo=SqliteCampaignRepository(connection),
+            provider_config_repo=SqliteProviderConfigRepository(connection),
+            uow=SqliteUnitOfWork(connection),
+        )
+        token = self._active_resources.set(resources)
+        try:
+            yield
+        finally:
+            self._active_resources.reset(token)
+            connection.close()
+
+    def _resources(self) -> _CallResources:
+        resources = self._active_resources.get()
+        if resources is None:
+            raise RuntimeError("SQLite resources require an active bridge call")
+        return resources
+
+    @property
+    def _brand_repo(self) -> SqliteBrandRepository:
+        return self._resources().brand_repo
+
+    @property
+    def _fact_repo(self) -> SqliteFactRepository:
+        return self._resources().fact_repo
+
+    @property
+    def _campaign_repo(self) -> SqliteCampaignRepository:
+        return self._resources().campaign_repo
+
+    @property
+    def _provider_config_repo(self) -> SqliteProviderConfigRepository:
+        return self._resources().provider_config_repo
+
+    @property
+    def _uow(self) -> SqliteUnitOfWork:
+        return self._resources().uow
 
     # --- helpers (internal, not exposed to JS) ---
 
