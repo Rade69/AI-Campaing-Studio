@@ -24,6 +24,7 @@ from ai_campaign_studio.domain.common.ids import (
     FactId,
     LayoutSpecId,
     PerformanceImportBatchId,
+    PerformanceImportRowId,
     PerformanceSnapshotId,
     PostId,
     RevisionId,
@@ -35,6 +36,7 @@ from ai_campaign_studio.domain.facts.entities import ApprovedFact
 from ai_campaign_studio.domain.performance.entities import (
     DistributionInstance,
     PerformanceImportBatch,
+    PerformanceImportRow,
     PerformanceSnapshot,
 )
 from ai_campaign_studio.domain.visual.entities import CampaignVisualSystem
@@ -222,6 +224,18 @@ class PerformanceRepositoryPort(Protocol):
     def get_performance_snapshot(
         self, snapshot_id: PerformanceSnapshotId
     ) -> PerformanceSnapshot | None: ...
+
+    def save_performance_import_row(
+        self, row: PerformanceImportRow
+    ) -> None: ...
+
+    def get_performance_import_row(
+        self, row_id: PerformanceImportRowId
+    ) -> PerformanceImportRow | None: ...
+
+    def list_performance_import_rows(
+        self, batch_id: PerformanceImportBatchId
+    ) -> tuple[PerformanceImportRow, ...]: ...
 
 
 @runtime_checkable
