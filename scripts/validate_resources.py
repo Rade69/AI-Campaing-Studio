@@ -1,4 +1,4 @@
-"""Validate bundled resources: i18n, regional, platforms, providers, migrations.
+"""Validate bundled resources: i18n, regional, platforms, providers, migrations, fonts.
 
 Usage:
 
@@ -11,7 +11,8 @@ Reuses the existing ``PlatformRegistry`` / ``AIProviderRegistry`` /
 runs at application startup is the source of truth — this script only
 adds checks the registries do not perform themselves (e.g. i18n key
 parity, BHS diacritics, secret-like field scan in provider YAMLs,
-migration ordering and checksum shape).
+migration ordering and checksum shape, and bundled font presence/
+loadability/glyph coverage).
 """
 
 import argparse
@@ -442,6 +443,51 @@ def validate_migrations(migrations_dir: Path) -> list[str]:
     return errors
 
 
+_FONT_FILENAMES = ("NotoSans-Regular.ttf", "NotoSans-Bold.ttf")
+_BHS_DIACRITICS = "čćšđžČĆŠĐŽ"
+
+
+def validate_fonts(fonts_dir: Path) -> list[str]:
+    """Validate the bundled renderer fonts.
+
+    Checks that both Noto Sans files exist, load as real TrueType fonts,
+    and actually cover the BHS Latin diacritics (a real glyph mask, not
+    just a non-zero advance width). This mirrors the ACS-F1-040 bundle
+    decision: the renderer must never silently fall back to a
+    wrong-metric font (ACS-F1-041 moves that failure to RENDER_ERROR, and
+    this validator catches a missing/corrupt font BEFORE a render runs).
+    """
+    errors: list[str] = []
+    if not fonts_dir.is_dir():
+        return [f"{fonts_dir}: not a directory"]
+
+    try:
+        from PIL import ImageFont
+    except Exception as exc:  # noqa: BLE001 — surface import failure
+        return [f"font validation unavailable (PIL import failed): {exc}"]
+
+    for filename in _FONT_FILENAMES:
+        path = fonts_dir / filename
+        if not path.is_file():
+            errors.append(f"{path}: bundled font file is missing")
+            continue
+        try:
+            font = ImageFont.truetype(path, size=24)
+        except Exception as exc:  # noqa: BLE001 — corrupt/non-font file
+            errors.append(f"{path}: not a loadable TrueType font: {exc}")
+            continue
+        missing = [
+            ch for ch in _BHS_DIACRITICS if font.getmask(ch).getbbox() is None
+        ]
+        if missing:
+            errors.append(
+                f"{path}: missing BHS Latin diacritic glyphs: "
+                f"{''.join(missing)}"
+            )
+
+    return errors
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", type=Path, default=Path("."))
@@ -453,6 +499,7 @@ def main(argv: list[str] | None = None) -> int:
     platforms_dir = root / "resources" / "platforms"
     providers_dir = root / "resources" / "ai_providers"
     migrations_dir = root / "resources" / "migrations"
+    fonts_dir = root / "resources" / "fonts"
 
     errors: list[str] = []
     errors.extend(validate_i18n(i18n_dir / "en.json", i18n_dir / "bhs.json"))
@@ -470,13 +517,17 @@ def main(argv: list[str] | None = None) -> int:
     errors.extend(validate_platforms(platforms_dir))
     errors.extend(validate_ai_providers(providers_dir))
     errors.extend(validate_migrations(migrations_dir))
+    errors.extend(validate_fonts(fonts_dir))
 
     if errors:
         for error in errors:
             print(error, file=sys.stderr)
         return 1
 
-    print("All resources are valid (i18n, regional, platforms, providers, migrations).")
+    print(
+        "All resources are valid "
+        "(i18n, regional, platforms, providers, migrations, fonts)."
+    )
     return 0
 
 
@@ -489,6 +540,7 @@ __all__ = [
     "validate_platforms",
     "validate_ai_providers",
     "validate_migrations",
+    "validate_fonts",
     "REQUIRED_I18N_KEYS",
     "EXPECTED_REGIONAL_FILES",
 ]

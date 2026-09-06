@@ -14,6 +14,7 @@ import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from ai_campaign_studio.domain.common.ids import (
@@ -34,7 +35,10 @@ from ai_campaign_studio.domain.visual.enums import (
     Overlay,
 )
 from ai_campaign_studio.domain.visual.layout import LayoutSpec
-from ai_campaign_studio.infrastructure.rendering import PillowRenderer
+from ai_campaign_studio.infrastructure.rendering import (
+    PillowRenderer,
+    selected_renderer,
+)
 from ai_campaign_studio.infrastructure.rendering.selected_renderer import (
     _NEUTRAL_ACCENT,
     _NEUTRAL_BG,
@@ -444,6 +448,34 @@ def test_bad_format_returns_render_error_with_sentinel_png(tmp_path: Path) -> No
     assert "bad format" in res.warnings[0].lower()
     # Sentinel PNG still on disk.
     assert Path(res.output_path).is_file()
+
+
+# --- font missing / corrupt (ACS-F1-041) --------------------------------
+
+
+def test_missing_bundled_font_returns_render_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A missing/corrupt bundled font must surface as RENDER_ERROR with a
+    ``FONT_RESOURCE_MISSING`` warning -- never a silent SUCCESS with wrong
+    text metrics (the ACS-F1-040 root-cause class of bug).
+
+    The real ``ImageFont.truetype`` OSError path is exercised by pointing
+    both font paths at a non-existent file, then constructing the renderer.
+    """
+    missing = tmp_path / "does-not-exist.ttf"
+    monkeypatch.setattr(selected_renderer, "_FONT_PATH_BOLD", missing)
+    monkeypatch.setattr(selected_renderer, "_FONT_PATH_REG", missing)
+
+    r = selected_renderer.PillowRenderer()
+    res = r.render(_make_request(tmp_path))
+
+    assert res.status is RenderStatus.RENDER_ERROR
+    assert len(res.warnings) == 1
+    assert "FONT_RESOURCE_MISSING" in res.warnings[0]
+    # Sentinel PNG still written (same contract as the bad-format path).
+    assert Path(res.output_path).is_file()
+    assert Path(res.output_path).stat().st_size > 0
 
 
 # --- CTA overflow (ACS-F1-035) ---------------------------------------------

@@ -30,12 +30,15 @@ Design decisions enforced here (per the A14 dio 2 contract):
 - Uncaught exceptions (corrupt image, Pillow bug, etc.) are caught
   and returned as ``RENDER_ERROR`` with a useful message in
   ``warnings``. Pillow never propagates a raw exception to the caller.
+- A missing/corrupt bundled font is NOT a silent fallback: it surfaces
+  as ``RENDER_ERROR`` with a ``FONT_RESOURCE_MISSING`` warning
+  (ACS-F1-041), so a render can never "succeed" with wrong text
+  metrics.
 """
 
 from __future__ import annotations
 
 import time
-import warnings
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -133,33 +136,18 @@ def _parse_format(fmt: str) -> tuple[int, int]:
 
 
 def _load_font(weight: str) -> ImageFont.FreeTypeFont:
-    """Load the bundled TrueType font, falling back to the Pillow
-    bitmap default only if the bundled file is physically missing or
-    corrupt.
+    """Load the bundled TrueType font at size 24.
 
-    The fallback returns a ``PIL.ImageFont.ImageFont`` (not a
-    ``FreeTypeFont``); we widen the return type so the fallback path
-    is type-checked honest -- callers treat both uniformly.
-
-    The fallback is now LOUD (``warnings.warn``) rather than silent.
-    The ACS-F1-040 root cause was exactly a silent fallback masking the
-    fact that the Windows-only font path did not exist on Linux CI.
-    With the bundled font, this branch should never fire in a normal
-    checkout -- if it does, something is broken and the operator must
-    hear about it (same "no fake success state" principle as the
-    renderer's other degradation paths).
+    Raises ``OSError`` when the bundled file is physically missing or
+    corrupt. There is deliberately NO ``ImageFont.load_default()``
+    fallback here: a missing/corrupt bundled font must surface as a
+    controlled ``RenderStatus.RENDER_ERROR`` with a
+    ``FONT_RESOURCE_MISSING`` warning from ``PillowRenderer``
+    (ACS-F1-041) -- never as a silent "SUCCESS" with wrong text metrics
+    (the ACS-F1-040 root-cause class of bug).
     """
     path = _FONT_PATH_BOLD if weight == "bold" else _FONT_PATH_REG
-    try:
-        return ImageFont.truetype(path, size=24)
-    except OSError as exc:
-        warnings.warn(
-            f"bundled font {path} could not be loaded ({exc}); "
-            f"falling back to Pillow bitmap default -- rendered text "
-            f"metrics will be wrong",
-            stacklevel=2,
-        )
-        return ImageFont.load_default()  # type: ignore[return-value]
+    return ImageFont.truetype(path, size=24)
 
 
 def _wrap_text(
@@ -398,13 +386,48 @@ class PillowRenderer:
     """
 
     def __init__(self) -> None:
-        self._font_bold = _load_font("bold")
-        self._font_reg = _load_font("regular")
+        # Load both bundled fonts up-front. A failure here is NOT
+        # swallowed: it is remembered so ``render()`` can return a
+        # controlled RENDER_ERROR instead of silently succeeding with
+        # wrong text metrics (ACS-F1-041).
+        self._font_load_error: str | None = None
+        try:
+            _load_font("bold")
+            _load_font("regular")
+        except OSError as exc:
+            self._font_load_error = str(exc)
+
+    def _font_missing_result(
+        self, out: Path, detail: str, t0: float
+    ) -> RenderResult:
+        """Write a sentinel PNG and return RENDER_ERROR for a font failure.
+
+        Mirrors the bad-format error path (the caller never sees a missing
+        file), but the status is unambiguously RENDER_ERROR with a
+        ``FONT_RESOURCE_MISSING`` warning (ACS-F1-041).
+        """
+        out.parent.mkdir(parents=True, exist_ok=True)
+        sentinel = Image.new("RGB", (1, 1), (255, 255, 255))
+        sentinel.save(out, format="PNG")
+        return RenderResult(
+            status=RenderStatus.RENDER_ERROR,
+            output_path=str(out),
+            warnings=(f"FONT_RESOURCE_MISSING: {detail}",),
+            render_ms=(time.perf_counter() - t0) * 1000,
+        )
 
     def render(self, request: RenderRequest) -> RenderResult:
         t0 = time.perf_counter()
         warnings: list[str] = []
         measured: dict[str, dict[str, float]] = {}
+
+        # Font-missing check (ACS-F1-041): if the bundled font failed to
+        # load at construction time, render must fail loudly with
+        # RENDER_ERROR -- never silently "succeed" with wrong metrics.
+        if self._font_load_error is not None:
+            return self._font_missing_result(
+                Path(request.output_path), self._font_load_error, t0
+            )
 
         # Parse canvas. On bad format, we still write a sentinel PNG
         # (1x1 white) so the caller never sees a missing file -- but
@@ -451,11 +474,16 @@ class PillowRenderer:
             (request.layout_spec.primitive, request.layout_spec.headline_scale)
         ]
         # Pillow truetype font sizes are immutable -- create a per-render
-        # font instance with the right size.
+        # font instance with the right size. The font was already verified
+        # to load at construction time; if it still fails here (e.g. the
+        # file vanished mid-run), that is a RENDER_ERROR, not a silent
+        # fallback to wrong metrics.
         try:
             head_font = ImageFont.truetype(_FONT_PATH_BOLD, size=int(font_size))
-        except OSError:
-            head_font = self._font_bold
+        except OSError as exc:
+            return self._font_missing_result(
+                Path(request.output_path), str(exc), t0
+            )
 
         primitive = request.layout_spec.primitive
         max_lines = _MAX_LINES[primitive]
@@ -525,8 +553,10 @@ class PillowRenderer:
         if show_cta and request.content.cta:
             try:
                 cta_font = ImageFont.truetype(_FONT_PATH_BOLD, size=_CTA_FONT_SIZE)
-            except OSError:
-                cta_font = self._font_bold
+            except OSError as exc:
+                return self._font_missing_result(
+                    Path(request.output_path), str(exc), t0
+                )
             cta_w = 540
             # Pre-wrap the CTA text to the BUTTON's inner width. Each
             # line is guaranteed to fit inside ``cta_w - 2 * PADDING_X``
