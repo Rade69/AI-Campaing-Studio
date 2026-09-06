@@ -244,6 +244,35 @@ def test_main_against_bundled_repo_passes(repo_root: Path) -> None:
     assert vr.main(["--repo-root", str(repo_root)]) == 0
 
 
+# --- fonts -------------------------------------------------------------
+
+
+def test_validate_fonts_passes_on_bundled_fonts(repo_root: Path) -> None:
+    """The bundled Noto Sans files must pass existence + loadability +
+    BHS diacritic glyph coverage."""
+    fonts = repo_root / "resources" / "fonts"
+    assert fonts.is_dir()
+    assert vr.validate_fonts(fonts) == []
+
+
+def test_validate_fonts_flags_missing_font_files(tmp_path: Path) -> None:
+    fonts = tmp_path / "fonts"
+    fonts.mkdir()
+    errors = vr.validate_fonts(fonts)
+    assert len(errors) == 2
+    assert all("bundled font file is missing" in e for e in errors)
+
+
+def test_validate_fonts_flags_corrupt_font_file(tmp_path: Path) -> None:
+    fonts = tmp_path / "fonts"
+    fonts.mkdir()
+    for name in ("NotoSans-Regular.ttf", "NotoSans-Bold.ttf"):
+        (fonts / name).write_bytes(b"this is not a true type font")
+    errors = vr.validate_fonts(fonts)
+    assert len(errors) == 2
+    assert all("not a loadable TrueType font" in e for e in errors)
+
+
 # --- fixtures -----------------------------------------------------------
 
 
