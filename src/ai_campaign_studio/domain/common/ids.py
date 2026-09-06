@@ -23,6 +23,7 @@ LayoutSpecId = NewType("LayoutSpecId", str)
 DistributionInstanceId = NewType("DistributionInstanceId", str)
 PerformanceSnapshotId = NewType("PerformanceSnapshotId", str)
 PerformanceImportBatchId = NewType("PerformanceImportBatchId", str)
+PerformanceImportRowId = NewType("PerformanceImportRowId", str)
 
 
 def new_id() -> str:

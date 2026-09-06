@@ -11,6 +11,7 @@ from ai_campaign_studio.domain.common.ids import (
     CampaignItemId,
     DistributionInstanceId,
     PerformanceImportBatchId,
+    PerformanceImportRowId,
     PerformanceSnapshotId,
     PostId,
     RevisionId,
@@ -83,3 +84,25 @@ class PerformanceImportBatch:
     source_file_name: str | None = None
     platform_code: str | None = None
     raw_source_snapshot_ref: str | None = None
+
+
+@dataclass(frozen=True)
+class PerformanceImportRow:
+    """One imported CSV data row, kept verbatim (Faza 0.7 §13 audit).
+
+    ``raw_values`` preserves the ORIGINAL CSV values keyed by original
+    header text — nothing is lost, including unmatched/extra columns.
+    ``mapped_values`` maps canonical field -> string value for MATCHED
+    columns only. ``errors`` is empty for a valid row; invalid rows are
+    STILL persisted (never silently dropped). ``distribution_instance_id``
+    stays ``None`` at import time — the separate matching gate (P1.5-G4)
+    fills it later.
+    """
+
+    id: PerformanceImportRowId
+    batch_id: PerformanceImportBatchId
+    row_number: int
+    raw_values: dict[str, str]
+    mapped_values: dict[str, str]
+    errors: tuple[str, ...]
+    distribution_instance_id: DistributionInstanceId | None = None

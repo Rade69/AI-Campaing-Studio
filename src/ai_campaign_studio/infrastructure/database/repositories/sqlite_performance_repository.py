@@ -1,11 +1,12 @@
-"""SQLite adapter for ``PerformanceRepositoryPort`` (P1.5-G2).
+"""SQLite adapter for ``PerformanceRepositoryPort`` (P1.5-G2 + G3).
 
-Owns saving and reading back ``DistributionInstance``, ``PerformanceSnapshot``
-and ``PerformanceImportBatch`` rows. Enum-typed attributes are stored as
-``.value`` and reconstructed as real domain enums; ``MetricPeriod`` and
-``CanonicalMetricSet`` are rebuilt from flat columns; ``raw_metrics`` is a
-JSON text column. Does NOT own CSV import parsing, matching, or the per-row
-audit table (``performance_import_rows`` — that is P1.5-G3).
+Owns saving and reading back ``DistributionInstance``, ``PerformanceSnapshot``,
+``PerformanceImportBatch`` and ``PerformanceImportRow`` rows. Enum-typed
+attributes are stored as ``.value`` and reconstructed as real domain enums;
+``MetricPeriod`` and ``CanonicalMetricSet`` are rebuilt from flat columns;
+``raw_metrics`` / ``raw_values`` / ``mapped_values`` / ``errors`` are JSON text
+columns. Does NOT own CSV import parsing, or matching rows to a
+``DistributionInstance`` (that is P1.5-G4).
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from ai_campaign_studio.domain.common.ids import (
     CampaignItemId,
     DistributionInstanceId,
     PerformanceImportBatchId,
+    PerformanceImportRowId,
     PerformanceSnapshotId,
     PostId,
     RevisionId,
@@ -26,6 +28,7 @@ from ai_campaign_studio.domain.common.ids import (
 from ai_campaign_studio.domain.performance.entities import (
     DistributionInstance,
     PerformanceImportBatch,
+    PerformanceImportRow,
     PerformanceSnapshot,
 )
 from ai_campaign_studio.domain.performance.enums import (
@@ -255,4 +258,68 @@ class SqlitePerformanceRepository:
                 else None
             ),
             raw_metrics=json.loads(row["raw_metrics_json"]),
+        )
+
+    def save_performance_import_row(
+        self, row: PerformanceImportRow
+    ) -> None:
+        self._connection.execute(
+            "INSERT INTO performance_import_rows (id, batch_id, row_number,"
+            " raw_values_json, mapped_values_json, errors_json,"
+            " distribution_instance_id) VALUES (?, ?, ?, ?, ?, ?, ?)"
+            " ON CONFLICT(id) DO UPDATE SET"
+            " batch_id=excluded.batch_id,"
+            " row_number=excluded.row_number,"
+            " raw_values_json=excluded.raw_values_json,"
+            " mapped_values_json=excluded.mapped_values_json,"
+            " errors_json=excluded.errors_json,"
+            " distribution_instance_id=excluded.distribution_instance_id",
+            (
+                row.id,
+                row.batch_id,
+                row.row_number,
+                json.dumps(row.raw_values),
+                json.dumps(row.mapped_values),
+                json.dumps(row.errors),
+                row.distribution_instance_id,
+            ),
+        )
+
+    def get_performance_import_row(
+        self, row_id: PerformanceImportRowId
+    ) -> PerformanceImportRow | None:
+        row = self._connection.execute(
+            "SELECT * FROM performance_import_rows WHERE id = ?",
+            (row_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._performance_import_row_from_row(row)
+
+    def list_performance_import_rows(
+        self, batch_id: PerformanceImportBatchId
+    ) -> tuple[PerformanceImportRow, ...]:
+        rows = self._connection.execute(
+            "SELECT * FROM performance_import_rows WHERE batch_id = ?"
+            " ORDER BY row_number",
+            (batch_id,),
+        ).fetchall()
+        return tuple(self._performance_import_row_from_row(row) for row in rows)
+
+    @staticmethod
+    def _performance_import_row_from_row(
+        row: sqlite3.Row,
+    ) -> PerformanceImportRow:
+        return PerformanceImportRow(
+            id=PerformanceImportRowId(row["id"]),
+            batch_id=PerformanceImportBatchId(row["batch_id"]),
+            row_number=row["row_number"],
+            raw_values=json.loads(row["raw_values_json"]),
+            mapped_values=json.loads(row["mapped_values_json"]),
+            errors=tuple(json.loads(row["errors_json"])),
+            distribution_instance_id=(
+                DistributionInstanceId(row["distribution_instance_id"])
+                if row["distribution_instance_id"] is not None
+                else None
+            ),
         )
