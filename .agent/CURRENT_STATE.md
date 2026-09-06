@@ -3,7 +3,61 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-06 (coordinator: claude) — **ACS-F1-042
+**Zadnje ažurirano:** 2026-09-06 (coordinator: claude) — **KRITIČNO
+POPRAVLJENO -- ACS-HOTFIX-002 (SQLite thread-affinity crash u bridge-u)
+merged u main preko PR #5.** Codex-ov adversarial review ACS-GUI-008-a
+(PR #4, BF-2) otkrio je da bridge drži JEDNU SQLite konekciju napravljenu
+na glavnom thread-u prije `webview.start()`, dok pravi pywebview
+dispatch (potvrđeno čitanjem `.venv/Lib/site-packages/webview/util.py`)
+pokreće SVAKI `js_api` poziv na NOVOM thread-u preko `Thread(target=
+_call); thread.start()`. Posljedica: `sqlite3.ProgrammingError` na SVAKI
+stvaran klik u stvarnoj desktop aplikaciji. **Ovo NIJE regresija
+ACS-GUI-008 -- pogađalo je VEĆ MERGOVAN `create_campaign_and_generate_
+plan` (ACS-GUI-005) i `configure_provider` (ACS-GUI-007) OTKAKO su
+mergovani.** Koordinator je nezavisno reprodukovao crash protiv
+ACS-GUI-005 metode PRIJE fixa, i potvrdio uspjeh POSLIJE. **Važna
+korekcija istorije**: ranije "live end-to-end verifikacije" GUI-005/007
+u ovom fajlu (vidi entry-je 2026-09-04) NISU zapravo prošle kroz stvaran
+pywebview thread dispatch -- rađene su direktnom konstrukcijom bridge-a
+i pozivom metode u ISTOM skriptu/testu (isti thread), što ovaj bug nikad
+nije moglo otkriti. Ne tretirati te ranije verifikacije kao dokaz da
+bridge stvarno radi u pravoj app -- tek OVAJ hotfix + njegov worker-thread
+regression test je prvi stvaran dokaz.
+
+Fix: `CampaignBridgeApi` više ne drži repo-ove/konekciju kao instance
+atribute -- svaki javni `js_api` poziv otvara SVOJU
+`create_connection(...)`, gradi repo-ove preko `ContextVar`-om vezanog
+context managera (`_resource_scope()`), zatvara konekciju u `finally`.
+`check_same_thread` OSTAJE `True` (nema nesigurne prečice). Migracije se
+i dalje pokreću SAMO JEDNOM (pri konstrukciji bridge-a, ne po pozivu).
+Koordinator nezavisno potvrdio, ne samo implementerovu tvrdnju: (1)
+NAPISAO SVOJ test sa dva thread-a preko `threading.Barrier` (stvarna
+konkurencija, ne sekvencijalno) -- potvrđena potpuna izolacija resursa
+po thread-u, (2) ponovio originalni crash-repro, potvrdio da je nestao,
+(3) grep potvrđuje `check_same_thread=False` se NIGDJE ne koristi, (4)
+990/990 test + ruff/mypy/secret-scan čisti, (5) GitNexus impact na
+`CampaignBridgeApi` LOW risk (samo `__main__.py` ga konstruiše). CRITICAL
+risk -- implementer je Codex (sam je bug našao), Claude jedini reviewer
+ovog kruga (nema odvojene adversarial runde kad je Codex već implementer),
+Human Owner eksplicitno odobrio push/merge prije akcije. Worktree i
+branch uklonjeni, Codex-ov evidence arhiviran.
+
+**Napomena o lokalnom lažnom alarmu** (nije regresija): `pytest -q`/gate
+report u GLAVNOM checkout-u (ne worktree-u) trenutno prijavljuju
+`ruff: false` zbog PRED-POSTOJEĆEG, netrackovanog `.tmp_gui008_review/
+probe.py` scratch fajla (Codex-ov alat iz GUI-008 istrage, nikad
+commit-ovan). `ruff check src tests scripts` (stvaran projektni kod) je
+čist; CI (svjež checkout, ne vidi netrackovan sadržaj) je zeleno
+potvrđeno. Fajl namjerno NIJE obrisan (nije koordinatorov, van scope-a
+ovog merge-a) -- bilo ko ko pokreće `pytest -q` direktno u glavnom
+checkout-u treba znati da je ovo poznat, bezopasan šum.
+
+**Sljedeći korak**: ACS-GUI-008 (PR #4) mora rebase-ovati na ovaj commit
+i dodati SVOJ worker-thread dokaz za `generate_campaign_content` prije
+nego se review nastavi (Codex-ov BF-2 nalaz ostaje blocking dok se to ne
+uradi; BF-1/BF-3/BF-4 iz istog Codex review-a i dalje čekaju fix rundu).
+
+Prethodni entry (2026-09-06): **ACS-F1-042
 (P1.5-G3 dio 1 -- CSV column-mapping + row parsing engine) merged u
 main preko PR #3.** Prvi Slice 1.5 P1.5-G3 task -- nov, potpuno
 izolovan `application/performance/` podpaket: `column_mapping.py`
