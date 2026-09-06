@@ -3,7 +3,37 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-06 (coordinator: claude) — **Nezavisna
+**Zadnje ažurirano:** 2026-09-06 (coordinator: claude) — **ACS-F1-041
+(font-missing → RENDER_ERROR + font resource validation) merged u main
+preko GitHub PR-a (#2, prvi task ove sesije mergovan preko PR-a umjesto
+lokalnog `git merge --no-ff`).** `PillowRenderer` više NIKAD ne vraća
+`SUCCESS` sa pogrešnim font metrikama -- nedostajući/oštećen bundle font
+sad daje `RenderStatus.RENDER_ERROR` sa `FONT_RESOURCE_MISSING` (isti
+sentinel-PNG obrazac kao postojeća bad-format grana);
+`ImageFont.load_default()` potpuno uklonjen iz produkcijske putanje.
+`scripts/validate_resources.py` dobio `validate_fonts()` (postojanje +
+TrueType učitljivost + BHS glyph coverage preko `getmask().getbbox()`).
+Koordinator nezavisno potvrdio, ne samo prihvatio tvrdnju: (1) diff
+scope tačno 4 fajla iz `allowed_paths`, (2) font-missing test STVARNO
+prolazi kroz `ImageFont.truetype` OSError (monkeypatch putanje, ne mock
+ponašanja), (3) `validate_fonts` mutation-testiran UŽIVO -- privremeno
+pokvaren stvaran `resources/fonts/NotoSans-Bold.ttf` u worktree-u,
+potvrđen exit 1 sa tačnom porukom, vraćen i potvrđen bajt-identičan
+(`git diff` prazan), (4) normalan render put NEZAVISNO re-potvrđen
+bajt-identičan -- pokrenut isti fixture na main-u (baseline) i
+worktree-u, IDENTIČAN SHA-256 hash, (5) pun suite 964/964 + ruff/mypy
+čisti i lokalno i na CI, (6) CI STVARNO zeleno na PR-u za TAČAN
+mergovani commit (76e7417, ne stariji). Ovo je PRVI task koji je pratio
+ispravljen proces iz `feedback_ci_verification_needs_pr.md` (implementer
+je sam otvorio PR, ne samo pushovao granu) i PRVI merge nakon Human
+Owner odluke o `feedback_check_ci_after_main_push.md` -- CI na main-u
+provjeren uživo (`gh run list`) odmah nakon push-a, zeleno. Worktree i
+branch uklonjeni.
+
+**Sljedeći korak (nepromijenjeno)**: P1.5-G3 CSV Import (Faza 1 v1.5
+§18), po Human Owner odluci od 2026-09-06.
+
+Prethodni entry (2026-09-06): **Nezavisna
 ChatGPT provjera + dvije Human Owner odluke.** Nakon ACS-F1-040 CI fix-a,
 druga nezavisna review (ChatGPT) potvrdila je popravku ali dodala 6
 konkretnih, provjerenih nalaza (vidi memory
