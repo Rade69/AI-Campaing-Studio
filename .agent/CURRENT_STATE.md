@@ -3,7 +3,44 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-06 (coordinator: claude) — **ACS-F1-041
+**Zadnje ažurirano:** 2026-09-06 (coordinator: claude) — **ACS-F1-042
+(P1.5-G3 dio 1 -- CSV column-mapping + row parsing engine) merged u
+main preko PR #3.** Prvi Slice 1.5 P1.5-G3 task -- nov, potpuno
+izolovan `application/performance/` podpaket: `column_mapping.py`
+(YAML-driven, `resources/performance_import/column_aliases_v1.yaml`,
+14 kanonskih polja sa EN+BHS Latin aliasima, isti obrazac kao
+`claim_linter.py`) i `row_parsing.py` (čiste funkcije, bez I/O). Nema
+DistributionInstance matching-a -- to je NAMJERNO odgođeno u dio 2 (i
+P1.5-G4 Matching), ova faza samo odlučuje kolona-identitet
+(matched/ambiguous/unmatched po kanonskom polju) i row-validnost
+(valid/invalid). CSV-only (stdlib `csv`), nema nove zavisnosti; Excel
+eksplicitno odgođen. Koordinator nezavisno potvrdio: (1) diff scope
+tačno 6 novih fajlova iz `allowed_paths`, (2) YAML data-driven tvrdnja
+mutation-testirana UŽIVO -- uklonjen "trošak" alias iz stvarnog YAML-a,
+`test_end_to_end_bhs_headers` je STVARNO pao (KeyError) bez ijedne
+izmjene Python koda, YAML vraćen i potvrđen bajt-identičan, (3) alias
+liste programski provjerene kao STVARNO disjunktne (nema ukrštenih
+alias-a među poljima), (4) pun suite 987/987 + ruff/mypy čisti i
+lokalno i na CI, (5) CI STVARNO zeleno na PR-u (#3) za TAČAN mergovani
+commit (6a9fd4f). MEDIUM risk, §29 -- Claude PASS dovoljan, odmah
+merge. Worktree i branch uklonjeni; implementerov evidence fajl
+arhiviran u `agent_reports/`.
+
+**Sljedeći korak**: P1.5-G3 dio 2 (persistencija `PerformanceImportRow`
++ tri use-case-a `ImportPerformanceCsv`/`PreviewPerformanceMapping`/
+`ConfirmPerformanceImport` + jednostavan direct-key matching na
+`DistributionInstance` preko `external_content_id`/
+`analytics_match_key`) -- kontrakt se piše kad korisnik da signal,
+isti "napiši sljedeći dio kad prethodni prođe" obrazac kao A13.
+
+**Paralelno u toku (nezavisno od gornjeg)**: ACS-GUI-008 (Studio
+sadržaja -- generisanje objava) i ACS-GUI-009 (Pregled i izvoz --
+export), oba HIGH risk, dodijeljena Crush-u i MiniMax-u -- kontrakti
+napisani i push-ovani 2026-09-06, čekaju implementaciju. Vidi
+`agent_reports/ACS-GUI-008-task-contract.md` i
+`agent_reports/ACS-GUI-009-task-contract.md`.
+
+Prethodni entry (2026-09-06): **ACS-F1-041
 (font-missing → RENDER_ERROR + font resource validation) merged u main
 preko GitHub PR-a (#2, prvi task ove sesije mergovan preko PR-a umjesto
 lokalnog `git merge --no-ff`).** `PillowRenderer` više NIKAD ne vraća
