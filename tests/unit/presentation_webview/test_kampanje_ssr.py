@@ -43,6 +43,24 @@ def test_default_fixture_all_brands_are_brightsmile() -> None:
     assert {c.brand for c in DEFAULT_FIXTURE.campaigns} == {"BrightSmile"}
 
 
+def test_default_fixture_next_step_matches_status() -> None:
+    """ACS-GUI-010: each fixture row has a next step matching its status."""
+    by_name = {c.name: c for c in DEFAULT_FIXTURE.campaigns}
+    assert by_name["Proljetna kolekcija"].next_step == "Dovrši opis"
+    assert by_name["Lansiranje seruma"].next_step == "Pregledaj sadržaj"
+    assert by_name["Novi web-sajt"].next_step == "Spremno za izvoz"
+
+
+def test_render_body_next_step_column_order() -> None:
+    """ACS-GUI-010: 'Sljedeći korak' sits between Status and Planirano."""
+    body = render_body()
+    thead = body.split("<thead>", 1)[1].split("</thead>", 1)[0]
+    status_idx = thead.index("<th>Status</th>")
+    next_idx = thead.index("<th>Sljedeći korak</th>")
+    planned_idx = thead.index("<th>Planirano</th>")
+    assert status_idx < next_idx < planned_idx
+
+
 def test_fixtures_are_pure_dataclasses() -> None:
     assert dataclasses.is_dataclass(Campaign)
     assert dataclasses.is_dataclass(KampanjeFixture)
@@ -53,7 +71,14 @@ def test_fixtures_are_pure_dataclasses() -> None:
 def test_render_body_emits_table_with_three_rows() -> None:
     body = render_body()
     # Table headers.
-    for header in ("Kampanja", "Brend", "Status", "Planirano", "Zadnja izmjena"):
+    for header in (
+        "Kampanja",
+        "Brend",
+        "Status",
+        "Sljedeći korak",
+        "Planirano",
+        "Zadnja izmjena",
+    ):
         assert header in body, f"missing column header: {header!r}"
     # All 3 campaign names.
     for name in ("Proljetna kolekcija", "Lansiranje seruma", "Novi web-sajt"):
@@ -61,6 +86,9 @@ def test_render_body_emits_table_with_three_rows() -> None:
     # All 3 status labels.
     for label in ("U pripremi", "Planirano", "Odobreno"):
         assert label in body
+    # All 3 next steps.
+    for needle in ("Dovrši opis", "Pregledaj sadržaj", "Spremno za izvoz"):
+        assert needle in body, f"missing next step: {needle!r}"
     # Planned counts formatted as "N objava".
     for needle in ("6 objava", "8 objava", "5 objava"):
         assert needle in body, f"missing planned count: {needle!r}"
@@ -137,6 +165,7 @@ def test_changing_fixture_changes_rendered_body() -> None:
                 brand="Brand X",
                 status_variant="danger",
                 status_label="Blokirano",
+                next_step="Uradi X",
                 planned_count=1,
                 last_modified="Nikad",
             ),
@@ -148,6 +177,7 @@ def test_changing_fixture_changes_rendered_body() -> None:
     assert "Brand X" in body
     assert "Blokirano" in body
     assert "badge danger" in body
+    assert "Uradi X" in body
     assert "1 objava" in body
     # Default campaigns must not leak.
     assert "Proljetna kolekcija" not in body
@@ -163,6 +193,7 @@ def test_render_body_escapes_xss_in_fixture() -> None:
                 brand="<img>",
                 status_variant="info",
                 status_label="<b>label</b>",
+                next_step="<script>next</script>",
                 planned_count=1,
                 last_modified="<svg>",
             ),
@@ -174,6 +205,7 @@ def test_render_body_escapes_xss_in_fixture() -> None:
     assert "<img>" not in body
     assert "<svg>" not in body
     assert "&lt;script&gt;x&lt;/script&gt;" in body
+    assert "&lt;script&gt;next&lt;/script&gt;" in body
 
 
 def test_render_body_emits_no_remote_assets() -> None:

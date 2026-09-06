@@ -19,6 +19,7 @@ class Campaign:
     brand: str
     status_variant: str  # one of: warn, info, ok, danger, gray
     status_label: str
+    next_step: str  # what the user should do next, e.g. "Dovrši opis"
     planned_count: int  # 6 / 8 / 5 ...
     last_modified: str  # human label, e.g. "Danas 14:20"
 
@@ -36,6 +37,7 @@ DEFAULT_FIXTURE = KampanjeFixture(
             brand="BrightSmile",
             status_variant="warn",
             status_label="U pripremi",
+            next_step="Dovrši opis",
             planned_count=6,
             last_modified="Danas 14:20",
         ),
@@ -44,6 +46,7 @@ DEFAULT_FIXTURE = KampanjeFixture(
             brand="BrightSmile",
             status_variant="info",
             status_label="Planirano",
+            next_step="Pregledaj sadržaj",
             planned_count=8,
             last_modified="Jučer",
         ),
@@ -52,6 +55,7 @@ DEFAULT_FIXTURE = KampanjeFixture(
             brand="BrightSmile",
             status_variant="ok",
             status_label="Odobreno",
+            next_step="Spremno za izvoz",
             planned_count=5,
             last_modified="30. 8.",
         ),
@@ -76,6 +80,7 @@ def _campaign_row(c: Campaign) -> str:
         f"<td>{html.escape(c.brand)}</td>"
         f'<td><span class="badge {html.escape(c.status_variant)}">'
         f"{html.escape(c.status_label)}</span></td>"
+        f"<td>{html.escape(c.next_step)}</td>"
         f"<td>{c.planned_count} objava</td>"
         f"<td>{html.escape(c.last_modified)}</td>"
         '<td class="right">'
@@ -109,6 +114,7 @@ def render_body(fixture: KampanjeFixture | None = None) -> str:
         "<th>Kampanja</th>"
         "<th>Brend</th>"
         "<th>Status</th>"
+        "<th>Sljedeći korak</th>"
         "<th>Planirano</th>"
         "<th>Zadnja izmjena</th>"
         "<th></th>"
