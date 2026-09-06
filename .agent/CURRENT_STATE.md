@@ -3,7 +3,58 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-06 (coordinator: claude) — **ACS-GUI-010
+**Zadnje ažurirano:** 2026-09-06 (coordinator: claude) — **ACS-F1-043
+(P1.5-G3 dio 2 -- CSV import perzistencija + tri use-case-a) merged u
+main preko PR #6.** `PerformanceImportRow` entitet + migracija
+`0007_performance_import_rows.sql` (tačan sljedeći slobodan broj) +
+`ImportPerformanceCsv`/`PreviewPerformanceMapping`/
+`ConfirmPerformanceImport` (imena tačno po Faza 1 v1.5 §18).
+`ImportPerformanceCsv` je JEDINO mjesto koje čita fajl sa diska
+(`csv.DictReader`, `utf-8-sig` za Excel BOM, prazne ćelije -> `""` ne
+`None`); `PreviewPerformanceMapping` ne perzistuje ništa;
+`ConfirmPerformanceImport` perzistuje batch + SVAKI red (uključujući
+invalid -- "ništa se ne gubi"), `distribution_instance_id=None` za sve
+(matching na `DistributionInstance` je NAMJERNO van scope-a -- zaseban
+budući P1.5-G4 task). `column_overrides` omogućava ručnu ispravku
+ambiguous/unmatched kolone bez drugog čitanja fajla (re-parse iz
+već-učitanih `raw_values`). Dokumentovana privremena semantika:
+`PerformanceImportBatch.matched_count`/`unmatched_count` OVDJE znače
+valid/invalid redove, NE stvarno "matchovano na sadržaj" (G4 će
+rekoncilirati kad matching stvarno postoji).
+
+Koordinator nezavisno potvrdio: (1) diff scope tačno 14 fajlova, (2)
+**GitNexus `detect_changes` STVARNO pokrenut protiv task branch-a**
+(zaobiđen poznati worktree-binding problem preko privremenog detached
+HEAD checkout-a u glavnom repou -- vidi Napomena niže za trajan zapis
+ovog rješenja), potvrđeno LOW risk, JEDAN "touched" nalaz
+(`TelemetryRepositoryPort`) je lažan pozitiv od pomaka linija (sadržaj
+bajt-identičan, samo pomjeren dolje zbog 3 nove metode dodane IZNAD u
+istom fajlu -- provjereno direktnim `git diff` čitanjem, ne
+pretpostavljeno), (3) `column_overrides` mutation-testiran uživo
+(privremeno onemogućen, potvrđeno da test STVARNO padne sa `KeyError`,
+vraćeno), (4) 1009/1009 (worktree) / 1010/1010 (main post-merge) +
+ruff/mypy čisti, (5) migracija ima tačan sljedeći broj (implementer
+sam provjerio prije pisanja -- nema ponavljanja ACS-F1-038-stil
+greške). MEDIUM risk, §29 -- Claude PASS dovoljan, odmah merge preko
+PR-a. Worktree i branch uklonjeni, implementerov evidence arhiviran.
+
+**Trajna napomena o metodi (za buduće GitNexus provjere protiv
+worktree grana)**: kad `gitnexus detect_changes`/`impact` iz worktree-a
+daje nepouzdan rezultat (index bindovan na glavni checkout, ne na
+worktree putanju), rješenje je: iz GLAVNOG checkout-a (koji je čist),
+`git fetch origin`, pa `git checkout origin/<task-branch> --detach`
+(detached HEAD -- radi čak i kad je grana VEĆ checkout-ovana u
+worktree-u, jer nije isti ref dvaput), pokrenuti GitNexus alat, pa
+`git checkout main` da se vrati. Ne pokušavati `git checkout
+<task-branch>` direktno (git odbija ako je grana već u worktree-u).
+
+**Sljedeći korak**: P1.5-G4 Matching (zaseban budući task -- prolazi
+kroz `PerformanceImportRow` redove sa `distribution_instance_id IS
+NULL`, prioritet `external_content_id → analytics_match_key → stable
+IDs → manual`, Faza 0.7 §14) i preostali Codex nalazi za ACS-GUI-008
+(BF-1/BF-3/BF-4 + rebase na HOTFIX-002).
+
+Prethodni entry (2026-09-06): **ACS-GUI-010
 (Kampanje lista -- kolona "Sljedeći korak") merged u main preko PR #7.**
 Fixture-only dopuna (nula bridge poziva), iz Buffer/Later UX pregleda
 istog dana. Implementer je radio DIREKTNO u glavnom checkout-u (bez
