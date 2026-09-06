@@ -1,0 +1,102 @@
+# Column aliases for CSV performance import (P1.5-G3 dio 1).
+#
+# Maps each canonical performance field to the header names (EN + BHS Latin)
+# that should be recognised as that field. Comparison is case-insensitive
+# (the Python layer casefolds both the alias and the CSV header). Alias lists
+# must be DISJOINT across fields: an alias that appears under two fields would
+# make the same header match two canonical fields, which is not how this
+# engine models ambiguity (ambiguity here means TWO headers aliasing ONE
+# field, not one header aliasing two fields).
+#
+# Canonical fields follow Faza 0.7 §5/§6 (CanonicalMetricSet + period) and
+# the matching keys from Faza 0.7 §14/§16. period_start/period_end are
+# REQUIRED for MetricPeriod; the nine metrics are individually optional but
+# at least one must be present per row (enforced in row_parsing.py, not here).
+version: "1"
+column_aliases:
+  platform_code:
+    - platform_code
+    - platform
+    - platform code
+    - platforma
+    - sifra_platforme
+    - kod_platforme
+  external_content_id:
+    - external_content_id
+    - external_content
+    - external_id
+    - content_id
+    - externi_id
+    - eksterni_id
+    - id_eksternog_sadrzaja
+  analytics_match_key:
+    - analytics_match_key
+    - match_key
+    - analytics_key
+    - analiticki_kljuc
+    - kljuc_podudaranja
+  period_start:
+    - period_start
+    - start_date
+    - start
+    - period_od
+    - datum_pocetka
+    - pocetak_perioda
+  period_end:
+    - period_end
+    - end_date
+    - end
+    - period_do
+    - datum_kraja
+    - kraj_perioda
+  reach:
+    - reach
+    - doseg
+    - domet
+  impressions:
+    - impressions
+    - impression
+    - impresije
+    - prikazi
+  engagements:
+    - engagements
+    - engagement
+    - angažmani
+    - angažovanja
+    - interakcije
+  clicks:
+    - clicks
+    - click
+    - klikovi
+    - klik
+  conversions:
+    - conversions
+    - conversion
+    - konverzije
+    - konverzija
+  spend:
+    - spend
+    - spent
+    - cost
+    - amount_spent
+    - trošak
+    - potrošnja
+    - utrošeno
+    - uloženo
+  revenue:
+    - revenue
+    - prihod
+    - zarada
+    - prodaja
+  video_views:
+    - video_views
+    - video_views_count
+    - video_plays
+    - pregledi_videa
+    - broj_pregleda_videa
+  watch_time_seconds:
+    - watch_time_seconds
+    - watch_time
+    - watch_time_sec
+    - vreme_gledanja_sekunde
+    - vrijeme_gledanja_sekunde
