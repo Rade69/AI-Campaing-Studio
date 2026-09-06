@@ -31,6 +31,18 @@
       // network; a final ``finally`` re-enables it.
       saveAndPlan(el);
     }
+    if(action==='generate-content') {
+      // ACS-GUI-008: bulk content generation. The button lives on the
+      // Studio sadržaja screen and reads its campaign_id from the
+      // data-campaign-id attribute (the same id the previous step's
+      // navigate-after-success used to put in the URL). On success the
+      // bridge returns ``{ok, generated_count, failed_count, ...}``
+      // and the handler updates a ``data-generate-result`` callout in
+      // the same card (so the user sees "N of M uspjelo" right under
+      // the button) AND shows a toast. ``finally`` always re-enables
+      // the button so the user can retry for failed pieces.
+      generateContent(el);
+    }
   }));
   // Language picker (Podešavanja → Jezik). Each row is a button with
   // ``data-action="lang-pick"`` and ``data-lang="<code>"``. Clicking
@@ -219,6 +231,79 @@ async function saveAndPlan(button) {
     // (PYWEBVIEW_SECURITY §3), but we belt-and-brace against any
     // uncaught exception from the IPC layer itself.
     showToast('Interna greška pri pozivu: ' + (err && err.message ? err.message : 'nepoznato.'));
+  } finally {
+    button.disabled = false;
+    button.textContent = originalLabel;
+  }
+}
+
+// --- ACS-GUI-008: generate-content bridge call ---
+//
+// Wired by the Studio sadržaja screen — the "Generiši sadržaj"
+// button has ``data-action="generate-content"`` and a
+// ``data-campaign-id="<id>"`` attribute. The handler reads the campaign
+// id, calls ``window.pywebview.api.generate_campaign_content``, and
+// renders the result into the ``data-generate-result`` callout in the
+// same card. On ``ok=False`` the user gets the bridge's
+// ``error_message`` as a toast. Re-entrancy: the button is disabled for
+// the duration of the call (typical bridge calls take a few seconds
+// because each piece is a real AI request); a ``finally`` re-enables
+// it so the user can retry the failed pieces.
+async function generateContent(button) {
+  if (button.disabled) return;
+  const campaignId = (button.dataset.campaignId || '').trim();
+  if (!campaignId) {
+    showToast('Nedostaje campaign_id. Ponovo pokreni "Sačuvaj i napravi plan".');
+    return;
+  }
+  button.disabled = true;
+  const originalLabel = button.textContent;
+  button.textContent = 'Generiram objave…';
+  const resultNode = document.querySelector('[data-generate-result]');
+  try {
+    const api = window.pywebview && window.pywebview.api;
+    if (!api || typeof api.generate_campaign_content !== 'function') {
+      showToast('Interna greška: bridge nije dostupan. Ponovo pokreni aplikaciju.');
+      return;
+    }
+    const result = await api.generate_campaign_content({campaign_id: campaignId});
+    if (result && result.ok) {
+      const n = result.generated_count;
+      const f = result.failed_count;
+      // Toast + in-page callout so the user sees the count WITHOUT
+      // having to remember the toast (toasts auto-hide in 2.2s).
+      let toastMsg;
+      if (n === 0 && f === 0) {
+        toastMsg = 'Sadržaj je već generisan.';
+      } else if (f === 0) {
+        toastMsg = 'Sve objave generisane (' + n + ').';
+      } else if (n === 0) {
+        toastMsg = 'Generisanje nije uspjelo ni za jednu objavu (' + f + ' pokušaja).';
+      } else {
+        toastMsg = 'Generisano ' + n + ' od ' + (n + f) + ' objava. Za ' + f + ' neuspjelih pokušaj ponovo.';
+      }
+      showToast(toastMsg);
+      if (resultNode) {
+        resultNode.textContent = toastMsg;
+        resultNode.hidden = false;
+      }
+    } else {
+      const msg = (result && result.error_message) ? result.error_message : 'Generisanje sadržaja nije uspjelo.';
+      showToast(msg);
+      if (resultNode) {
+        resultNode.textContent = 'Greška: ' + msg;
+        resultNode.hidden = false;
+      }
+    }
+  } catch (err) {
+    // Belt-and-brace: the bridge contractually never raises, but the
+    // IPC layer itself could (network blip, pywebview shutdown). The
+    // catch makes the failure visible instead of silent.
+    showToast('Interna greška pri pozivu: ' + (err && err.message ? err.message : 'nepoznato.'));
+    if (resultNode) {
+      resultNode.textContent = 'Interna greška.';
+      resultNode.hidden = false;
+    }
   } finally {
     button.disabled = false;
     button.textContent = originalLabel;

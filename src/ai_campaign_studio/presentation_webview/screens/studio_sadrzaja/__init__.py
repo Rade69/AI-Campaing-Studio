@@ -82,6 +82,12 @@ class StudioSadrzajaFixture:
     compliance_checks: list[str]
     sacuvaj_nacrt_toast: str
     posalji_reviziju_toast: str
+    # ACS-GUI-008: campaign_id is the bridge input for
+    # ``generate_campaign_content``. When ``?campaign=<id>`` is in the
+    # URL, the rendered body shows the real "Generiši sadržaj" button
+    # wired to the bridge; when it is missing, the button stays hidden
+    # (the legacy "fixture-only" preview path).
+    campaign_id: str | None = None
 
 
 DEFAULT_FIXTURE = StudioSadrzajaFixture(
@@ -166,6 +172,33 @@ def _edit_card(fx: StudioSadrzajaFixture) -> str:
         f"{html.escape(label)}</button>"
         for label, action in QUICK_ACTIONS
     )
+    # ACS-GUI-008: when a real campaign is open (``campaign_id`` is set),
+    # render the live "Generiši sadržaj" button (wired to the bridge in
+    # ``static/app.js``) AND a ``data-generate-result`` element that the
+    # JS handler fills with the result. The element is always emitted
+    # (with a hidden initial state) so the JS does not have to
+    # ``querySelector`` for a possibly-missing node. When no
+    # ``campaign_id`` is set, the button is hidden — the legacy
+    # fixture-preview path is preserved for offline SSR rendering.
+    if fx.campaign_id:
+        generate_button = (
+            '<button class="btn primary" data-action="generate-content" '
+            f'data-campaign-id="{html.escape(fx.campaign_id)}">'
+            "Generiši sadržaj"
+            "</button>"
+        )
+        result_node = (
+            '<div class="callout" data-generate-result hidden></div>'
+        )
+    else:
+        generate_button = (
+            '<button class="btn primary" data-action="toast" '
+            'data-message="Nema otvorene kampanje. Pokreni '
+            "'Sačuvaj i napravi plan' iz prethodnog ekrana.\">"
+            "Generiši sadržaj"
+            "</button>"
+        )
+        result_node = ""
     return (
         '<div class="card">'
         "<h3>Uredi sadržaj</h3>"
@@ -191,9 +224,11 @@ def _edit_card(fx: StudioSadrzajaFixture) -> str:
         f'data-message="{html.escape(fx.posalji_reviziju_toast)}">'
         "Pošalji na reviziju"
         "</button>"
+        f"{generate_button}"
         '<a class="btn primary" href="../pregled_izvoz/index.html">'
         "Pregled i izvoz →</a>"
         "</div>"
+        f"{result_node}"
         "</div>"
     )
 

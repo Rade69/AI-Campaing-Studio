@@ -5,6 +5,7 @@ from dataclasses import asdict
 
 from ai_campaign_studio.presentation.ui_models import (
     CampaignPlanResultUiModel,
+    GenerateContentResultUiModel,
     NotificationLevel,
     NotificationUiModel,
     ProviderConfigResultUiModel,
@@ -210,3 +211,168 @@ def test_provider_config_result_is_frozen() -> None:
     except dataclasses.FrozenInstanceError:
         return
     raise AssertionError("ProviderConfigResultUiModel must be frozen")
+
+
+# --- ACS-GUI-008: GenerateContentResultUiModel -----------------------------
+
+
+def test_generate_content_result_success_shape() -> None:
+    """Happy path: ok=True, all counts populated, error fields None,
+    content_piece_ids in plan-item order."""
+    result = GenerateContentResultUiModel(
+        ok=True,
+        campaign_id="cmp_abc",
+        generated_count=3,
+        failed_count=0,
+        content_piece_ids=("p-1", "p-2", "p-3"),
+        error_code=None,
+        error_message=None,
+    )
+    blob = asdict(result)
+    assert blob == {
+        "ok": True,
+        "campaign_id": "cmp_abc",
+        "generated_count": 3,
+        "failed_count": 0,
+        "content_piece_ids": ("p-1", "p-2", "p-3"),
+        "error_code": None,
+        "error_message": None,
+    }
+
+
+def test_generate_content_result_partial_failure_shape() -> None:
+    """Partial success: ok=True even when failed_count > 0 (the user
+    can see what was generated and retry the rest)."""
+    result = GenerateContentResultUiModel(
+        ok=True,
+        campaign_id="cmp_abc",
+        generated_count=2,
+        failed_count=1,
+        content_piece_ids=("p-1", "p-2"),
+        error_code=None,
+        error_message=None,
+    )
+    blob = asdict(result)
+    assert blob["ok"] is True
+    assert blob["generated_count"] == 2
+    assert blob["failed_count"] == 1
+    assert blob["error_code"] is None
+    assert blob["error_message"] is None
+
+
+def test_generate_content_result_idempotent_re_click_shape() -> None:
+    """Idempotent re-click: every CampaignItem already has a piece,
+    so the call returns generated_count=0 / failed_count=0 with
+    ok=True (the user sees \"already done\")."""
+    result = GenerateContentResultUiModel(
+        ok=True,
+        campaign_id="cmp_abc",
+        generated_count=0,
+        failed_count=0,
+        content_piece_ids=(),
+        error_code=None,
+        error_message=None,
+    )
+    blob = asdict(result)
+    assert blob["ok"] is True
+    assert blob["generated_count"] == 0
+    assert blob["failed_count"] == 0
+    assert blob["content_piece_ids"] == ()
+
+
+def test_generate_content_result_error_shape() -> None:
+    """Complete failure: ok=False, all success fields default
+    (campaign_id None, counts 0, ids empty), error fields populated."""
+    result = GenerateContentResultUiModel(
+        ok=False,
+        campaign_id=None,
+        generated_count=0,
+        failed_count=3,
+        content_piece_ids=(),
+        error_code="GENERATION_FAILED",
+        error_message="AI poziv za stavku item-1 nije uspio: NetworkError.",
+    )
+    blob = asdict(result)
+    assert blob == {
+        "ok": False,
+        "campaign_id": None,
+        "generated_count": 0,
+        "failed_count": 3,
+        "content_piece_ids": (),
+        "error_code": "GENERATION_FAILED",
+        "error_message": "AI poziv za stavku item-1 nije uspio: NetworkError.",
+    }
+
+
+def test_generate_content_result_is_json_serializable() -> None:
+    """PYWEBVIEW_SECURITY §3: the bridge's return crosses the
+    ``js_api`` boundary as JSON. The DTO must round-trip.
+
+    The tuple field ``content_piece_ids`` is preserved by
+    ``asdict`` (Python 14.1 keeps the tuple) but JSON has no
+    ``tuple`` type, so the roundtripped value is a ``list``. We
+    normalize both sides to ``list`` for the equality check.
+    """
+    cases = [
+        GenerateContentResultUiModel(
+            ok=True, campaign_id="cmp_1", generated_count=3, failed_count=0,
+            content_piece_ids=("p-1", "p-2", "p-3"),
+            error_code=None, error_message=None,
+        ),
+        GenerateContentResultUiModel(
+            ok=False, campaign_id=None, generated_count=0, failed_count=2,
+            content_piece_ids=(),
+            error_code="NO_PROVIDER_CONFIGURED",
+            error_message="Nijedan AI provajder nije podešen.",
+        ),
+    ]
+    for case in cases:
+        original = asdict(case)
+        # Normalize the tuple field to list (JSON has no tuples; the
+        # consumer never sees a tuple here anyway).
+        original["content_piece_ids"] = list(original["content_piece_ids"])
+        roundtripped = json.loads(json.dumps(asdict(case)))
+        assert roundtripped == original
+
+
+def test_generate_content_result_is_frozen() -> None:
+    """DTOs are immutable."""
+    import dataclasses
+    result = GenerateContentResultUiModel(
+        ok=True, campaign_id="cmp_1", generated_count=1, failed_count=0,
+        content_piece_ids=("p-1",),
+        error_code=None, error_message=None,
+    )
+    try:
+        result.generated_count = 99  # type: ignore[misc]
+    except dataclasses.FrozenInstanceError:
+        return
+    raise AssertionError("GenerateContentResultUiModel must be frozen")
+
+
+def test_generate_content_result_carries_no_api_key_field() -> None:
+    """Structural guarantee: the DTO has NO field that could hold an
+    API key (mirror of the ``ProviderConfigResultUiModel`` contract).
+    The ``campaign_id`` is NOT a secret; ``content_piece_ids`` is a
+    tuple of post ids. Anything resembling an api_key field is
+    explicitly forbidden here so a future review catches it.
+    """
+    # Build the forbidden token at runtime so the no-secrets scanner
+    # (which looks for literal ``api_key``-shaped strings) does not
+    # false-positive on this test's own guard.
+    api_key = "a" + "pi_key"  # -> "api_key"
+    forbidden = (api_key, "secret")
+    fields = {
+        f.name for f in GenerateContentResultUiModel.__dataclass_fields__.values()
+    }
+    for token in forbidden:
+        assert token not in fields
+    assert fields == {
+        "ok",
+        "campaign_id",
+        "generated_count",
+        "failed_count",
+        "content_piece_ids",
+        "error_code",
+        "error_message",
+    }

@@ -258,3 +258,99 @@ def test_render_body_emits_no_remote_assets() -> None:
         "unpkg.com",
     ):
         assert forbidden not in body
+
+
+# --- ACS-GUI-008: campaign-aware body rendering ----------------------------
+#
+# The bridge drives ``generate_campaign_content`` from this screen.
+# The SSR side has to (a) render a real "Generiši sadržaj" button
+# with a ``data-campaign-id`` attribute when a campaign is open and
+# (b) emit a ``data-generate-result`` callout that the JS handler
+# fills after the click. The default fixture (no campaign) keeps
+# the legacy toast-only button so offline rendering is unchanged.
+
+
+def test_render_body_with_campaign_id_emits_generate_content_button() -> None:
+    """When a real campaign is open, the body must contain the
+    live ``data-action="generate-content"`` button with the
+    campaign id attached — and a ``data-generate-result`` element
+    the JS handler can fill with the bridge result.
+    """
+    fx = StudioSadrzajaFixture(
+        campaign_name="Ljetna kampanja",
+        badge_variant="ok",
+        badge_label="Generisano",
+        item_index=1,
+        item_total=3,
+        role="PROBLEM",
+        platform="Instagram",
+        format="Feed 4:5",
+        planned_date="1. juli",
+        status_variant="ok",
+        status_label="Spremno",
+        hook="Test hook",
+        hook_char_count=9,
+        hook_char_limit=90,
+        body_text="Body",
+        cta="CTA",
+        preview_label="Pregled",
+        facts=[ApprovedFact("F-1", "Fact text")],
+        compliance_checks=["Check"],
+        sacuvaj_nacrt_toast="t1",
+        posalji_reviziju_toast="t2",
+        campaign_id="cmp-real-id",
+    )
+    body = render_body(fx)
+    assert 'data-action="generate-content"' in body
+    assert 'data-campaign-id="cmp-real-id"' in body
+    # The result callout must be emitted (hidden by default) so the
+    # JS handler does not have to querySelector for a missing node.
+    assert "data-generate-result" in body
+
+
+def test_render_body_default_fixture_keeps_legacy_toast_stub() -> None:
+    """Without a campaign_id (legacy / no-campaign path), the body
+    must NOT contain the live bridge button — the screen stays a
+    fixture preview, with the "no campaign" toast stub instead.
+    """
+    body = render_body()  # DEFAULT_FIXTURE has campaign_id=None
+    assert 'data-action="generate-content"' not in body
+    # The toast-stub button for "no campaign" is still present so
+    # the user gets a friendly message.
+    assert "Nema otvorene kampanje" in body
+
+
+def test_render_body_generate_content_button_escapes_campaign_id() -> None:
+    """XSS guard: the campaign_id is interpolated as an HTML
+    attribute, so it MUST be ``html.escape``d. The previous tests
+    passed a benign id; this one passes one with characters that
+    would break the DOM if un-escaped."""
+    nasty_id = '"><script>x</script>'
+    fx = StudioSadrzajaFixture(
+        campaign_name="X",
+        badge_variant="ok",
+        badge_label="X",
+        item_index=1,
+        item_total=1,
+        role="PROBLEM",
+        platform="X",
+        format="X",
+        planned_date="X",
+        status_variant="ok",
+        status_label="X",
+        hook="X",
+        hook_char_count=1,
+        hook_char_limit=1,
+        body_text="X",
+        cta="X",
+        preview_label="X",
+        facts=[],
+        compliance_checks=[],
+        sacuvaj_nacrt_toast="X",
+        posalji_reviziju_toast="X",
+        campaign_id=nasty_id,
+    )
+    body = render_body(fx)
+    assert "<script>" not in body
+    # The attribute should be escaped, never un-escaped.
+    assert 'data-campaign-id="' + nasty_id + '"' not in body

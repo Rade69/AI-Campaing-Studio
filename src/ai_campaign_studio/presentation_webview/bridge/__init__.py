@@ -40,19 +40,32 @@ from ai_campaign_studio.application.ai_provider.configure_provider import (
     ConfigureProvider,
 )
 from ai_campaign_studio.application.brands.load_brand_fixture import LoadBrandFixture
+from ai_campaign_studio.application.campaigns.approve_campaign_plan import (
+    ApproveCampaignPlan,
+)
 from ai_campaign_studio.application.campaigns.create_campaign import CreateCampaign
 from ai_campaign_studio.application.campaigns.generate_campaign_plan import (
     GenerateCampaignPlan,
+)
+from ai_campaign_studio.application.posts.generate_social_post import (
+    GenerateSocialPost,
 )
 from ai_campaign_studio.application.schemas.campaign_brief import CampaignBriefInput
 from ai_campaign_studio.bootstrap import create_bootstrap
 from ai_campaign_studio.config.paths import AppPaths
 from ai_campaign_studio.config.settings import AppSettings
+from ai_campaign_studio.domain.campaign.entities import CampaignBrief
+from ai_campaign_studio.domain.campaign.enums import CampaignPlanStatus
 from ai_campaign_studio.domain.common.errors import (
     EntityNotFound,
     InvariantViolation,
     RegistryError,
 )
+from ai_campaign_studio.domain.common.ids import (
+    CampaignId,
+    CampaignPlanId,
+)
+from ai_campaign_studio.domain.content.entities import CampaignTarget
 from ai_campaign_studio.infrastructure.ai.provider_adapter_factory import (
     _PROVIDER_PRIORITY,
     build_text_generation_adapter,
@@ -61,8 +74,10 @@ from ai_campaign_studio.infrastructure.database.connection import create_connect
 from ai_campaign_studio.infrastructure.database.repositories import (
     SqliteBrandRepository,
     SqliteCampaignRepository,
+    SqliteContentRepository,
     SqliteFactRepository,
     SqliteProviderConfigRepository,
+    SqliteRevisionRepository,
 )
 from ai_campaign_studio.infrastructure.database.unit_of_work import SqliteUnitOfWork
 from ai_campaign_studio.infrastructure.prompts.yaml_prompt_repository import (
@@ -70,6 +85,7 @@ from ai_campaign_studio.infrastructure.prompts.yaml_prompt_repository import (
 )
 from ai_campaign_studio.presentation.ui_models import (
     CampaignPlanResultUiModel,
+    GenerateContentResultUiModel,
     ProviderConfigResultUiModel,
 )
 
@@ -152,6 +168,42 @@ def _ordered_configured_codes(configured_codes: list[str]) -> list[str]:
     return ordered
 
 
+def _targets_from_brief(brief: CampaignBrief) -> list[CampaignTarget]:
+    """Convert a persisted ``CampaignBrief.targets`` to a ``list[CampaignTarget]``.
+
+    Deliberate copy of the helper in ``application/evaluation/run_system_b.py``
+    rather than an import: this module is in the presentation layer and
+    ``application/`` is in ``forbidden_paths`` for ACS-GUI-008, so the
+    helper has to live in both places. The two implementations are
+    pinned to the same shape (round-robin over the same list) by the
+    test ``test_round_robin_assignment_matches_run_system_b``.
+    """
+    return [
+        CampaignTarget(
+            channel=t.channel,
+            platform_code=t.platform_code,
+            format_code=t.format_code,
+        )
+        for t in brief.targets
+    ]
+
+
+def _target_for_item(
+    index: int, targets: list[CampaignTarget]
+) -> CampaignTarget | None:
+    """Round-robin target for the ``index``-th ``CampaignItem``.
+
+    Same shape as ``run_system_b.py:86``
+    (``targets[index % len(targets)] if targets else None``). Returns
+    ``None`` when the brief has no targets at all (degenerate brief
+    created without any platform) so the caller can record a
+    user-level "no targets" failure rather than a misleading AI error.
+    """
+    if not targets:
+        return None
+    return targets[index % len(targets)]
+
+
 class CampaignBridgeApi:
     """Narrow pywebview ``js_api`` surface for the campaign workflow.
 
@@ -192,6 +244,14 @@ class CampaignBridgeApi:
             settings = AppSettings(environment="production")
         self._bootstrap = create_bootstrap(settings=settings, paths=paths)
         self._bootstrap.database_connection.close()
+        # ACS-GUI-008 (post-HOTFIX-002): every public call opens its
+        # own SQLite connection graph via ``_resource_scope()`` (a
+        # ContextVar + context manager). This is the per-thread pattern
+        # that survives pywebview's worker-thread dispatch -- the
+        # connection is created on the worker thread and closed there.
+        # ``content_repo`` and ``revision_repo`` (needed by
+        # ``generate_campaign_content``) are added in ``_CallResources``
+        # below + exposed as ``@property`` getters.
         self._active_resources: ContextVar[_CallResources | None] = ContextVar(
             f"campaign_bridge_resources_{id(self)}", default=None
         )
@@ -352,6 +412,269 @@ class CampaignBridgeApi:
             )
 
     @_with_call_resources
+    def generate_campaign_content(self, raw_payload: dict) -> dict:
+        """End-to-end: approve plan (idempotent), generate every content piece.
+
+        NEW: bulk generation for the Studio sadržaja screen
+        (ACS-GUI-008). Different from ``create_campaign_and_generate_plan``
+        in two important ways:
+
+        1. **Partial success is allowed** — one piece failing (network,
+           quota, bad-luck timeout) MUST NOT abort the rest of the loop.
+           The user sees ``generated_count`` / ``failed_count`` and can
+           click "Generiši" again to retry the failed items.
+        2. **Idempotent on the content side** — if a piece for a
+           ``CampaignItem`` already exists, the bridge MUST NOT call
+           ``GenerateSocialPost`` again (avoids duplicate posts in the
+           user's pipeline). ``ok=True`` is returned even when
+           ``generated_count == 0`` (everything was already done).
+
+        The method never raises into JS: every error path returns a
+        result ``dict`` with ``ok=False`` and a stable ``error_code``.
+        """
+        # -- 1. Boundary validation (Pydantic-style; we do not trust JS).
+        if not isinstance(raw_payload, dict):
+            return self._generate_err(
+                _ERROR_VALIDATION, "Pošiljka iz GUI-ja nije objekat."
+            )
+        campaign_id_raw = raw_payload.get("campaign_id")
+        if not isinstance(campaign_id_raw, str) or not campaign_id_raw.strip():
+            return self._generate_err(
+                _ERROR_VALIDATION, "campaign_id je obavezan (string)."
+            )
+        campaign_id = CampaignId(campaign_id_raw.strip())
+
+        # -- 2. Campaign + brief + plan + targets (all-or-nothing up
+        #    to this point -- still inside the per-method try/except
+        #    so a domain error here maps to VALIDATION_ERROR).
+        try:
+            campaign = self._campaign_repo.get_campaign(campaign_id)
+            if campaign is None:
+                return self._generate_err(
+                    _ERROR_VALIDATION,
+                    f"Kampanja {campaign_id} ne postoji.",
+                )
+            brief = self._campaign_repo.get_brief(campaign.brief_id)
+            if brief is None:
+                return self._generate_err(
+                    _ERROR_VALIDATION,
+                    f"Brief {campaign.brief_id} ne postoji.",
+                )
+            # Plan lookup: this bridge method cannot add a new port
+            # method (forbidden_paths blocks ``ports/``), so we use
+            # the existing ``database_connection`` directly. The SQL
+            # matches the schema in
+            # ``resources/migrations/0002_campaign_plans.sql`` —
+            # "newest plan wins" (the plan with the latest
+            # ``created_at`` is the current plan for the campaign;
+            # older plans are revision history).
+            plan_row = self._bootstrap.database_connection.execute(
+                "SELECT id FROM campaign_plans WHERE campaign_id = ?"
+                " ORDER BY created_at DESC LIMIT 1",
+                (str(campaign_id),),
+            ).fetchone()
+            if plan_row is None:
+                return self._generate_err(
+                    _ERROR_VALIDATION,
+                    f"Kampanja {campaign_id} nema plan. "
+                    "Ponovo pokreni 'Sačuvaj i napravi plan'.",
+                )
+            plan_id = CampaignPlanId(plan_row["id"])
+            plan = self._campaign_repo.get_plan(plan_id)
+            if plan is None:
+                # Defensive: race between the SELECT and the
+                # ``get_plan`` call. Same error as above.
+                return self._generate_err(
+                    _ERROR_VALIDATION,
+                    f"Plan {plan_id} nestao iz baze (race condition).",
+                )
+            targets = _targets_from_brief(brief)
+        except (EntityNotFound, InvariantViolation, ValueError, TypeError) as exc:
+            return self._generate_err(_ERROR_VALIDATION, str(exc))
+        except Exception as exc:
+            self._bootstrap.logger.exception(
+                "generate_campaign_content: plan lookup failed"
+                " (campaign=%s, err=%s)",
+                campaign_id, type(exc).__name__,
+            )
+            return self._generate_err(
+                _ERROR_INTERNAL,
+                f"Ne mogu učitati plan: {type(exc).__name__}.",
+            )
+
+        # -- 3. Approve plan (idempotent). The plan is the SAME
+        #    object we already loaded in step 2, so a quick status
+        #    check skips the ``ApproveCampaignPlan`` call when the
+        #    plan is already APPROVED — that use-case throws
+        #    ``InvariantViolation`` for non-DRAFT plans, which would
+        #    needlessly fail the click in the "approve once, generate
+        #    many" case (a partial-success click that finished
+        #    approving but still had pieces to render). We reuse the
+        #    already-loaded plan as-is.
+        if plan.status is CampaignPlanStatus.DRAFT:
+            try:
+                approved = ApproveCampaignPlan(
+                    campaign_repo=self._campaign_repo,
+                    unit_of_work=self._uow,
+                ).execute(plan_id)
+            except (EntityNotFound, InvariantViolation) as exc:
+                # Domain-level failure: the plan is in an unexpected
+                # state (race with another writer, or a non-DRAFT,
+                # non-APPROVED status like REJECTED). Either way, the
+                # user-facing message is the domain detail.
+                return self._generate_err(_ERROR_VALIDATION, str(exc))
+            except Exception as exc:
+                self._bootstrap.logger.exception(
+                    "generate_campaign_content: ApproveCampaignPlan failed"
+                    " (campaign=%s, err=%s)",
+                    campaign_id, type(exc).__name__,
+                )
+                return self._generate_err(
+                    _ERROR_GENERATION,
+                    f"Odobravanje plana nije uspjelo: {type(exc).__name__}.",
+                )
+        else:
+            # Already APPROVED (or any other non-DRAFT state — we are
+            # tolerant on the read path, strict on the write path).
+            approved = plan
+
+        # -- 4. Provider resolution (reused helper).
+        try:
+            provider_code, api_key = self._resolve_provider()
+        except Exception as exc:
+            self._bootstrap.logger.exception("provider resolution failed")
+            return self._generate_err(
+                _ERROR_INTERNAL,
+                f"Greška pri čitanju provajdera: {type(exc).__name__}.",
+            )
+        if provider_code is None:
+            return self._generate_err(
+                _ERROR_NO_PROVIDER,
+                "Nijedan AI provajder nije podešen.",
+            )
+        if not api_key:
+            return self._generate_err(
+                _ERROR_KEY_MISSING,
+                f"Provajder {provider_code} je konfigurisan ali API ključ "
+                "nije dostupan u SecretStore-u.",
+            )
+
+        try:
+            adapter = build_text_generation_adapter(provider_code, api_key)
+        except Exception:
+            self._bootstrap.logger.exception(
+                "adapter factory failed for %s", provider_code
+            )
+            return self._generate_err(
+                _ERROR_KEY_MISSING,
+                f"Ne mogu instancirati adapter za {provider_code}.",
+            )
+
+        # -- 5. Build the generator (per-bridge construction, not a
+        #    constructor dep on the bridge, per the same "compose use
+        #    cases in the bridge" pattern as
+        #    ``create_campaign_and_generate_plan``).
+        generator = GenerateSocialPost(
+            campaign_repo=self._campaign_repo,
+            brand_repo=self._brand_repo,
+            fact_repo=self._fact_repo,
+            content_repo=self._content_repo,
+            revision_repo=self._revision_repo,
+            prompt_repo=self._prompt_repo,
+            ai_port=adapter,
+            unit_of_work=self._uow,
+        )
+
+        # -- 6. The per-piece loop. Idempotency: skip items that
+        #    already have a ``ContentPiece``. Partial success:
+        #    ``except Exception`` catches one piece's failure and
+        #    CONTINUES with the next item (the contract explicitly
+        #    differentiates this from the all-or-nothing
+        #    ``create_campaign_and_generate_plan``).
+        existing_pieces = self._content_repo.list_campaign_content(
+            campaign_id
+        )
+        existing_item_ids = {
+            str(p.campaign_item_id) for p in existing_pieces
+        }
+
+        generated_ids: list[str] = []
+        failed_count = 0
+        first_error: str | None = None
+        for index, item in enumerate(approved.items):
+            # Idempotency: this item already has a piece; skip.
+            if str(item.id) in existing_item_ids:
+                continue
+            # Round-robin target assignment (same shape as
+            # ``run_system_b.py:86``).
+            target = _target_for_item(index, targets)
+            if target is None:
+                # No targets in the brief at all — the campaign was
+                # created without any platform. This is a user
+                # error, not an AI failure. Mark as failed and
+                # continue.
+                failed_count += 1
+                if first_error is None:
+                    first_error = (
+                        "Nema definisanih targeta u briefu — "
+                        "objave ne mogu biti generisane."
+                    )
+                continue
+            try:
+                piece = generator.execute(
+                    campaign.id, approved.id, item.id, target
+                )
+                generated_ids.append(str(piece.id))
+            except Exception as exc:
+                # Per contract: a single piece's failure MUST NOT
+                # abort the rest of the loop. We collect the first
+                # error message for the result, log the rest, and
+                # continue. ``str(exc)`` may contain a provider SDK
+                # message that the contract is OK to surface here
+                # (no API key is in it; the secret is in the
+                # ``get_secret`` call, never in the adapter's
+                # exception text).
+                failed_count += 1
+                if first_error is None:
+                    first_error = (
+                        f"AI poziv za stavku {item.id} nije uspio: "
+                        f"{type(exc).__name__}."
+                    )
+                self._bootstrap.logger.error(
+                    "GenerateSocialPost failed for item %s (err=%s)",
+                    item.id, type(exc).__name__,
+                )
+
+        # -- 7. Build the result. ``ok=True`` whenever AT LEAST ONE
+        #    piece landed (or zero were needed because everything was
+        #    already generated). ``ok=False`` only when zero pieces
+        #    landed and there were piece-slots that needed work
+        #    (i.e. genuine failure).
+        generated_count = len(generated_ids)
+        if generated_count == 0 and failed_count == 0:
+            # Everything was already generated (idempotent re-click).
+            # Return ``ok=True`` with zero counts so the JS shows a
+            # "Sadržaj je već generisan" toast.
+            ok = True
+        elif generated_count == 0:
+            ok = False
+        else:
+            ok = True
+
+        return asdict(
+            GenerateContentResultUiModel(
+                ok=ok,
+                campaign_id=str(campaign.id),
+                generated_count=generated_count,
+                failed_count=failed_count,
+                content_piece_ids=tuple(generated_ids),
+                error_code=None if ok else _ERROR_GENERATION,
+                error_message=(
+                    None if ok
+                    else (first_error or "Generisanje sadržaja nije uspjelo.")
+                ),
+            )
+        )
     def configure_provider(self, raw_payload: dict) -> dict:
         """Persist a provider API key into the real SecretStore (ACS-GUI-007).
 
@@ -677,6 +1000,28 @@ class CampaignBridgeApi:
             ProviderConfigResultUiModel(
                 ok=False,
                 provider_code=None,
+                error_code=code,
+                error_message=message,
+            )
+        )
+
+    @staticmethod
+    def _generate_err(code: str, message: str) -> dict:
+        """Error result for ``generate_campaign_content`` only.
+
+        Same shape logic as ``_provider_err``: a dedicated helper
+        because ``_err()`` is hard-coded to
+        ``CampaignPlanResultUiModel`` and the generate-content DTO
+        has different fields (``generated_count`` /
+        ``failed_count`` / ``content_piece_ids``).
+        """
+        return asdict(
+            GenerateContentResultUiModel(
+                ok=False,
+                campaign_id=None,
+                generated_count=0,
+                failed_count=0,
+                content_piece_ids=(),
                 error_code=code,
                 error_message=message,
             )
