@@ -3,7 +3,29 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-06 (coordinator: claude) — **KRITIČNO
+**Zadnje ažurirano:** 2026-09-06 (coordinator: claude) — **ACS-GUI-010
+(Kampanje lista -- kolona "Sljedeći korak") merged u main preko PR #7.**
+Fixture-only dopuna (nula bridge poziva), iz Buffer/Later UX pregleda
+istog dana. Implementer je radio DIREKTNO u glavnom checkout-u (bez
+zasebnog worktree-a/branch-a, suprotno procesu) -- za LOW-risk,
+2-fajlni task koordinator je to prihvatio pragmatično: pregledao
+uncommit-ovan diff direktno, kreirao branch RETROAKTIVNO iz tih
+izmjena, pa nastavio standardan PR+CI+merge tok. 15/15 SSR test (XSS
+escape za novo polje, redoslijed kolona), pun suite 991/991, ruff/mypy
+čisti, CI zeleno na PR-u i na main-u. **Potvrđen, bezopasan lokalni lažni
+alarm** (ne regresija): `pytest -q` u GLAVNOM checkout-u i dalje prijavljuje
+`test_gate_report_against_current_repo_passes` FAIL zbog istog
+pred-postojećeg netrackovanog `.tmp_gui008_review/probe.py` (vidi
+prošli entry) -- `artifacts/phase0_foundation_gate.json`-ov lažni
+"FAIL" zapis je vraćen na commit-ovano "PASS" stanje prije commit-a
+(`git checkout --`), NIJE greškom commit-ovan. Worktree nije postojao
+(pa ni uklonjen), branch obrisan.
+
+**Sljedeći korak (nepromijenjeno)**: P1.5-G3 dio 2 (ACS-F1-043, kod Pi-ja,
+u toku) i preostali Codex nalazi za ACS-GUI-008 (BF-1/BF-3/BF-4 + rebase
+na HOTFIX-002).
+
+Prethodni entry (2026-09-06): **KRITIČNO
 POPRAVLJENO -- ACS-HOTFIX-002 (SQLite thread-affinity crash u bridge-u)
 merged u main preko PR #5.** Codex-ov adversarial review ACS-GUI-008-a
 (PR #4, BF-2) otkrio je da bridge drži JEDNU SQLite konekciju napravljenu
