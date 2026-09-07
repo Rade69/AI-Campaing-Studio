@@ -3,7 +3,39 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **Prvi PRAVI
+**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **Dva stvarna
+GUI nalaza otkrivena i popravljena tokom Human Owner-ovog uživo
+klik-kroz testa (nakon live pytest E2E dokaza -- pytest je testirao
+bridge sloj direktno, ne stvarnu GUI navigaciju).**
+
+1. **Export rezultat nije bio vidljiv** -- `Pregled i izvoz` ekran
+   nije imao trajan prikaz rezultata (za razliku od `Studio sadržaja`
+   koji ima `data-generate-result`); ZIP putanja se prikazivala SAMO
+   kao toast koji nestane za ~2.2s. Popravljeno (`11e9054`): dodan
+   `data-export-result` callout, isti obrazac.
+2. **"Izvezi ZIP paket" dugme se uopšte nije pojavljivalo** -- veći
+   nalaz. Cijeli navigacioni lanac Plan kampanje → Kalendar → Studio
+   sadržaja → Pregled i izvoz je, van PRVOG koraka (koji ide preko JS
+   navigacije), koristio STATIČNE build-time linkove koji nikad nisu
+   nosili `?campaign=`/`?plan=` dalje. Rezultat: pravi korisnik koji
+   klika kroz stvaran tok NIKAD ne stiže do Studio sadržaja/Pregled i
+   izvoz sa pravim ID-jevima, pa se live dugmad nikad ne pojavljuju --
+   samo fixture prikaz. Popravljeno (`f9fd237`): svaki "next step" link
+   označen `data-next-step`, postojeći `app.js` boot IIFE proširen da
+   prepiše `href` sa stvarnim ID-jevima na svakom koraku lanca.
+   Mutation-testirano (izvršni Node/VM test, sva 3 skoka).
+
+Oba nalaza potvrđuju vrijednost STVARNOG klik-kroz testiranja --
+pytest E2E test (koji poziva bridge metode direktno) ih NIJE mogao
+uhvatiti jer ne prolazi kroz stvarnu HTML navigaciju.
+
+**Sljedeći korak**: korisnik ponovo pokreće pravu aplikaciju i
+provodi cio tok (Opis kampanje → ... → Pregled i izvoz → export) da
+potvrdi da su OBA nalaza stvarno zatvorena.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **Prvi PRAVI
 live vertical-slice test kroz bridge sloj -- PASS.** Human Owner je
 zatražio pravi test protiv pravog AI provajdera (DeepSeek); usput
 otkriveno da DeepSeek NIKAD nije bio povezan na
