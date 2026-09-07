@@ -3,7 +3,41 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **Dva stvarna
+**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **Dva nova Task
+Contract-a otvorena, spremna za implementere.** Nakon G10 PASS +
+potvrđenog dokaznog lanca (vidi ispod), sljedeći korak je P1.5-G5
+(Metric Calculation) plus jedan paralelan GUI read-path task.
+
+1. **[ACS-F1-048](../agent_reports/ACS-F1-048-task-contract.md)** —
+   P1.5-G5 Metric Calculation (Faza 1 v1.5 §20). Domain-only,
+   `domain/performance/calculator.py` (nov fajl) + `DerivedMetricSet`
+   u `metrics.py`. MEDIUM risk, Claude-only review (§29) → odmah merge
+   na PASS. Currency-konzistentnost je otvoreno pitanje (nema currency
+   polja nigdje u domain sloju) — implementer MORA istražiti i
+   prijaviti nalaz, ne tiho preskočiti ni sam dodati polje.
+   **Preporučen implementer: Pi** (duboko poznavanje G3/G4 domain sloja
+   iz ranijih taskova).
+2. **[ACS-F1-049](../agent_reports/ACS-F1-049-task-contract.md)** —
+   Brend ekran (drugi GUI read-path ekran poslije F1-046 Kampanje).
+   Repo metode (`get_brand`/`get_snapshot`/`list_snapshot_facts`) VEĆ
+   POSTOJE — nema potrebe za novim. HIGH risk (GUI lifecycle klasa
+   grešaka iz F1-046 BF-1/BF-2 mora biti unaprijed spriječena, ne
+   ponovo otkrivena), pun adversarial ciklus (Claude + Codex).
+   **Preporučen implementer: Crush** (svjež na F1-046 read-path
+   obrascu).
+
+`allowed_paths` oba taska su potpuno disjoint (`domain/performance/`
+vs `presentation_webview/screens/brend/` + `bridge/__init__.py` +
+`app.js`) — sigurno za paralelan rad. NIJEDAN treći task koji dira
+`static/app.js`/`bridge/__init__.py` se ne pokreće paralelno s ovim
+(lekcija iz GUI-009/F1-046/F1-047 3-way merge sudara od 2026-09-07).
+
+Oba contracta su na `main` (`e620f73`), CI zeleno, GitNexus osvježen
+(13.772 nodes/291 clusters/144 flows).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **Dva stvarna
 GUI nalaza otkrivena i popravljena tokom Human Owner-ovog uživo
 klik-kroz testa (nakon live pytest E2E dokaza -- pytest je testirao
 bridge sloj direktno, ne stvarnu GUI navigaciju).**
