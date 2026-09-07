@@ -4,6 +4,24 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-047
+DONE — merged u main (PR #12, merge commit `e7adb51`).** Human Owner
+odobrenje: "Odobravam". Implementer: MiniMax.
+
+Nalaz 4 iz web Claude review-a zatvoren: `generate_campaign_content`
+je job-backed preko `JobManager`-a (progress, otkazivanje, dugme se
+više ne zamrzava ~2 minute). Pun HIGH-risk ciklus: 1 implementacija +
+3 fix runde, 4 Claude review runde, 3 Codex adversarial runde -- svi
+detalji u [agent_reports/2026-09-07-ACS-F1-047-final-decision-packet.md](../agent_reports/2026-09-07-ACS-F1-047-final-decision-packet.md).
+Post-merge CI zeleno na main. Worktree uklonjen (clean). GitNexus
+osvježen.
+
+**Preostao je još 1 od originalna 4 nalaza otvoren**: ACS-F1-046
+(Kampanje read-path, Crush, PR #11) čeka Codex adversarial rundu.
+ACS-GUI-009 (v2, Crush) i dalje čeka fix na Codex-ov REJECT (BF-1/2/3).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **ACS-F1-047
 (PR #12) — Codex round 3: PASS_WITH_NOTES, bez blocking nalaza.
 READY FOR HUMAN OWNER APPROVAL.** Final decision packet:
 [agent_reports/2026-09-07-ACS-F1-047-final-decision-packet.md](../agent_reports/2026-09-07-ACS-F1-047-final-decision-packet.md).
