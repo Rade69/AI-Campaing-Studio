@@ -36,6 +36,16 @@ def test_pick_configured_provider_respects_priority_order() -> None:
     )
 
 
+def test_pick_configured_provider_deepseek_is_lowest_priority() -> None:
+    # DEEPSEEK is appended at the END of the priority tuple: it loses to
+    # any of the original three when they're also configured, but wins
+    # when it's the only (or highest-priority) one actually configured.
+    assert (
+        factory.pick_configured_provider(["DEEPSEEK", "GOOGLE"]) == "GOOGLE"
+    )
+    assert factory.pick_configured_provider(["DEEPSEEK"]) == "DEEPSEEK"
+
+
 def test_pick_configured_provider_returns_first_when_no_priority_match() -> None:
     # A future provider not in our priority list is still picked (just
     # blindly takes the first entry — do not fail just because the
@@ -78,13 +88,21 @@ def test_resolve_model_id_is_case_insensitive() -> None:
     assert factory.resolve_model_id("openai") == "gpt-4o-mini"
 
 
+def test_resolve_model_id_returns_hardcoded_string_for_deepseek() -> None:
+    # Live-verified in ACS-F1-017's fix-brief evidence (a real call
+    # against api.deepseek.com with this exact model string succeeded).
+    assert factory.resolve_model_id("DEEPSEEK") == "deepseek-chat"
+
+
 def test_resolve_model_id_raises_configuration_error_for_unknown_provider() -> None:
+    # OPENROUTER is still not wired (no live-verified model id yet).
     with pytest.raises(ConfigurationError) as exc_info:
-        factory.resolve_model_id("DEEPSEEK")
+        factory.resolve_model_id("OPENROUTER")
     assert exc_info.value.error_code is ErrorCode.CONFIGURATION_ERROR
     # Error message must NOT leak the internal model-id table.
     assert "gpt-4o" not in str(exc_info.value)
     assert "claude" not in str(exc_info.value)
+    assert "deepseek-chat" not in str(exc_info.value)
 
 
 # --- build_text_generation_adapter ---
@@ -142,13 +160,23 @@ def test_build_passes_base_url_when_provided() -> None:
     )
 
 
+def test_build_returns_deepseek_adapter_with_correct_model() -> None:
+    with patch(
+        "ai_campaign_studio.infrastructure.ai.openai_compatible_providers"
+        ".build_deepseek_adapter"
+    ) as fn:
+        factory.build_text_generation_adapter("DEEPSEEK", api_key="sk-ds-EXAMPLE")
+    fn.assert_called_once_with(api_key="sk-ds-EXAMPLE", model="deepseek-chat")
+
+
 def test_build_raises_configuration_error_for_unsupported_provider() -> None:
-    # DEEPSEEK / OPENROUTER would live here once ACS-F1-017 lands. Until
+    # OPENROUTER would live here once it is actually wired -- no live-
+    # verified model id or adversarial testing exists for it yet. Until
     # then, the factory must surface a clear error so the bridge can
     # map it to a user-facing message rather than silently picking the
     # wrong provider.
     with pytest.raises(ConfigurationError) as exc_info:
-        factory.build_text_generation_adapter("DEEPSEEK", api_key="sk-test")
+        factory.build_text_generation_adapter("OPENROUTER", api_key="sk-test")
     assert exc_info.value.error_code is ErrorCode.CONFIGURATION_ERROR
 
 

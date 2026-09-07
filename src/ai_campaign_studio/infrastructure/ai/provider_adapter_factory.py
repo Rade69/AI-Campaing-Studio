@@ -19,11 +19,14 @@ Design notes
   the string (live-verified A8 evidence file, or "verified against the
   installed SDK Literal type" for ``ANTHROPIC`` which has no live test
   in this project).
-- **ACS-F1-017 (DeepSeek/OpenRouter) is NOT YET MERGED** in this task's base
-  (``main @ 73f52b1``). Per the contract, we ship 3 entries (OPENAI,
-  ANTHROPIC, GOOGLE) and raise a clear internal error for any other code.
-  The coordinator will add DeepSeek/OpenRouter entries in a follow-up
-  fix round once ACS-F1-017 lands on main.
+- **DeepSeek wired in 2026-09-07** (the ACS-GUI-005-era note below was
+  the deferred-follow-up marker; DeepSeek's adapter code landed in
+  ACS-F1-017 but was never actually connected here until now). Reuses
+  ``build_deepseek_adapter`` (``openai_compatible_providers.py``), which
+  pins DeepSeek's fixed base URL and ``json_object`` structured-output
+  mode. OpenRouter is still NOT wired — no live-verified model id or
+  adversarial testing exists for it yet; add it in its own follow-up
+  when actually needed, don't guess a model string ahead of time.
 """
 
 from __future__ import annotations
@@ -62,13 +65,23 @@ _DEFAULT_MODEL_IDS: dict[str, str] = {
     # generateContent) — see ACS-GUI-005 BF-1 in
     # `agent_reports/2026-09-04-ACS-GUI-005-minimax.md` §"Fix runda (BF-1)".
     "GOOGLE": "gemini-2.5-flash",
+    # Live-verified in ACS-F1-017's fix-brief evidence (`agent_reports/
+    # 2026-09-04-ACS-F1-017-fix-brief-za-pi.md`, line 15): a real call
+    # against `https://api.deepseek.com` with `model='deepseek-chat'`
+    # succeeded. DeepSeek rejects the `json_schema` response_format, so
+    # `build_deepseek_adapter` pins `structured_output_mode=JSON_OBJECT_MODE`.
+    "DEEPSEEK": "deepseek-chat",
 }
 
 # Hardcoded priority — ACS-GUI-005 contract: pick the first configured
 # provider in this order; if a configured provider falls outside the list,
 # fall back to any configured one (do not fail just because the priority
-# list is incomplete).
-_PROVIDER_PRIORITY: tuple[str, ...] = ("OPENAI", "ANTHROPIC", "GOOGLE")
+# list is incomplete). DEEPSEEK is appended at the end (lowest priority)
+# rather than inserted among the original three, so a user who already
+# has e.g. OPENAI configured keeps the same default when DEEPSEEK is
+# ALSO configured — DeepSeek only wins when it's the only (or highest-
+# priority) provider actually configured.
+_PROVIDER_PRIORITY: tuple[str, ...] = ("OPENAI", "ANTHROPIC", "GOOGLE", "DEEPSEEK")
 
 
 def pick_configured_provider(
@@ -157,6 +170,19 @@ def build_text_generation_adapter(
         # choice of the Gemini SDK, not a missing feature here.
         del base_url  # explicit: Gemini does not support base_url overrides
         return GoogleAdapter(
+            api_key=api_key,
+            model=resolve_model_id(code),
+        )
+    if code == "DEEPSEEK":
+        from ai_campaign_studio.infrastructure.ai.openai_compatible_providers import (
+            build_deepseek_adapter,
+        )
+        # DeepSeek is OpenAI-SDK-compatible with a fixed base URL (no
+        # user-configurable base_url_mode -- see resources/ai_providers/
+        # deepseek.yaml). build_deepseek_adapter pins the base URL and
+        # the json_object structured-output mode internally.
+        del base_url  # explicit: DeepSeek's base URL is fixed, not user-set
+        return build_deepseek_adapter(
             api_key=api_key,
             model=resolve_model_id(code),
         )
