@@ -65,6 +65,22 @@ smetao (dijeli `bridge/__init__.py` sa ACS-F1-046/047 -- implementeri
 MORAJU koordinisati redoslijed merge-a/rebase-a, isti obrazac kao
 GUI-008/009 međusobno).
 
+**Dodjela agenata (2026-09-07, na osnovu ranijeg rada svakog)**:
+- **Pi** → ACS-F1-045 (fact-grounded planning + claim_linter) --
+  nastavak njegove application/posts+campaigns linije (F1-042/043/044).
+  Nula dodira sa bridge-om, bez konflikta.
+- **Crush** → ACS-F1-046 (Kampanje lista, prvi read-path bridge metod)
+  -- nastavak nakon što je upravo pokazao svježu primjenu GUI-008
+  obrasca na nov kontekst (GUI-009 addendum, PR #9).
+- **MiniMax** → ACS-F1-047 (JobManager wiring za `generate_campaign_content`)
+  -- MiniMax je napisao TU TAČNU metodu kroz sve tri GUI-008 fix runde
+  (lock, error-mapper, SUPERSEDED provjera), najbolje poznaje kod koji
+  se mijenja.
+
+**Poznat rizik**: `bridge/__init__.py` ima TRI istovremene grane
+(GUI-009 kod Crush-a čeka Codex, F1-046 kod Crush-a, F1-047 kod
+MiniMax-a) -- ko god završi prvi merguje se prvi, ostali rebase-uju.
+
 Prethodni entry (2026-09-07): **ACS-F1-044
 (P1.5-G4 Matching) merged u main preko PR #8.** `MatchPerformanceImportBatch.execute(
 batch_id, campaign_id) -> MatchResult` matchuje uvezene
