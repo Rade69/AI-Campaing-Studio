@@ -4,6 +4,26 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-047
+(PR #12) — Codex round 3: PASS_WITH_NOTES, bez blocking nalaza.
+READY FOR HUMAN OWNER APPROVAL.** Final decision packet:
+[agent_reports/2026-09-07-ACS-F1-047-final-decision-packet.md](../agent_reports/2026-09-07-ACS-F1-047-final-decision-packet.md).
+
+- Codex je sam pokrenuo SOPSTVENU ekstrakcionu Node reprodukciju (ne
+  implementer-ovu ručno pisanu kopiju) i nezavisno potvrdio
+  BF-CODEX-1/2/3 sve drže. Nezavisno reprodukovano od koordinatora:
+  1071 testova, ruff, mypy čisti, CI zeleno.
+- Ukupan tok: 1 implementacija + 3 fix runde, 4 Claude review runde,
+  3 Codex adversarial runde -- svaki nalaz (moj i Codex-ov)
+  reprodukovan PRIJE prosljeđivanja, svaki fix re-verifikovan
+  (uključujući mutation-testing) PRIJE sljedeće runde.
+- 3 poznata, prihvaćena rezidualna rizika navedena u decision packet-u
+  (JS repro nije u CI-ju, integration testovi trebaju prave API
+  ključeve, 1200ms polling interval) -- eksplicitno ne blokiraju.
+- Čeka Human Owner odluku za merge PR #12.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **ACS-F1-047
 (PR #12) — BF-CODEX-3 fix potvrđen, push-ovano, treći Codex re-review
 zatražen.** Fix evidence:
 `agent_reports/2026-09-07-ACS-F1-047-fix-brief-5-evidence.md`.
