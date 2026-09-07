@@ -3,7 +3,33 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-GUI-009
+**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-046
+(PR #11) — Codex REJECT (BF-1/2/3), Codex SAM popravio (Human Owner
+odluka), Claude nezavisno verifikovao, re-review zatražen.** Codex
+review: `agent_reports/2026-09-07-ACS-F1-046-review-codex.md`. Fix
+evidence: `agent_reports/2026-09-07-ACS-F1-046-fix-codex-evidence.md`.
+Codex re-review brief: [agent_reports/2026-09-07-ACS-F1-046-brief-za-codex-2.md](../agent_reports/2026-09-07-ACS-F1-046-brief-za-codex-2.md).
+
+- Codex je u prvom review-u našao ozbiljne nalaze koje MOJ raniji PASS
+  review NIJE uhvatio: BF-1 (`loadCampaigns()` se poziva prije
+  garantovane pywebview API spremnosti, bez retry-a -- produkcija može
+  trajno ostati na fixture podacima), BF-2 (generički `table.table`
+  selector prepisuje NEPOVEZANU Plan kampanje tabelu kad je bridge
+  aktivan), BF-3 (PR konfliktan sa main-om).
+- Fix (Codex sam, po Human Owner presedanu iz F1-047): `pywebviewready`
+  event + immediate fast path za BF-1 (verifikovao SAM da je event
+  stvaran i race-free, provjerom instaliranog `webview` paketovog
+  `finish.js`); `data-campaigns-table` marker za BF-2 (mutation-
+  testirao SAM novi izvršni Node/VM test -- puca bez fix-a na svim
+  invarijantama, prolazi sa fix-om); rebase za BF-3 (potvrđeno
+  `mergeable: MERGEABLE`, `mergeStateStatus: CLEAN`).
+- Nezavisno reprodukovano: 1105 testova, ruff, mypy čisti. CI na PR #11
+  zeleno.
+- Čeka Codex re-review.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **ACS-GUI-009
 DONE — merged u main (PR #9, merge commit `b501a16`).** Human Owner
 odobrenje: "Odobravam". Implementer: Crush.
 
