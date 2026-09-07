@@ -221,17 +221,23 @@ def test_provider_config_result_is_frozen() -> None:
 
 
 # --- ACS-GUI-008: GenerateContentResultUiModel -----------------------------
+# ACS-F1-047: this DTO shrank from a 7-field RESULT shape to a 5-field
+# STARTED shape. Per-piece outcomes (generated_count / failed_count /
+# content_piece_ids) live on the JobState now and are reachable via
+# ``get_job_status`` -- the sync response only carries ``ok`` /
+# ``campaign_id`` / ``job_id`` / ``error_code`` / ``error_message``.
 
 
 def test_generate_content_result_success_shape() -> None:
-    """Happy path: ok=True, all counts populated, error fields None,
-    content_piece_ids in plan-item order."""
+    """Happy path: ok=True, job_id populated, error fields None.
+
+    The JS caller learns the per-piece outcome by polling
+    ``get_job_status(job_id)`` until the job is terminal.
+    """
     result = GenerateContentResultUiModel(
         ok=True,
         campaign_id="cmp_abc",
-        generated_count=3,
-        failed_count=0,
-        content_piece_ids=("p-1", "p-2", "p-3"),
+        job_id="job-1",
         error_code=None,
         error_message=None,
     )
@@ -239,63 +245,61 @@ def test_generate_content_result_success_shape() -> None:
     assert blob == {
         "ok": True,
         "campaign_id": "cmp_abc",
-        "generated_count": 3,
-        "failed_count": 0,
-        "content_piece_ids": ("p-1", "p-2", "p-3"),
+        "job_id": "job-1",
         "error_code": None,
         "error_message": None,
     }
 
 
 def test_generate_content_result_partial_failure_shape() -> None:
-    """Partial success: ok=True even when failed_count > 0 (the user
-    can see what was generated and retry the rest)."""
+    """Partial success at the sync layer: ok=True with a job_id; the
+    *partial* outcome is in the terminal JobState, not in the sync
+    DTO. The test asserts only the sync DTO contract.
+    """
     result = GenerateContentResultUiModel(
         ok=True,
         campaign_id="cmp_abc",
-        generated_count=2,
-        failed_count=1,
-        content_piece_ids=("p-1", "p-2"),
+        job_id="job-2",
         error_code=None,
         error_message=None,
     )
     blob = asdict(result)
     assert blob["ok"] is True
-    assert blob["generated_count"] == 2
-    assert blob["failed_count"] == 1
+    assert blob["job_id"] == "job-2"
+    assert blob["campaign_id"] == "cmp_abc"
     assert blob["error_code"] is None
     assert blob["error_message"] is None
 
 
 def test_generate_content_result_idempotent_re_click_shape() -> None:
-    """Idempotent re-click: every CampaignItem already has a piece,
-    so the call returns generated_count=0 / failed_count=0 with
-    ok=True (the user sees \"already done\")."""
+    """Idempotent re-click: ok=True with a (fresh) job_id; the closure
+    inside the job will see all items already have a piece and
+    generate nothing. The DTO is structurally identical to a
+    happy-path sync submission.
+    """
     result = GenerateContentResultUiModel(
         ok=True,
         campaign_id="cmp_abc",
-        generated_count=0,
-        failed_count=0,
-        content_piece_ids=(),
+        job_id="job-3",
         error_code=None,
         error_message=None,
     )
     blob = asdict(result)
     assert blob["ok"] is True
-    assert blob["generated_count"] == 0
-    assert blob["failed_count"] == 0
-    assert blob["content_piece_ids"] == ()
+    assert blob["job_id"] == "job-3"
+    assert blob["error_code"] is None
 
 
 def test_generate_content_result_error_shape() -> None:
-    """Complete failure: ok=False, all success fields default
-    (campaign_id None, counts 0, ids empty), error fields populated."""
+    """Sync failure: ok=False, no job started (job_id is None),
+    error fields populated. Replaces the old test that used
+    ``generated_count=0, failed_count=3`` for the same purpose --
+    those counters no longer live on the sync DTO.
+    """
     result = GenerateContentResultUiModel(
         ok=False,
         campaign_id=None,
-        generated_count=0,
-        failed_count=3,
-        content_piece_ids=(),
+        job_id=None,
         error_code="GENERATION_FAILED",
         error_message="AI poziv za stavku item-1 nije uspio: NetworkError.",
     )
@@ -303,9 +307,7 @@ def test_generate_content_result_error_shape() -> None:
     assert blob == {
         "ok": False,
         "campaign_id": None,
-        "generated_count": 0,
-        "failed_count": 3,
-        "content_piece_ids": (),
+        "job_id": None,
         "error_code": "GENERATION_FAILED",
         "error_message": "AI poziv za stavku item-1 nije uspio: NetworkError.",
     }
@@ -314,44 +316,32 @@ def test_generate_content_result_error_shape() -> None:
 def test_generate_content_result_is_json_serializable() -> None:
     """PYWEBVIEW_SECURITY §3: the bridge's return crosses the
     ``js_api`` boundary as JSON. The DTO must round-trip.
-
-    The tuple field ``content_piece_ids`` is preserved by
-    ``asdict`` (Python 14.1 keeps the tuple) but JSON has no
-    ``tuple`` type, so the roundtripped value is a ``list``. We
-    normalize both sides to ``list`` for the equality check.
     """
     cases = [
         GenerateContentResultUiModel(
-            ok=True, campaign_id="cmp_1", generated_count=3, failed_count=0,
-            content_piece_ids=("p-1", "p-2", "p-3"),
+            ok=True, campaign_id="cmp_1", job_id="job-1",
             error_code=None, error_message=None,
         ),
         GenerateContentResultUiModel(
-            ok=False, campaign_id=None, generated_count=0, failed_count=2,
-            content_piece_ids=(),
+            ok=False, campaign_id=None, job_id=None,
             error_code="NO_PROVIDER_CONFIGURED",
             error_message="Nijedan AI provajder nije podešen.",
         ),
     ]
     for case in cases:
-        original = asdict(case)
-        # Normalize the tuple field to list (JSON has no tuples; the
-        # consumer never sees a tuple here anyway).
-        original["content_piece_ids"] = list(original["content_piece_ids"])
         roundtripped = json.loads(json.dumps(asdict(case)))
-        assert roundtripped == original
+        assert roundtripped == asdict(case)
 
 
 def test_generate_content_result_is_frozen() -> None:
     """DTOs are immutable."""
     import dataclasses
     result = GenerateContentResultUiModel(
-        ok=True, campaign_id="cmp_1", generated_count=1, failed_count=0,
-        content_piece_ids=("p-1",),
+        ok=True, campaign_id="cmp_1", job_id="job-1",
         error_code=None, error_message=None,
     )
     try:
-        result.generated_count = 99  # type: ignore[misc]
+        result.job_id = "hacked"  # type: ignore[misc]
     except dataclasses.FrozenInstanceError:
         return
     raise AssertionError("GenerateContentResultUiModel must be frozen")
@@ -360,9 +350,7 @@ def test_generate_content_result_is_frozen() -> None:
 def test_generate_content_result_carries_no_api_key_field() -> None:
     """Structural guarantee: the DTO has NO field that could hold an
     API key (mirror of the ``ProviderConfigResultUiModel`` contract).
-    The ``campaign_id`` is NOT a secret; ``content_piece_ids`` is a
-    tuple of post ids. Anything resembling an api_key field is
-    explicitly forbidden here so a future review catches it.
+    ``job_id`` and ``campaign_id`` are NOT secrets.
     """
     # Build the forbidden token at runtime so the no-secrets scanner
     # (which looks for literal ``api_key``-shaped strings) does not
@@ -377,9 +365,7 @@ def test_generate_content_result_carries_no_api_key_field() -> None:
     assert fields == {
         "ok",
         "campaign_id",
-        "generated_count",
-        "failed_count",
-        "content_piece_ids",
+        "job_id",
         "error_code",
         "error_message",
     }

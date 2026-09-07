@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Thread
@@ -193,6 +194,32 @@ def _call_on_fresh_thread(call, payload: dict) -> dict:
     return results[0]
 
 
+def _wait_for_job_terminal(
+    bridge: CampaignBridgeApi, job_id: str, *, timeout: float = 5.0
+) -> dict:
+    """Poll ``get_job_status`` until the job is terminal, then return
+    the final ``JobState`` snapshot as a plain ``dict``.
+
+    Terminal statuses: ``SUCCEEDED``, ``FAILED``, ``CANCELLED``. This
+    is the canonical post-F1-047 way to wait for ``generate_campaign_content``
+    to finish -- the sync response only carries ``job_id``, not the
+    per-piece outcome.
+    """
+    import time
+    deadline = time.monotonic() + timeout
+    last: dict = {}
+    while time.monotonic() < deadline:
+        state = bridge.get_job_status({"job_id": job_id})
+        last = state
+        if state.get("status") in ("SUCCEEDED", "FAILED", "CANCELLED"):
+            return state
+        time.sleep(0.02)
+    raise AssertionError(
+        f"job {job_id} did not reach a terminal state within {timeout}s; "
+        f"last state={last!r}"
+    )
+
+
 def test_js_api_methods_work_from_fresh_worker_threads(tmp_path) -> None:
     """ACS-HOTFIX-002: reproduce real pywebview thread dispatch."""
     bridge = _isolated_bridge(tmp_path)
@@ -259,13 +286,18 @@ def test_connection_failure_never_raises_or_leaks_secret_to_js(tmp_path) -> None
         # silently receiving plan-flow fields on a real DB failure
         # was the acceptance violation. After the fix, the third
         # method below MUST return the exact
-        # ``GenerateContentResultUiModel`` key set -- no
-        # ``plan_id``/``plan_item_count`` leakage, and the missing
+        # ``GenerateContentResultUiModel`` key set (5 fields under
+        # ACS-F1-047, the ``job_id`` shape -- no
+        # ``plan_id``/``plan_item_count`` leakage, and no missing
         # ``generated_count``/``failed_count``/``content_piece_ids``
-        # keys are present (so typed callers can rely on the shape).
+        # because they are not on this DTO anymore).
         content = bridge.generate_campaign_content(
             {"campaign_id": "c-any", "plan_id": "p-any"}
         )
+        # New read methods also go through the same lifecycle
+        # error-mapper dispatch (BF-5 follow-up for F1-047).
+        job_status = bridge.get_job_status({"job_id": "j-any"})
+        cancelled = bridge.cancel_job({"job_id": "j-any"})
 
     assert configured["ok"] is False
     assert configured["error_code"] == "INTERNAL_ERROR"
@@ -276,23 +308,24 @@ def test_connection_failure_never_raises_or_leaks_secret_to_js(tmp_path) -> None
     # Plan-flow keys must NOT leak into the generate-content result.
     assert "plan_id" not in content
     assert "plan_item_count" not in content
-    # Generate-content DTO keys MUST be present (even when zeroed).
+    # ACS-F1-047 DTO: 5 fields -- ``job_id`` replaces the
+    # generated/failed/piece-ids trio.
     assert set(content.keys()) == {
         "ok",
         "campaign_id",
-        "generated_count",
-        "failed_count",
-        "content_piece_ids",
+        "job_id",
         "error_code",
         "error_message",
     }
-    assert content["generated_count"] == 0
-    assert content["failed_count"] == 0
-    assert list(content["content_piece_ids"]) == []
-    # Sentinel must not appear in any of the three results.
+    # Sentinel must not appear in any of the five results.
     assert sentinel_key not in json.dumps(configured)
     assert sentinel_key not in json.dumps(generated)
     assert sentinel_key not in json.dumps(content)
+    # get_job_status / cancel_job are JSON-serialisable dicts too; the
+    # same sentinel-safety rule applies (the JobError path does not
+    # embed the original exception text).
+    assert sentinel_key not in json.dumps(job_status)
+    assert sentinel_key not in json.dumps(cancelled)
 
 
 # --- boundary validation (PYWEBVIEW_SECURITY §3) ---
@@ -1151,7 +1184,10 @@ def _count_content_pieces(bridge: CampaignBridgeApi, campaign_id_str: str) -> in
 
 
 def test_generate_content_happy_path_creates_all_pieces(tmp_path) -> None:
-    """2+ items, all AI calls succeed -> ``ok=True``, all pieces in DB."""
+    """2+ items, all AI calls succeed -> ``ok=True`` with ``job_id``;
+    after the job lands in SUCCEEDED, the terminal JobState carries
+    ``generated_count=3`` and the DB has 3 pieces.
+    """
     bridge = _isolated_bridge(tmp_path)
     _configure_provider(bridge, "OPENAI")
     campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=3)
@@ -1165,21 +1201,31 @@ def test_generate_content_happy_path_creates_all_pieces(tmp_path) -> None:
         result = bridge.generate_campaign_content(
             {"campaign_id": campaign_id, "plan_id": plan_id}
         )
+        # PATCH must stay active while the closure runs on the
+        # JobManager worker thread (the @with block is a sync
+        # return, the closure is async).
+        final = _wait_for_job_terminal(bridge, result["job_id"])
 
+    # Sync response shape (ACS-F1-047): 5 fields, no per-piece counts.
     assert result["ok"] is True
     assert result["campaign_id"] == campaign_id
-    assert result["generated_count"] == 3
-    assert result["failed_count"] == 0
-    assert len(result["content_piece_ids"]) == 3
+    assert result["job_id"], "ok=True response must carry a job_id"
     assert result["error_code"] is None
     assert result["error_message"] is None
+    # Per-piece outcome lives on the terminal JobState.
+    assert final["status"] == "SUCCEEDED"
+    assert final["generated_count"] == 3
+    assert final["failed_count"] == 0
+    assert len(final["content_piece_ids"]) == 3
     # The strongest evidence: actual rows in the DB.
     assert _count_content_pieces(bridge, campaign_id) == 3
 
 
 def test_generate_content_partial_failure_ok_true(tmp_path) -> None:
-    """1 of 2 AI calls raise -> ``ok=True``, ``generated_count=1``,
-    ``failed_count=1``. The user can retry for the failed item."""
+    """1 of 2 AI calls raise -> ``ok=True`` at sync layer; terminal
+    JobState shows ``generated_count=1``, ``failed_count=1``. The
+    user can retry for the failed item.
+    """
     bridge = _isolated_bridge(tmp_path)
     _configure_provider(bridge, "OPENAI")
     campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
@@ -1217,19 +1263,24 @@ def test_generate_content_partial_failure_ok_true(tmp_path) -> None:
         result = bridge.generate_campaign_content(
             {"campaign_id": campaign_id, "plan_id": plan_id}
         )
+        # PATCH must stay active while the closure runs.
+        final = _wait_for_job_terminal(bridge, result["job_id"])
 
     assert result["ok"] is True
-    assert result["generated_count"] == 1
-    assert result["failed_count"] == 1
-    assert len(result["content_piece_ids"]) == 1
+    assert result["job_id"]
+    # The job SUCCEEDED -- one piece generated, one not, loop continued.
+    assert final["status"] == "SUCCEEDED"
+    assert final["generated_count"] == 1
+    assert final["failed_count"] == 1
     # Real evidence: only the FIRST item got persisted.
     assert _count_content_pieces(bridge, campaign_id) == 1
 
 
 def test_generate_content_idempotent_re_click_does_not_duplicate(tmp_path) -> None:
     """Second click on an already-generated campaign does NOT
-    duplicate ContentPiece rows. ``ok=True`` with both counts at 0
-    and a friendly 'already done' message is the contract.
+    duplicate ContentPiece rows. The second job's terminal JobState
+    reports ``generated_count=0`` (every item already has a piece
+    from the first click) and the DB count stays at ``num_items``.
     """
     bridge = _isolated_bridge(tmp_path)
     _configure_provider(bridge, "OPENAI")
@@ -1244,15 +1295,17 @@ def test_generate_content_idempotent_re_click_does_not_duplicate(tmp_path) -> No
         first = bridge.generate_campaign_content(
             {"campaign_id": campaign_id, "plan_id": plan_id}
         )
-        assert first["generated_count"] == 3
+        first_final = _wait_for_job_terminal(bridge, first["job_id"])
+        assert first_final["generated_count"] == 3
         second = bridge.generate_campaign_content(
             {"campaign_id": campaign_id, "plan_id": plan_id}
         )
-    # Second click: nothing to do.
+        # Second click: nothing to do.
+        second_final = _wait_for_job_terminal(bridge, second["job_id"])
     assert second["ok"] is True
-    assert second["generated_count"] == 0
-    assert second["failed_count"] == 0
-    assert second["content_piece_ids"] == ()
+    assert second_final["status"] == "SUCCEEDED"
+    assert second_final["generated_count"] == 0
+    assert second_final["failed_count"] == 0
     # Real evidence: still exactly 3 rows, no duplicates.
     assert _count_content_pieces(bridge, campaign_id) == 3
 
@@ -1260,7 +1313,8 @@ def test_generate_content_idempotent_re_click_does_not_duplicate(tmp_path) -> No
 def test_generate_content_already_approved_plan_works(tmp_path) -> None:
     """A plan the user already approved (or the bridge pre-approved
     during a previous click) does not blow up. The bridge
-    re-approves; that's idempotent at the domain level."""
+    re-approves; that's idempotent at the domain level.
+    """
     bridge = _isolated_bridge(tmp_path)
     _configure_provider(bridge, "OPENAI")
     campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
@@ -1275,9 +1329,12 @@ def test_generate_content_already_approved_plan_works(tmp_path) -> None:
         result = bridge.generate_campaign_content(
             {"campaign_id": campaign_id, "plan_id": plan_id}
         )
+        # PATCH must stay active while the closure runs.
+        final = _wait_for_job_terminal(bridge, result["job_id"])
 
     assert result["ok"] is True
-    assert result["generated_count"] == 2
+    assert result["job_id"]
+    assert final["generated_count"] == 2
     assert _count_content_pieces(bridge, campaign_id) == 2
 
 
@@ -1298,25 +1355,29 @@ def test_generate_content_campaign_not_found_returns_validation_error(
     assert "ne postoji" in result["error_message"].lower()
 
 
-def test_generate_content_no_provider_returns_no_provider_error(
+def test_generate_content_no_provider_returns_failure_on_job_state(
     tmp_path,
 ) -> None:
-    """Same error code as ``create_campaign_and_generate_plan`` when
-    no provider is configured: NO_PROVIDER_CONFIGURED. This is the
-    failure mode a fresh install hits on the very first click.
-
-    The campaign+plan MUST exist so the bridge reaches the provider
-    resolution step (a non-existent campaign returns VALIDATION_ERROR
-    first; see the dedicated test above). The seed helper gives us
-    both.
+    """ACS-F1-047: the sync response is STARTED (``ok=True, job_id``)
+    -- the provider-resolution check moved into the closure. The
+    NO_PROVIDER_CONFIGURED failure surfaces on the terminal
+    ``JobState`` (FAILED) -- the JS caller learns it via the polling
+    loop, not via a sync error code.
     """
     bridge = _isolated_bridge(tmp_path)
     campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
     result = bridge.generate_campaign_content(
         {"campaign_id": campaign_id, "plan_id": plan_id}
     )
-    assert result["ok"] is False
-    assert result["error_code"] == "NO_PROVIDER_CONFIGURED"
+    # Sync layer accepted the job; the failure is async.
+    assert result["ok"] is True
+    assert result["job_id"]
+    final = _wait_for_job_terminal(bridge, result["job_id"])
+    assert final["status"] == "FAILED"
+    # Provider resolution failed in the closure; the message is in
+    # the terminal JobState (the sync DTO cannot carry it any more).
+    assert "provajder" in final["error_message"].lower() or \
+        "provider" in final["error_message"].lower()
 
 
 def test_generate_content_plan_id_missing_returns_validation_error(
@@ -1415,6 +1476,8 @@ def test_generate_content_carries_no_api_key_in_result(tmp_path) -> None:
         result = bridge.generate_campaign_content(
             {"campaign_id": campaign_id, "plan_id": plan_id}
         )
+        # PATCH must stay active while the closure runs.
+        _wait_for_job_terminal(bridge, result["job_id"])
 
     blob = json.dumps(result)
     assert sentinel_key not in blob
@@ -1463,9 +1526,11 @@ def test_generate_content_round_robin_assignment_matches_run_system_b(
         "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
         _factory,
     ):
-        bridge.generate_campaign_content(
+        result = bridge.generate_campaign_content(
             {"campaign_id": campaign_id, "plan_id": plan_id}
         )
+        # PATCH must stay active while the closure runs.
+        _wait_for_job_terminal(bridge, result["job_id"])
 
     # Pull back the persisted ContentPiece rows and check the
     # ``target`` column on each one. All 3 should be the same (the
@@ -1489,12 +1554,11 @@ def test_generate_content_unexpected_exception_in_adapter_factory(
     tmp_path,
 ) -> None:
     """An unexpected exception during adapter construction (NOT
-    one of the known domain errors) maps to a safe result —
-    ``ok=False`` with a stable error code and NO raw exception text
-    in the user-facing message. The exact code is
-    implementation-defined (today: ``KEY_MISSING``, mirroring
-    ``create_campaign_and_generate_plan``); what matters is that
-    the caller never sees the SDK exception text.
+    one of the known domain errors) maps to a safe result on the
+    terminal ``JobState`` (FAILED) -- NO raw exception text in the
+    user-facing message. The exact code is implementation-defined
+    (the closure re-raises with our own scrubbed message; the
+    JobManager's ``_error_code`` mapper then assigns the code).
     """
     bridge = _isolated_bridge(tmp_path)
     _configure_provider(bridge, "OPENAI")
@@ -1509,14 +1573,21 @@ def test_generate_content_unexpected_exception_in_adapter_factory(
         result = bridge.generate_campaign_content(
             {"campaign_id": campaign_id, "plan_id": plan_id}
         )
+        # PATCH must stay active while the closure runs.
+        final = _wait_for_job_terminal(bridge, result["job_id"])
 
-    assert result["ok"] is False
-    # The exact code is implementation-defined; what matters is
-    # that it is NOT VALIDATION_ERROR (the input was valid) and
-    # that the raw SDK text is scrubbed.
-    assert result["error_code"] != "VALIDATION_ERROR"
-    assert "factory exploded unexpectedly" not in result["error_message"]
-    assert "RuntimeError" not in result["error_message"]
+    # Sync response is STARTED -- the closure is where the failure
+    # surfaces. The job runs in the background and lands in FAILED.
+    assert result["ok"] is True
+    assert result["job_id"]
+    assert final["status"] == "FAILED"
+    # Raw SDK text must NOT leak. The exception CLASS name is allowed
+    # because the closure re-raises with ``Could not instantiate
+    # adapter for X: <ExceptionType>.`` (a stable, user-friendly
+    # form that does NOT carry the original SDK message).
+    assert "factory exploded unexpectedly" not in final["error_message"]
+    # The "Traceback" marker is logged but never reaches the user.
+    assert "Traceback" not in final["error_message"]
 
 
 # ----------------------------------------------------------------------
@@ -1526,14 +1597,11 @@ def test_generate_content_unexpected_exception_in_adapter_factory(
 
 
 def test_generate_content_works_from_fresh_worker_thread(tmp_path) -> None:
-    """ACS-GUI-008 fix-brief-2 (HOTFIX-002 follow-up): the same
-    pywebview thread-dispatch pattern that BROKE every other bridge
-    method pre-HOTFIX-002 must also work for the new
-    ``generate_campaign_content`` method. Without the
-    ``@_with_call_resources`` decorator, ``self._content_repo`` /
-    ``self._revision_repo`` (now ``@property`` getters backed by a
-    ``ContextVar``) would raise ``RuntimeError("SQLite resources
-    require an active bridge call")`` outside the main thread.
+    """ACS-F1-047: ``generate_campaign_content`` runs on a pywebview
+    worker thread. The sync part has the ``@_with_call_resources``
+    decorator (HOTFIX-002 pattern), the closure opens its own
+    ``_resource_scope`` because it runs on a JobManager worker
+    thread, not the original pywebview worker thread.
     """
     bridge = _isolated_bridge(tmp_path)
     _configure_provider(bridge, "OPENAI")
@@ -1549,85 +1617,82 @@ def test_generate_content_works_from_fresh_worker_thread(tmp_path) -> None:
             bridge.generate_campaign_content,
             {"campaign_id": campaign_id, "plan_id": plan_id},
         )
+        # PATCH must stay active while the closure runs.
+        final = _wait_for_job_terminal(bridge, result["job_id"])
 
     assert result["ok"] is True, result
-    assert result["generated_count"] == 2
+    assert result["job_id"]
+    assert final["generated_count"] == 2
     assert _count_content_pieces(bridge, campaign_id) == 2
 
 
 def test_generate_content_concurrent_threads_serialize_via_lock(
     tmp_path,
 ) -> None:
-    """ACS-GUI-008 fix-brief-2 BF-3: two pywebview worker threads
-    hitting ``generate_campaign_content`` for the SAME
-    ``(campaign_id, plan_id)`` must be serialized. Without the
-    per-pair lock, both threads can read the "empty existing-pieces"
-    snapshot before either writes, and BOTH call
-    ``GenerateSocialPost`` for the same ``CampaignItem`` -- duplicates
-    in the user's pipeline.
-
-    Uses ``threading.Barrier`` to guarantee the two threads actually
-    overlap inside the locked region (not just back-to-back), same
-    pattern as the HOTFIX-002 review test.
+    """ACS-F1-047 carries BF-3 forward under the new job-backed API.
+    Two pywebview worker threads submitting ``generate_campaign_content``
+    for the SAME ``(campaign_id, plan_id)`` must not duplicate
+    content. The per-pair lock (now in the closure) serialises the
+    two jobs so the second job sees the first job's already-written
+    pieces and generates nothing.
     """
     bridge = _isolated_bridge(tmp_path)
     _configure_provider(bridge, "OPENAI")
     campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
 
-    barrier = threading.Barrier(2)
-    results: list[dict] = []
-    errors: list[BaseException] = []
+    # PATCH must stay active for both the sync submit AND the
+    # async closure on the JobManager worker thread. We hold it
+    # until BOTH jobs have landed.
+    with patch.object(
+        bridge._bootstrap.secret_store,
+        "get_secret",
+        return_value="sk-test",
+    ), patch(
+        "ai_campaign_studio.presentation_webview.bridge"
+        ".build_text_generation_adapter",
+        _fake_ai_factory(_valid_social_payload()),
+    ):
+        barrier = threading.Barrier(2)
+        results: list[dict] = []
+        errors: list[BaseException] = []
 
-    def _run() -> None:
-        try:
-            barrier.wait(timeout=5)
-            with patch.object(
-                bridge._bootstrap.secret_store,
-                "get_secret",
-                return_value="sk-test",
-            ), patch(
-                "ai_campaign_studio.presentation_webview.bridge"
-                ".build_text_generation_adapter",
-                _fake_ai_factory(_valid_social_payload()),
-            ):
+        def _run() -> None:
+            try:
+                barrier.wait(timeout=5)
                 results.append(
                     bridge.generate_campaign_content(
                         {"campaign_id": campaign_id, "plan_id": plan_id}
                     )
                 )
-        except BaseException as exc:  # pragma: no cover
-            errors.append(exc)
+            except BaseException as exc:  # pragma: no cover
+                errors.append(exc)
 
-    threads = [Thread(target=_run) for _ in range(2)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=10)
-    assert not errors, f"thread raised: {errors!r}"
-    assert len(results) == 2
+        threads = [Thread(target=_run) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+        assert not errors, f"thread raised: {errors!r}"
+        assert len(results) == 2
+        job_ids = [r["job_id"] for r in results]
+        assert all(job_ids), f"both calls must return a job_id; got {results!r}"
 
-    # Both calls return ok=True. The count of NEWLY generated pieces
-    # is 0 for the second call (idempotency: pieces already exist).
-    # The first call may report 2, the second 0; what matters is the
-    # TOTAL rows in the DB == num_items, not 2*num_items.
-    total_generated = sum(r["generated_count"] for r in results)
-    assert total_generated == 2, (
-        f"expected exactly 2 pieces total across both calls "
-        f"(no duplicates), got {total_generated}"
-    )
+        # Wait for both jobs to land while PATCH is still active.
+        for jid in job_ids:
+            _wait_for_job_terminal(bridge, jid)
+
+    # DB count is num_items, not 2 * num_items -- BF-3 still holds
+    # under the job-backed API.
     assert _count_content_pieces(bridge, campaign_id) == 2
 
 
 def test_generate_content_superseded_plan_rejected_no_ai_calls(
     tmp_path,
 ) -> None:
-    """ACS-GUI-008 fix-brief-2 BF-4: a plan in ``SUPERSEDED`` state
-    (replaced by a future ``EditCampaignPlan`` flow) must be
-    REJECTED up-front with ``VALIDATION_ERROR`` and ZERO AI calls.
-    Before the fix, ``SUPERSEDED`` silently fell through the
-    ``else: approved = plan`` branch and the bridge happily called
-    ``GenerateSocialPost`` for an inactive plan -- wasting AI calls
-    and creating content_pieces that point at a "tombstoned" plan.
+    """BF-4 carried over: a plan in ``SUPERSEDED`` state must be
+    REJECTED up-front in the SYNC layer with ``VALIDATION_ERROR``
+    and ZERO AI calls. The check still runs before
+    ``JobManager.submit`` -- the closure is never started.
     """
     bridge = _isolated_bridge(tmp_path)
     _configure_provider(bridge, "OPENAI")
@@ -1656,7 +1721,6 @@ def test_generate_content_superseded_plan_rejected_no_ai_calls(
         connection.close()
 
     ai_call_count = 0
-    original = bridge._generate_campaign_content_locked  # sanity check
 
     def _counting_factory(payload: dict):
         def _factory(
@@ -1677,18 +1741,216 @@ def test_generate_content_superseded_plan_rejected_no_ai_calls(
             {"campaign_id": campaign_id, "plan_id": plan_id}
         )
 
-    # The bridge must reject with VALIDATION_ERROR (BF-4) and make
-    # ZERO AI calls -- the user is told to make a new plan.
+    # The bridge rejects at the sync layer with VALIDATION_ERROR --
+    # the closure is NEVER started, so ZERO AI calls and no
+    # ``job_id`` is returned.
     assert result["ok"] is False, result
     assert result["error_code"] == "VALIDATION_ERROR", result
     assert "SUPERSEDED" in result["error_message"], result
     assert "novi plan" in result["error_message"].lower(), result
+    assert result["job_id"] is None, (
+        f"BF-4: SUPERSEDED plan must not start a job, "
+        f"got job_id={result['job_id']!r}"
+    )
     assert ai_call_count == 0, (
         f"BF-4 violation: bridge called AI {ai_call_count} time(s) "
         f"for a SUPERSEDED plan; expected exactly 0"
     )
     # No content_pieces were written.
     assert _count_content_pieces(bridge, campaign_id) == 0
-    # Sanity: the wrapped method exists (this test would be silently
-    # useless if the helper disappeared).
-    assert callable(original)
+
+
+# ----------------------------------------------------------------------
+# ACS-F1-047: get_job_status / cancel_job + acceptance #3 (progress)
+# and #4 (cancel actually stops the loop).
+# ----------------------------------------------------------------------
+
+
+def test_get_job_status_unknown_job_id_returns_validation_error(tmp_path) -> None:
+    """Unknown job_id maps to a sync VALIDATION_ERROR (no JobError
+    leak to the JS side)."""
+    bridge = _isolated_bridge(tmp_path)
+    result = bridge.get_job_status({"job_id": "does-not-exist"})
+    assert result["ok"] is False
+    assert result["error_code"] == "VALIDATION_ERROR"
+    assert "ne postoji" in result["error_message"]
+
+
+def test_cancel_job_unknown_job_id_returns_validation_error(tmp_path) -> None:
+    """Unknown job_id maps to a sync VALIDATION_ERROR (no JobError
+    leak to the JS side)."""
+    bridge = _isolated_bridge(tmp_path)
+    result = bridge.cancel_job({"job_id": "does-not-exist"})
+    assert result["ok"] is False
+    assert result["error_code"] == "VALIDATION_ERROR"
+    assert "ne postoji" in result["error_message"]
+
+
+def test_get_job_status_non_dict_payload_returns_validation_error(
+    tmp_path,
+) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    result = bridge.get_job_status("not a dict")  # type: ignore[arg-type]
+    assert result["ok"] is False
+    assert result["error_code"] == "VALIDATION_ERROR"
+
+
+def test_get_job_status_missing_job_id_returns_validation_error(
+    tmp_path,
+) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    result = bridge.get_job_status({})
+    assert result["ok"] is False
+    assert result["error_code"] == "VALIDATION_ERROR"
+    assert "job_id" in result["error_message"]
+
+
+def test_generate_content_progress_is_actually_published(tmp_path) -> None:
+    """ACS-F1-047 acceptance #3: progress is REAL — we poll mid-flight
+    and observe ``progress_current`` strictly greater than 0 with
+    ``progress_total`` = num_items, and the ``phase`` field is set.
+    The progress must come from the closure, not the manager's
+    lifecycle events (which only transition the status).
+    """
+    bridge = _isolated_bridge(tmp_path)
+    _configure_provider(bridge, "OPENAI")
+    campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=4)
+
+    # The adapter sleeps per call so the closure spends observable
+    # time in RUNNING. We pick a long enough sleep that polling at
+    # 20ms intervals can catch ``progress_current`` between items.
+    class _SlowAdapter:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def generate(self, request: AIRequest) -> AIResponse:
+            self.calls += 1
+            time.sleep(0.3)
+            return AIResponse(
+                provider="fake", model="fake", latency_ms=300,
+                structured_payload=_valid_social_payload(),
+            )
+
+    def _factory(
+        provider_code: str, api_key: str, *, base_url: str | None = None
+    ):
+        del provider_code, api_key, base_url
+        return _SlowAdapter()
+
+    seen_progress: list[tuple] = []
+
+    def _capture(state: dict) -> None:
+        seen_progress.append((
+            state.get("status"),
+            state.get("progress_current"),
+            state.get("progress_total"),
+            state.get("phase"),
+        ))
+
+    with patch.object(
+        bridge._bootstrap.secret_store, "get_secret", return_value="sk-test"
+    ), patch(
+        "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
+        _factory,
+    ):
+        result = bridge.generate_campaign_content(
+            {"campaign_id": campaign_id, "plan_id": plan_id}
+        )
+        job_id = result["job_id"]
+        # Poll while the closure runs (4 items * 0.3s = ~1.2s total).
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            state = bridge.get_job_status({"job_id": job_id})
+            _capture(state)
+            if state.get("status") in ("SUCCEEDED", "FAILED", "CANCELLED"):
+                break
+            time.sleep(0.02)
+
+    # At least one snapshot showed progress_current > 0 with total
+    # set, in any non-terminal status (closure's pre-generate call
+    # sets current=index and the post-generate finally sets
+    # current=index+1; either way the counter is monotonically
+    # non-zero for items 1..N-1 while the job is RUNNING).
+    saw_progress = [
+        c for c in seen_progress
+        if c[0] in ("RUNNING", "PENDING", "CANCELLING")
+        and c[1] and c[1] > 0 and c[2] and c[2] >= 1
+    ]
+    assert saw_progress, (
+        f"closure did not publish live progress; snapshots: {seen_progress!r}"
+    )
+    # The phase field is set to a non-empty value.
+    assert any(c[3] for c in saw_progress), (
+        f"closure did not set the phase field; snapshots: {seen_progress!r}"
+    )
+
+
+def test_cancel_job_actually_stops_the_loop(tmp_path) -> None:
+    """ACS-F1-047 acceptance #4: cancel STOPS the per-piece loop.
+
+    Each ``generate`` call sleeps 0.5s, so the closure takes ~2s
+    for 4 items. The test waits for ``progress_current >= 1``
+    (mid-loop) and then calls ``cancel_job``. The closure's next
+    ``token.raise_if_cancelled()`` (before item 2) raises
+    ``CancellationError`` and the loop exits early -- the job
+    lands in ``CANCELLED``, not ``SUCCEEDED`` with all 4 items.
+    """
+    bridge = _isolated_bridge(tmp_path)
+    _configure_provider(bridge, "OPENAI")
+    campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=4)
+
+    class _SlowAdapter:
+        def generate(self, request: AIRequest) -> AIResponse:
+            time.sleep(2.0)
+            return AIResponse(
+                provider="fake", model="fake", latency_ms=2000,
+                structured_payload=_valid_social_payload(),
+            )
+
+    def _factory(
+        provider_code: str, api_key: str, *, base_url: str | None = None
+    ):
+        del provider_code, api_key, base_url
+        return _SlowAdapter()
+
+    with patch.object(
+        bridge._bootstrap.secret_store, "get_secret", return_value="sk-test"
+    ), patch(
+        "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
+        _factory,
+    ):
+        result = bridge.generate_campaign_content(
+            {"campaign_id": campaign_id, "plan_id": plan_id}
+        )
+        job_id = result["job_id"]
+        # Wait for the FIRST AI call to finish (~0.5s) so the closure
+        # is mid-loop on item 2. ``generated_count == 1`` is the
+        # signal that the closure is BETWEEN items, not before the
+        # first or after the last.
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            s = bridge.get_job_status({"job_id": job_id})
+            if s.get("generated_count", 0) >= 1:
+                break
+            time.sleep(0.02)
+        # Cancel NOW -- the closure is mid-loop. The next
+        # ``raise_if_cancelled()`` will throw and the loop will exit
+        # before the remaining items are attempted.
+        cancel = bridge.cancel_job({"job_id": job_id})
+        assert cancel["ok"] is True
+        # Wait for terminal.
+        _wait_for_job_terminal(bridge, job_id)
+        final = bridge.get_job_status({"job_id": job_id})
+
+    # The job must end in CANCELLED, NOT SUCCEEDED.
+    assert final["status"] == "CANCELLED", (
+        f"expected CANCELLED, got {final['status']}; "
+        f"generated_count={final['generated_count']}, "
+        f"failed_count={final['failed_count']}"
+    )
+    # And the per-piece counter must be strictly less than total
+    # (cancel landed mid-loop, NOT after the last item).
+    assert final["generated_count"] < final["progress_total"], (
+        f"cancel did NOT stop the loop: generated={final['generated_count']} "
+        f"== total={final['progress_total']}"
+    )

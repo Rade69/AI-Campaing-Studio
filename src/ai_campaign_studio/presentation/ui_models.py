@@ -96,26 +96,35 @@ class GenerateContentResultUiModel:
     Converted to a plain ``dict`` before crossing the pywebview
     ``js_api`` boundary.
 
-    Semantics of the success fields:
+    ACS-F1-047: this DTO shrank from the original 7-field shape
+    (``generated_count`` / ``failed_count`` / ``content_piece_ids``)
+    to a 5-field STARTED shape (``ok`` / ``campaign_id`` / ``job_id``
+    / ``error_code`` / ``error_message``). The full per-piece outcome
+    now lives on the background job's ``JobState`` and is reachable
+    via ``CampaignBridgeApi.get_job_status(job_id)``. JS polls that
+    endpoint and shows a live progress counter on the same button
+    while the job is ``RUNNING``; per-piece counts are read from the
+    terminal ``JobState`` once the job lands in ``SUCCEEDED`` /
+    ``FAILED`` / ``CANCELLED``.
 
-    - ``ok=True`` when ``generated_count > 0`` — at least one piece
-      was successfully created. A PARTIAL success (some pieces
-      succeeded, others failed) is still ``ok=True`` because the user
-      can see the generated pieces and retry for the rest. The
-      ``failed_count`` makes the partial nature explicit so the JS
-      can show a "N of M uspjelo" toast.
-    - ``ok=False`` only when ``generated_count == 0`` — either every
-      piece failed, or no provider was configured, or the campaign
-      was not found, or the bridge itself errored.
-    - ``content_piece_ids`` is the list of pieces that landed in the
-      database (only populated on success; the order matches the
-      ``plan.items`` order, not the per-item retry order).
+    The pre-F1-047 semantic invariants still hold, just at a
+    different layer:
+
+    - ``ok=True`` means the job was ACCEPTED and started; it does
+      NOT guarantee any piece was generated (partial / total failure
+      is reported on the terminal ``JobState``).
+    - ``ok=False`` is only set on a sync error path (boundary
+      validation, plan lookup, provider resolution, JobManager
+      submission failure, or infrastructure lifecycle failure --
+      BF-5). Any error that happens AFTER the job is accepted is
+      surfaced via the terminal ``JobState``'s ``error_code`` /
+      ``error_message``.
+    - ``job_id`` is the lookup key for the background job; it is
+      the ONLY way the JS side learns the per-piece outcome.
     """
 
     ok: bool
     campaign_id: str | None
-    generated_count: int
-    failed_count: int
-    content_piece_ids: tuple[str, ...]
+    job_id: str | None
     error_code: str | None
     error_message: str | None

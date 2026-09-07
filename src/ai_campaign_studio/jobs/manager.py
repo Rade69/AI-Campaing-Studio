@@ -111,6 +111,67 @@ class JobManager:
             raise JobError(f"unknown job: {job_id}")
         return state
 
+    def update_progress(
+        self,
+        job_id: str,
+        current: int,
+        total: int,
+        phase: str = "",
+        message: str = "",
+    ) -> None:
+        """Update progress fields on a RUNNING job.
+
+        Best-effort: silently no-ops on unknown / terminal / non-RUNNING
+        jobs so a progress update that loses a race with the worker's
+        ``_finish()`` (or with cancellation) can never raise into user
+        code. The whole point of progress is "fires often, never blocks";
+        callers should not need to wrap each call in a try/except.
+
+        Emits a ``PROGRESS`` event on the same lock-hold pattern as the
+        lifecycle events (``_emit`` takes ``self._lock`` internally), so
+        subscribers observe ``STARTED`` before any ``PROGRESS`` and
+        progress stops after a terminal transition (the job is no longer
+        RUNNING, so the no-op short-circuits).
+
+        Added in ACS-F1-047 (generate_campaign_content JobManager
+        wiring). No prior job type in the codebase published progress
+        so this is the first non-lifecycle event the manager emits.
+        """
+        with self._lock:
+            state = self._jobs.get(job_id)
+            if state is None:
+                return
+            # Terminal jobs do not accept progress updates; this also
+            # covers ``CANCELLING`` (the worker is about to land in
+            # ``CANCELLED`` and we don't want a stale progress event to
+            # race the terminal one).
+            if state.status is not JobStatus.RUNNING:
+                return
+            self._jobs[job_id] = replace(
+                state,
+                progress_current=current,
+                progress_total=total,
+                phase=phase,
+                message=message,
+            )
+        # Emit OUTSIDE the lock-content section above but still under
+        # the same ``_emit``-takes-lock pattern as lifecycle events,
+        # so the ordering invariant (STARTED before any PROGRESS for
+        # the same job) holds against any concurrent worker.
+        self._emit(
+            JobEvent(
+                job_id=job_id,
+                event_type=JobEventType.PROGRESS,
+                timestamp=utc_now(),
+                payload={
+                    "current": current,
+                    "total": total,
+                    "phase": phase,
+                    "message": message,
+                },
+            )
+        )
+
     def cancel(self, job_id: str) -> None:
         """Cooperatively cancel a job.
 

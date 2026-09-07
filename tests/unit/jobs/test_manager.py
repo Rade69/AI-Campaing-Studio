@@ -410,3 +410,113 @@ def test_event_ordering_under_slow_created_callback_deterministic() -> None:
         "A worker thread acquired the manager lock and emitted STARTED "
         "before the submitter finished emitting CREATED."
     )
+
+
+# --- ACS-F1-047: update_progress tests ----------------------------------
+
+
+def test_update_progress_on_running_job_updates_state_and_emits_event() -> None:
+    """Happy path: progress is published while the job is RUNNING and
+    shows up in ``get_state`` and the event stream in order.
+    """
+    manager = JobManager()
+    try:
+        events: list[JobEvent] = []
+        unsubscribe = manager.subscribe(events.append)
+
+        started = threading.Event()
+        # The job id is unknown until ``submit`` returns, so the work
+        # callable reads it from a mutable container the test fills
+        # AFTER ``submit`` returns and BEFORE the worker thread runs
+        # the callable. ``started`` synchronises the two threads.
+        job_id_box: list[str] = [""]
+
+        def work(token) -> None:  # type: ignore[no-untyped-def]
+            jid = job_id_box[0]
+            started.set()
+            manager.update_progress(jid, 1, 4, phase="GENERATE", message="")
+            manager.update_progress(jid, 2, 4, phase="GENERATE", message="")
+            token.raise_if_cancelled()
+            manager.update_progress(jid, 4, 4, phase="DONE", message="ok")
+
+        job_id = manager.submit("work", work)
+        job_id_box[0] = job_id
+        assert started.wait(_WAIT_TIMEOUT)
+        _wait_for_status(manager, job_id, {JobStatus.SUCCEEDED})
+
+        # State reflects the LAST progress update.
+        final = manager.get_state(job_id)
+        assert final.progress_current == 4
+        assert final.progress_total == 4
+        assert final.phase == "DONE"
+        assert final.message == "ok"
+
+        # Event stream has the three PROGRESS events, in order, AFTER
+        # STARTED and BEFORE SUCCEEDED.
+        types = [e.event_type for e in events]
+        assert JobEventType.STARTED in types
+        assert types.count(JobEventType.PROGRESS) == 3
+        progress_idxs = [
+            i for i, t in enumerate(types) if t is JobEventType.PROGRESS
+        ]
+        assert progress_idxs == sorted(progress_idxs)
+        # First event must be CREATED; last must be SUCCEEDED (no
+        # progress after a terminal transition).
+        assert types[0] is JobEventType.CREATED
+        assert types[-1] is JobEventType.SUCCEEDED
+        unsubscribe()
+    finally:
+        manager.shutdown()
+
+
+def test_update_progress_on_unknown_job_id_is_silent_noop() -> None:
+    """``update_progress`` for an unknown ``job_id`` must not raise.
+
+    Progress is a fire-and-forget signal; a stale or bogus id from a
+    closed-over closure that captured a wrong value (or a race with
+    job completion) must NEVER raise into user code.
+    """
+    manager = JobManager()
+    try:
+        # No submit before — just call.
+        manager.update_progress("does-not-exist", 1, 2)
+        # Still no state visible.
+        with pytest.raises(JobError):
+            manager.get_state("does-not-exist")
+    finally:
+        manager.shutdown()
+
+
+def test_update_progress_on_terminal_job_is_silent_noop() -> None:
+    """A progress update that loses the race to ``_finish`` (job is
+    already SUCCEEDED / FAILED / CANCELLED) must NOT mutate the
+    terminal state and must NOT emit a stray PROGRESS event after the
+    terminal one.
+    """
+    manager = JobManager()
+    try:
+        events: list[JobEvent] = []
+        unsubscribe = manager.subscribe(events.append)
+
+        def quick(token) -> None:  # type: ignore[no-untyped-def]
+            return  # finishes immediately, no progress emitted
+
+        job_id = manager.submit("work", quick)
+        _wait_for_status(manager, job_id, {JobStatus.SUCCEEDED})
+
+        # State is now terminal; progress update is a no-op.
+        manager.update_progress(job_id, 99, 100, phase="LATE", message="late")
+        state = manager.get_state(job_id)
+        assert state.status is JobStatus.SUCCEEDED
+        # The terminal state was NOT polluted with the late numbers.
+        assert state.progress_current == 0
+        assert state.progress_total == 0
+        assert state.phase == ""
+        assert state.message == ""
+
+        # No PROGRESS event was emitted.
+        types = [e.event_type for e in events]
+        assert JobEventType.PROGRESS not in types
+        unsubscribe()
+    finally:
+        manager.shutdown()

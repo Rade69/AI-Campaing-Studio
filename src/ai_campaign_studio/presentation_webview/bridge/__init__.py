@@ -60,6 +60,7 @@ from ai_campaign_studio.domain.campaign.enums import CampaignPlanStatus
 from ai_campaign_studio.domain.common.errors import (
     EntityNotFound,
     InvariantViolation,
+    JobError,
     RegistryError,
 )
 from ai_campaign_studio.domain.common.ids import (
@@ -84,6 +85,8 @@ from ai_campaign_studio.infrastructure.database.unit_of_work import SqliteUnitOf
 from ai_campaign_studio.infrastructure.prompts.yaml_prompt_repository import (
     YamlPromptRepository,
 )
+from ai_campaign_studio.jobs.cancellation import CancellationError
+from ai_campaign_studio.jobs.models import JobStatus
 from ai_campaign_studio.presentation.ui_models import (
     CampaignPlanResultUiModel,
     GenerateContentResultUiModel,
@@ -135,6 +138,8 @@ _LIFECYCLE_ERROR_MAPPERS: dict[str, str] = {
     "configure_provider": "_provider_err",
     "create_campaign_and_generate_plan": "_err",
     "generate_campaign_content": "_generate_err",
+    "get_job_status": "_job_status_err",
+    "cancel_job": "_job_status_err",
 }
 # Per-method fallback message used ONLY when the resource-lifecycle
 # fails (we never want to surface the underlying exception text;
@@ -144,6 +149,8 @@ _LIFECYCLE_ERROR_MESSAGES: dict[str, str] = {
     "configure_provider": "Konfiguracija provajdera nije uspjela (interna greška).",
     "create_campaign_and_generate_plan": "Interna greška — pogledajte log aplikacije.",
     "generate_campaign_content": "Generisanje sadržaja nije uspjelo (interna greška).",
+    "get_job_status": "Ne mogu pročitati status posla (interna greška).",
+    "cancel_job": "Otkazivanje posla nije uspjelo (interna greška).",
 }
 
 
@@ -473,24 +480,38 @@ class CampaignBridgeApi:
 
     @_with_call_resources
     def generate_campaign_content(self, raw_payload: dict) -> dict:
-        """End-to-end: approve plan (idempotent), generate every content piece.
+        """Submit a "Generiši sadržaj" job; return ``job_id`` IMMEDIATELY.
 
-        NEW: bulk generation for the Studio sadržaja screen
-        (ACS-GUI-008). Different from ``create_campaign_and_generate_plan``
-        in two important ways:
+        ACS-F1-047: this method used to do the entire per-piece AI
+        loop synchronously inside the single ``js_api`` call, freezing
+        the UI button for ``~num_items * ~10s``. The work now runs on
+        a background thread via ``JobManager.submit``; this method
+        only does the SYNCHRONOUS boundary validation + plan/campaign
+        lookup + plan-approval dance, then hands off.
 
-        1. **Partial success is allowed** — one piece failing (network,
-           quota, bad-luck timeout) MUST NOT abort the rest of the loop.
-           The user sees ``generated_count`` / ``failed_count`` and can
-           click "Generiši" again to retry the failed items.
-        2. **Idempotent on the content side** — if a piece for a
-           ``CampaignItem`` already exists, the bridge MUST NOT call
-           ``GenerateSocialPost`` again (avoids duplicate posts in the
-           user's pipeline). ``ok=True`` is returned even when
-           ``generated_count == 0`` (everything was already done).
+        The sync phase still returns a ``_generate_err`` DTO on any
+        validation / lookup / approval failure -- those are user
+        errors and the user should see them immediately, not have to
+        wait for a job to start and then fail. Anything that happens
+        AFTER the job is accepted is reported via the terminal
+        ``JobState`` (reachable through ``get_job_status(job_id)``).
 
-        The method never raises into JS: every error path returns a
-        result ``dict`` with ``ok=False`` and a stable ``error_code``.
+        The closure runs on a ``ThreadPoolExecutor`` worker thread
+        (NOT the pywebview worker thread that invoked this method).
+        That means the closure MUST open its OWN ``_resource_scope``
+        -- the ``@_with_call_resources`` decorator only covers the
+        synchronous method body, and the bridge's per-call connection
+        is closed before the closure even starts. Same problem as
+        HOTFIX-002, now applied to a different thread boundary.
+
+        Partial success and cooperative cancellation are preserved
+        verbatim (BF-3 lock is no longer needed: the closure runs
+        serially per ``(campaign_id, plan_id)`` because
+        ``JobManager`` has a single executor thread for this job
+        type in practice; and if a user clicks twice in quick
+        succession, the second submit gets its own closure and the
+        per-piece idempotency check inside still prevents
+        duplicates).
         """
         # -- 1. Boundary validation (Pydantic-style; we do not trust JS).
         if not isinstance(raw_payload, dict):
@@ -519,36 +540,12 @@ class CampaignBridgeApi:
         campaign_id = CampaignId(campaign_id_raw.strip())
         plan_id = CampaignPlanId(plan_id_raw.strip())
 
-        # -- 2. The rest of the method runs under a per-pair lock.
-        #    BF-3 (fix-brief-2): two pywebview worker threads calling
-        #    ``generate_campaign_content`` for the SAME
-        #    ``(campaign_id, plan_id)`` MUST be serialized -- the
-        #    "read existing pieces -> generate -> save" sequence is
-        #    otherwise a TOCTOU race that duplicates content. The lock
-        #    is acquired AFTER boundary validation (so a malformed
-        #    payload returns cheaply without holding the lock for the
-        #    caller) and BEFORE any DB read (so the lookup of the
-        #    plan that we are about to approve+generate is consistent
-        #    with the save).
-        with self._lock_for(str(campaign_id), str(plan_id)):
-            return self._generate_campaign_content_locked(
-                campaign_id, plan_id
-            )
-
-    def _generate_campaign_content_locked(
-        self,
-        campaign_id: CampaignId,
-        plan_id: CampaignPlanId,
-    ) -> dict:
-        """Inner body of ``generate_campaign_content``; runs under the
-        per-``(campaign_id, plan_id)`` lock (BF-3). Split out so the
-        lock scope is small and explicit, and the locked region can be
-        reasoned about (and tested) independently of the JS-facing
-        boundary-validation prologue.
-        """
-        # -- 2. Campaign + brief + plan + targets (all-or-nothing up
-        #    to this point -- still inside the per-method try/except
-        #    so a domain error here maps to VALIDATION_ERROR).
+        # -- 2. Sync phase: campaign / brief / plan / targets lookup +
+        #    approve-if-DRAFT + BF-4 SUPERSEDED rejection. All of these
+        #    are fast DB reads/writes and the user wants a synchronous
+        #    error if the plan is wrong -- the JS layer would have to
+        #    poll a job just to discover a SUPERSEDED plan, which is
+        #    a strictly worse UX. Only the AI loop is worth backgrounding.
         try:
             campaign = self._campaign_repo.get_campaign(campaign_id)
             if campaign is None:
@@ -562,14 +559,6 @@ class CampaignBridgeApi:
                     _ERROR_VALIDATION,
                     f"Brief {campaign.brief_id} ne postoji.",
                 )
-            # Plan lookup: ACS-GUI-008 review feedback. The plan_id
-            # is REQUIRED in the payload (validated above); the bridge
-            # uses the existing ``CampaignRepositoryPort.get_plan``
-            # (already in the allowed path of the project) instead of
-            # raw SQL. This keeps the bridge inside the
-            # ``ports -> infrastructure`` boundary AND lets the JS
-            # caller tell the bridge which plan to operate on (the
-            # same plan it just created two clicks ago).
             plan = self._campaign_repo.get_plan(plan_id)
             if plan is None:
                 return self._generate_err(
@@ -578,10 +567,6 @@ class CampaignBridgeApi:
                     "Ponovo pokreni 'Sačuvaj i napravi plan'.",
                 )
             if plan.campaign_id != campaign_id:
-                # The plan does not belong to this campaign -- the JS
-                # caller mixed up ids (or someone tampered with the
-                # payload). Same defensive pattern as
-                # ``ExportCampaign._validate_plan_campaign_match``.
                 return self._generate_err(
                     _ERROR_VALIDATION,
                     f"Plan {plan_id} ne pripada kampanji {campaign_id}.",
@@ -600,53 +585,53 @@ class CampaignBridgeApi:
                 f"Ne mogu učitati plan: {type(exc).__name__}.",
             )
 
-        # -- 3. Approve plan (idempotent). The plan is the SAME
-        #    object we already loaded in step 2, so a quick status
-        #    check skips the ``ApproveCampaignPlan`` call when the
-        #    plan is already APPROVED — that use-case throws
-        #    ``InvariantViolation`` for non-DRAFT plans, which would
-        #    needlessly fail the click in the "approve once, generate
-        #    many" case (a partial-success click that finished
-        #    approving but still had pieces to render). We reuse the
-        #    already-loaded plan as-is.
         if plan.status is CampaignPlanStatus.DRAFT:
-            try:
-                approved = ApproveCampaignPlan(
-                    campaign_repo=self._campaign_repo,
-                    unit_of_work=self._uow,
-                ).execute(plan_id)
-            except (EntityNotFound, InvariantViolation) as exc:
-                # Domain-level failure: the plan is in an unexpected
-                # state (race with another writer, or a non-DRAFT,
-                # non-APPROVED status like REJECTED). Either way, the
-                # user-facing message is the domain detail.
-                return self._generate_err(_ERROR_VALIDATION, str(exc))
-            except Exception as exc:
-                self._bootstrap.logger.exception(
-                    "generate_campaign_content: ApproveCampaignPlan failed"
-                    " (campaign=%s, err=%s)",
-                    campaign_id, type(exc).__name__,
-                )
-                return self._generate_err(
-                    _ERROR_GENERATION,
-                    f"Odobravanje plana nije uspjelo: {type(exc).__name__}.",
-                )
+            # BF-3 (F1-047): the per-pair lock is also acquired here
+            # in the SYNC phase so two concurrent submitters cannot
+            # both read plan.status=DRAFT and both call
+            # ``ApproveCampaignPlan.execute()`` -- the second one
+            # would either no-op the approve (domain-level) or fail
+            # with an ``IntegrityError`` (FK cascade on items). The
+            # closure re-acquires the same lock for the per-piece
+            # loop, but the sync phase needs its own acquisition
+            # window so the approve + status read are atomic with
+            # respect to other submitters.
+            with self._lock_for(str(campaign_id), str(plan_id)):
+                # Re-load the plan under the lock -- the previous
+                # read may have been stale.
+                plan = self._campaign_repo.get_plan(plan_id)
+                if plan is None:
+                    return self._generate_err(
+                        _ERROR_VALIDATION,
+                        f"Plan {plan_id} ne postoji. "
+                        "Ponovo pokreni 'Sačuvaj i napravi plan'.",
+                    )
+                if plan.status is CampaignPlanStatus.DRAFT:
+                    try:
+                        approved = ApproveCampaignPlan(
+                            campaign_repo=self._campaign_repo,
+                            unit_of_work=self._uow,
+                        ).execute(plan_id)
+                    except (EntityNotFound, InvariantViolation) as exc:
+                        return self._generate_err(_ERROR_VALIDATION, str(exc))
+                    except Exception as exc:
+                        self._bootstrap.logger.exception(
+                            "generate_campaign_content: ApproveCampaignPlan failed"
+                            " (campaign=%s, err=%s)",
+                            campaign_id, type(exc).__name__,
+                        )
+                        return self._generate_err(
+                            _ERROR_GENERATION,
+                            f"Odobravanje plana nije uspjelo: {type(exc).__name__}.",
+                        )
+                else:
+                    # Plan was approved between the outer read and
+                    # this re-read; that's fine, reuse it.
+                    approved = plan
         else:
-            # Already APPROVED (or any other non-DRAFT state — we are
-            # tolerant on the read path, strict on the write path).
             approved = plan
 
-        # -- 3b. BF-4 (fix-brief-2): explicit rejection of plans in a
-        #    non-APPROVED state (today: ``SUPERSEDED``, replaced by a
-        #    newer version via the future ``EditCampaignPlan`` flow).
-        #    Without this, a ``SUPERSEDED`` plan falls through the
-        #    ``else: approved = plan`` branch and the bridge calls
-        #    ``GenerateSocialPost`` for a plan the user is no longer
-        #    expected to publish -- wasting AI calls, and creating
-        #    content_pieces that point at a "tombstoned" plan. We
-        #    reject up-front with VALIDATION_ERROR (the input is
-        #    semantically wrong: the plan id is valid but not the
-        #    active one) and 0 AI calls are made.
+        # BF-4: explicit rejection of non-APPROVED plans.
         if approved.status is not CampaignPlanStatus.APPROVED:
             return self._generate_err(
                 _ERROR_VALIDATION,
@@ -654,42 +639,157 @@ class CampaignBridgeApi:
                 "očekivano APPROVED. Napravi novi plan.",
             )
 
-        # -- 4. Provider resolution (reused helper).
+        # -- 3. Submit the job. The closure is given a snapshot of the
+        #    validated entities (campaign.id, approved.items, targets,
+        #    plus a frozen copy of brief/campaign if needed later) and
+        #    runs on the JobManager's executor. We return immediately
+        #    with the new ``job_id`` -- this is the only thing the JS
+        #    caller learns from the click; the per-piece outcome is
+        #    polled via ``get_job_status``.
+        plan_items_snapshot = tuple(approved.items)
+        targets_snapshot: tuple = tuple(targets)
+        try:
+            job_id = self._bootstrap.job_manager.submit(
+                "generate_campaign_content",
+                self._build_generate_content_closure(
+                    campaign_id=campaign_id,
+                    plan_id=plan_id,
+                    plan_items=plan_items_snapshot,
+                    targets=targets_snapshot,
+                ),
+            )
+        except RuntimeError as exc:
+            # JobManager shut down (or about to be) -- map to a sync
+            # VALIDATION_ERROR so the JS shows a useful toast instead
+            # of a stuck "Generiram…" label.
+            self._bootstrap.logger.error(
+                "generate_campaign_content: JobManager.submit failed: %s",
+                exc,
+            )
+            return self._generate_err(
+                _ERROR_INTERNAL,
+                "Sistem je zauzet. Pokušaj ponovo za par sekundi.",
+            )
+
+        return asdict(
+            GenerateContentResultUiModel(
+                ok=True,
+                campaign_id=str(campaign_id),
+                job_id=job_id,
+                error_code=None,
+                error_message=None,
+            )
+        )
+
+    def _build_generate_content_closure(
+        self,
+        campaign_id: CampaignId,
+        plan_id: CampaignPlanId,
+        plan_items: tuple,
+        targets: tuple,
+    ):
+        """Return a closure that runs the per-piece AI loop on the
+        ``JobManager`` executor thread.
+
+        Closure contract: it acquires the per-``(campaign_id, plan_id)``
+        lock (BF-3 carried over from the sync API -- without it, two
+        concurrent job submissions for the same pair would both see
+        an empty ``existing_pieces`` snapshot and BOTH generate for
+        the same items), opens its own ``_resource_scope``
+        (HOTFIX-002 pattern, because the bridge's per-call connection
+        is closed before the worker thread runs), checks the
+        ``CancellationToken`` before every piece, and publishes
+        progress via ``job_manager.update_progress`` after every
+        piece. On a natural exit the final ``generated_count`` /
+        ``failed_count`` / ``content_piece_ids`` are recorded on the
+        terminal ``JobState``; on ``CancellationError`` JobManager
+        transitions to ``CANCELLED`` and we patch the partial outcome
+        via the same private hook (``_patch_terminal_state``).
+        """
+        job_manager = self._bootstrap.job_manager
+        total = len(plan_items)
+        # Capture by-value so the closure cannot be tricked by a
+        # late-bound ``self`` rebind (defensive; ``self`` is already
+        # closed over in the enclosing method).
+        lock_for = self._lock_for
+
+        def _run(token) -> None:  # type: ignore[no-untyped-def]
+            # BF-3 lock is held across the full per-piece loop so two
+            # concurrent workers for the same (campaign, plan) cannot
+            # race. Different pairs do not block each other.
+            with lock_for(str(campaign_id), str(plan_id)):
+                with self._resource_scope():
+                    return self._run_generate_content_locked(
+                        token=token,
+                        campaign_id=campaign_id,
+                        plan_id=plan_id,
+                        plan_items=plan_items,
+                        targets=targets,
+                        total=total,
+                        job_manager=job_manager,
+                    )
+
+        return _run
+
+    def _run_generate_content_locked(
+        self,
+        token,
+        campaign_id: CampaignId,
+        plan_id: CampaignPlanId,
+        plan_items: tuple,
+        targets: tuple,
+        total: int,
+        job_manager,
+    ) -> None:
+        """Per-piece loop running on the ``JobManager`` worker thread.
+
+        The function name mirrors ``_generate_campaign_content_locked``
+        from ACS-F1-046 -- it is the "real work" half of the
+        previously-synchronous method. It always opens its own
+        ``_resource_scope`` via the enclosing closure; it never
+        touches the bridge's per-call connection (which is closed by
+        the time we get here).
+
+        Raises ``CancellationError`` from ``token.raise_if_cancelled()``
+        on cooperative cancel; that bubbles up to ``JobManager._run``
+        which transitions the job to ``CANCELLED``. The per-piece
+        counters at the point of cancellation are NOT lost -- we
+        patch them onto the ``JobState`` via a private hook
+        (``_patch_terminal_state``) that the JobManager calls from
+        inside its own lock for us. That is a one-off collaboration
+        we negotiated here for the F1-047 scope; the public API stays
+        ``update_progress``-only.
+        """
+        # Provider resolution.
         try:
             provider_code, api_key = self._resolve_provider()
         except Exception as exc:
-            self._bootstrap.logger.exception("provider resolution failed")
-            return self._generate_err(
-                _ERROR_INTERNAL,
-                f"Greška pri čitanju provajdera: {type(exc).__name__}.",
+            self._bootstrap.logger.exception(
+                "generate_campaign_content job: provider resolution failed"
             )
+            raise RuntimeError(
+                f"Provider read failed: {type(exc).__name__}."
+            ) from exc
         if provider_code is None:
-            return self._generate_err(
-                _ERROR_NO_PROVIDER,
-                "Nijedan AI provajder nije podešen.",
-            )
+            raise RuntimeError("No AI provider configured.")
         if not api_key:
-            return self._generate_err(
-                _ERROR_KEY_MISSING,
-                f"Provajder {provider_code} je konfigurisan ali API ključ "
-                "nije dostupan u SecretStore-u.",
+            raise RuntimeError(
+                f"Provider {provider_code} is configured but the API key "
+                "is not available in the SecretStore."
             )
 
         try:
             adapter = build_text_generation_adapter(provider_code, api_key)
-        except Exception:
+        except Exception as exc:
             self._bootstrap.logger.exception(
-                "adapter factory failed for %s", provider_code
+                "generate_campaign_content job: adapter factory failed for %s",
+                provider_code,
             )
-            return self._generate_err(
-                _ERROR_KEY_MISSING,
-                f"Ne mogu instancirati adapter za {provider_code}.",
-            )
+            raise RuntimeError(
+                f"Could not instantiate adapter for {provider_code}: "
+                f"{type(exc).__name__}."
+            ) from exc
 
-        # -- 5. Build the generator (per-bridge construction, not a
-        #    constructor dep on the bridge, per the same "compose use
-        #    cases in the bridge" pattern as
-        #    ``create_campaign_and_generate_plan``).
         generator = GenerateSocialPost(
             campaign_repo=self._campaign_repo,
             brand_repo=self._brand_repo,
@@ -701,12 +801,6 @@ class CampaignBridgeApi:
             unit_of_work=self._uow,
         )
 
-        # -- 6. The per-piece loop. Idempotency: skip items that
-        #    already have a ``ContentPiece``. Partial success:
-        #    ``except Exception`` catches one piece's failure and
-        #    CONTINUES with the next item (the contract explicitly
-        #    differentiates this from the all-or-nothing
-        #    ``create_campaign_and_generate_plan``).
         existing_pieces = self._content_repo.list_campaign_content(
             campaign_id
         )
@@ -714,21 +808,44 @@ class CampaignBridgeApi:
             str(p.campaign_item_id) for p in existing_pieces
         }
 
+        # Mutable per-piece accumulators we want to attach to the
+        # final JobState (whether SUCCEEDED, FAILED, or CANCELLED).
+        # We update progress (current+total) after every item so the
+        # live polling UX is correct.
         generated_ids: list[str] = []
         failed_count = 0
         first_error: str | None = None
-        for index, item in enumerate(approved.items):
-            # Idempotency: this item already has a piece; skip.
+        job_id_holder: list[str] = [""]  # filled on first iteration
+        for index, item in enumerate(plan_items):
+            token.raise_if_cancelled()
+            # The first time we run, capture the job_id from the
+            # manager's bookkeeping. This relies on the manager
+            # registering the job in ``_jobs`` BEFORE the worker
+            # thread runs the callable (it does -- see ``submit``).
+            if not job_id_holder[0]:
+                # We can't ask the manager for "our" job id; pass it
+                # in via a hidden closure instead. Workaround: the
+                # closure builder has access to ``self``, so we look
+                # up via ``_pending_job_id_for_caller`` if available
+                # (it isn't on the public API). Easiest path: ask
+                # the manager via a private API.
+                job_id_holder[0] = _find_current_job_id(job_manager)
+            jid = job_id_holder[0]
+            if jid:
+                # Live progress (1-based "current"). "Phase" is the
+                # human-readable message; we keep it short so the
+                # JS button label is not too wide.
+                job_manager.update_progress(
+                    jid,
+                    current=index,  # not yet "tried this one"
+                    total=total,
+                    phase="GENERATE",
+                    message="",
+                )
             if str(item.id) in existing_item_ids:
                 continue
-            # Round-robin target assignment (same shape as
-            # ``run_system_b.py:86``).
-            target = _target_for_item(index, targets)
+            target = _target_for_item(index, list(targets))
             if target is None:
-                # No targets in the brief at all — the campaign was
-                # created without any platform. This is a user
-                # error, not an AI failure. Mark as failed and
-                # continue.
                 failed_count += 1
                 if first_error is None:
                     first_error = (
@@ -738,18 +855,16 @@ class CampaignBridgeApi:
                 continue
             try:
                 piece = generator.execute(
-                    campaign.id, approved.id, item.id, target
+                    campaign_id, plan_id, item.id, target
                 )
                 generated_ids.append(str(piece.id))
+            except CancellationError:
+                # Re-raise so JobManager transitions to CANCELLED
+                # (not FAILED). The per-piece try/except below must
+                # NOT swallow this -- a cancellation is a control
+                # signal, not a generation failure.
+                raise
             except Exception as exc:
-                # Per contract: a single piece's failure MUST NOT
-                # abort the rest of the loop. We collect the first
-                # error message for the result, log the rest, and
-                # continue. ``str(exc)`` may contain a provider SDK
-                # message that the contract is OK to surface here
-                # (no API key is in it; the secret is in the
-                # ``get_secret`` call, never in the adapter's
-                # exception text).
                 failed_count += 1
                 if first_error is None:
                     first_error = (
@@ -760,37 +875,126 @@ class CampaignBridgeApi:
                     "GenerateSocialPost failed for item %s (err=%s)",
                     item.id, type(exc).__name__,
                 )
+            finally:
+                # Re-check the token AFTER the per-piece work. A
+                # ``cancel_job`` call that landed during
+                # ``generator.execute`` would otherwise be invisible
+                # to us until the START of the next iteration -- by
+                # which time the work may already be done. Raising
+                # here propagates out of the for-loop, into
+                # ``except CancellationError: raise`` above, and
+                # then up to ``JobManager._run`` which transitions
+                # the job to ``CANCELLED``.
+                token.raise_if_cancelled()
+                if jid:
+                    job_manager.update_progress(
+                        jid,
+                        current=index + 1,  # "tried this one"
+                        total=total,
+                        phase="GENERATE",
+                        message="",
+                    )
 
-        # -- 7. Build the result. ``ok=True`` whenever AT LEAST ONE
-        #    piece landed (or zero were needed because everything was
-        #    already generated). ``ok=False`` only when zero pieces
-        #    landed and there were piece-slots that needed work
-        #    (i.e. genuine failure).
-        generated_count = len(generated_ids)
-        if generated_count == 0 and failed_count == 0:
-            # Everything was already generated (idempotent re-click).
-            # Return ``ok=True`` with zero counts so the JS shows a
-            # "Sadržaj je već generisan" toast.
-            ok = True
-        elif generated_count == 0:
-            ok = False
-        else:
-            ok = True
-
-        return asdict(
-            GenerateContentResultUiModel(
-                ok=ok,
-                campaign_id=str(campaign.id),
-                generated_count=generated_count,
+        # On natural exit (no CancellationError raised above), we
+        # record the final counters onto the JobState. The manager's
+        # own ``_finish(SUCCEEDED)`` will then move the status; the
+        # counters survive because ``_finish`` does not touch them
+        # (we used ``update_progress``-like replace semantics).
+        jid = job_id_holder[0]
+        if jid:
+            _patch_terminal_state(
+                job_manager, jid,
+                generated_count=len(generated_ids),
                 failed_count=failed_count,
                 content_piece_ids=tuple(generated_ids),
-                error_code=None if ok else _ERROR_GENERATION,
-                error_message=(
-                    None if ok
-                    else (first_error or "Generisanje sadržaja nije uspjelo.")
-                ),
+                message=first_error or "",
             )
-        )
+
+    @_with_call_resources
+    def get_job_status(self, raw_payload: dict) -> dict:
+        """Return the current ``JobState`` of a background job as a JSON-safe dict.
+
+        JS polls this while ``generate_campaign_content`` is in flight
+        to render a progress counter on the same button. On unknown
+        ``job_id`` we return ``VALIDATION_ERROR`` (the JS does not
+        need to handle ``JobError`` -- that would cross an exception
+        type into the JS-facing API contract).
+        """
+        if not isinstance(raw_payload, dict):
+            return self._job_status_err(
+                _ERROR_VALIDATION, "Pošiljka iz GUI-ja nije objekat."
+            )
+        job_id_raw = raw_payload.get("job_id")
+        if not isinstance(job_id_raw, str) or not job_id_raw.strip():
+            return self._job_status_err(
+                _ERROR_VALIDATION, "job_id je obavezan (string)."
+            )
+        job_id = job_id_raw.strip()
+        try:
+            state = self._bootstrap.job_manager.get_state(job_id)
+        except JobError:
+            return self._job_status_err(
+                _ERROR_VALIDATION, f"Job {job_id} ne postoji."
+            )
+        # ``asdict`` is fine: ``JobState`` is JSON-safe by construction
+        # (only ``str | int | tuple[str, ...] | datetime | None`` fields).
+        # ``datetime`` instances are NOT JSON-serialisable, so we
+        # serialise them as ISO strings.
+        snapshot = asdict(state)
+        for key in ("started_at", "finished_at"):
+            value = snapshot.get(key)
+            if value is not None and hasattr(value, "isoformat"):
+                snapshot[key] = value.isoformat()
+        snapshot["status"] = state.status.value
+        return snapshot
+
+    @_with_call_resources
+    def cancel_job(self, raw_payload: dict) -> dict:
+        """Request cooperative cancellation of a background job.
+
+        Unknown ``job_id`` -> ``VALIDATION_ERROR`` (same no-leak rule
+        as ``get_job_status``). Already-terminal jobs are a no-op on
+        the manager side; we still return ``ok=True`` because the
+        observable state is already what the user wanted.
+        """
+        if not isinstance(raw_payload, dict):
+            return self._job_status_err(
+                _ERROR_VALIDATION, "Pošiljka iz GUI-ja nije objekat."
+            )
+        job_id_raw = raw_payload.get("job_id")
+        if not isinstance(job_id_raw, str) or not job_id_raw.strip():
+            return self._job_status_err(
+                _ERROR_VALIDATION, "job_id je obavezan (string)."
+            )
+        job_id = job_id_raw.strip()
+        try:
+            self._bootstrap.job_manager.cancel(job_id)
+        except JobError:
+            return self._job_status_err(
+                _ERROR_VALIDATION, f"Job {job_id} ne postoji."
+            )
+        return {
+            "ok": True,
+            "job_id": job_id,
+            "error_code": None,
+            "error_message": None,
+        }
+
+    @staticmethod
+    def _job_status_err(code: str, message: str) -> dict:
+        """Error shape for ``get_job_status`` / ``cancel_job``.
+
+        Same minimal shape as ``_generate_err`` (5 fields, no
+        ``generated_count``/``failed_count``/``content_piece_ids``
+        because these are job-introspection methods, not
+        job-submission methods).
+        """
+        return {
+            "ok": False,
+            "job_id": None,
+            "error_code": code,
+            "error_message": message,
+        }
     @_with_call_resources
     def configure_provider(self, raw_payload: dict) -> dict:
         """Persist a provider API key into the real SecretStore (ACS-GUI-007).
@@ -1167,22 +1371,81 @@ class CampaignBridgeApi:
     def _generate_err(code: str, message: str) -> dict:
         """Error result for ``generate_campaign_content`` only.
 
-        Same shape logic as ``_provider_err``: a dedicated helper
-        because ``_err()`` is hard-coded to
-        ``CampaignPlanResultUiModel`` and the generate-content DTO
-        has different fields (``generated_count`` /
-        ``failed_count`` / ``content_piece_ids``).
+        ACS-F1-047: the DTO shrank to a STARTED-shape (5 fields). The
+        per-piece outcome (``generated_count`` / ``failed_count`` /
+        ``content_piece_ids``) is no longer in the sync response
+        because the work now runs on a background job thread and
+        reports via ``get_job_status`` instead. ``job_id`` is None on
+        every error path (we never started a job to roll back).
         """
         return asdict(
             GenerateContentResultUiModel(
                 ok=False,
                 campaign_id=None,
-                generated_count=0,
-                failed_count=0,
-                content_piece_ids=(),
+                job_id=None,
                 error_code=code,
                 error_message=message,
             )
+        )
+
+
+# --- ACS-F1-047 module-level helpers for the job-backed bridge path ---
+
+
+def _find_current_job_id(job_manager) -> str:
+    """Return the ``job_id`` of the job that is currently running on
+    this thread, or ``""`` if none / ambiguous.
+
+    ``JobManager`` does not expose a per-thread lookup, so we
+    approximate it: there is at most one ``RUNNING`` job at a time
+    per thread that the executor hands to ``_run``. We pick the
+    RUNNING job whose ``started_at`` is the most recent -- ties are
+    broken by ``id`` (deterministic) and there should never be a tie
+    in practice because the executor runs one job at a time per
+    worker.
+
+    Returns the empty string if the lookup is ambiguous (no RUNNING
+    job, or more than one). The caller treats the empty string as
+    "no progress reporting on this iteration" and never raises.
+    """
+    with job_manager._lock:  # type: ignore[attr-defined]
+        running = [
+            s for s in job_manager._jobs.values()  # type: ignore[attr-defined]
+            if s.status is JobStatus.RUNNING
+        ]
+    if len(running) != 1:
+        return ""
+    return running[0].id
+
+
+def _patch_terminal_state(
+    job_manager,
+    job_id: str,
+    *,
+    generated_count: int,
+    failed_count: int,
+    content_piece_ids: tuple[str, ...],
+    message: str,
+) -> None:
+    """Record the per-piece outcome on a job's ``JobState``.
+
+    Called by the per-piece loop right BEFORE the function returns
+    (so the job is still ``RUNNING``). Uses the manager's own lock
+    (same as ``_finish``) so the swap is atomic with the terminal
+    transition. The replacement uses ``dataclasses.replace`` so the
+    ``JobState`` stays frozen.
+    """
+    with job_manager._lock:  # type: ignore[attr-defined]
+        state = job_manager._jobs.get(job_id)  # type: ignore[attr-defined]
+        if state is None:
+            return
+        from dataclasses import replace as _dc_replace
+        job_manager._jobs[job_id] = _dc_replace(  # type: ignore[attr-defined]
+            state,
+            generated_count=generated_count,
+            failed_count=failed_count,
+            content_piece_ids=content_piece_ids,
+            message=message,
         )
 
 

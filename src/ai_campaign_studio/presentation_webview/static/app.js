@@ -249,14 +249,33 @@ async function saveAndPlan(button) {
 //
 // Wired by the Studio sadržaja screen — the "Generiši sadržaj"
 // button has ``data-action="generate-content"`` and a
-// ``data-campaign-id="<id>"`` attribute. The handler reads the campaign
-// id, calls ``window.pywebview.api.generate_campaign_content``, and
-// renders the result into the ``data-generate-result`` callout in the
-// same card. On ``ok=False`` the user gets the bridge's
-// ``error_message`` as a toast. Re-entrancy: the button is disabled for
-// the duration of the call (typical bridge calls take a few seconds
-// because each piece is a real AI request); a ``finally`` re-enables
-// it so the user can retry the failed pieces.
+// ``data-campaign-id="<id>"`` attribute.
+//
+// ACS-F1-047: the bridge now returns a ``job_id`` IMMEDIATELY
+// instead of waiting for the AI loop. The handler:
+//
+// 1. Submits the job via ``generate_campaign_content`` (sync return).
+// 2. Starts a ``setInterval`` that polls ``get_job_status(job_id)``
+//    every ~1.2s, updating the button label with a live progress
+//    counter ("Generišem 3/12…") and the result callout.
+// 3. Offers a "Otkaži" affordance while the job is RUNNING — calls
+//    ``cancel_job(job_id)``; the manager transitions to CANCELLED
+//    and the next poll reads the partial result.
+// 4. On terminal status (SUCCEEDED / FAILED / CANCELLED) stops
+//    polling, restores the button, and renders the final outcome
+//    (counts + error) into the callout + a final toast.
+//
+// Why a polling loop and not the JobManager event callback
+// subscription: pywebview's ``js_api`` surface is request/response;
+//    the JS side cannot subscribe to Python events directly. The
+//    manager already exposes ``get_state`` exactly for this purpose
+//    (P0.20 contract).
+//
+// The interval is cleared on EVERY terminal transition so a
+// transient IPC failure does not leave ``setInterval`` ticking
+// forever (review focus §3).
+const POLL_INTERVAL_MS = 1200;
+
 async function generateContent(button) {
   if (button.disabled) return;
   const campaignId = (button.dataset.campaignId || '').trim();
@@ -264,37 +283,40 @@ async function generateContent(button) {
     showToast('Nedostaje campaign_id. Ponovo pokreni "Sačuvaj i napravi plan".');
     return;
   }
-  // ACS-GUI-008 (review feedback): the bridge also needs the
-  // ``plan_id`` — the click handler reads it from the same data
-  // attribute (``data-plan-id``) the SSR put on the button. The
-  // bridge refuses to fall back to a SQL lookup; if the attribute
-  // is missing (offline preview path), we surface that explicitly
-  // to the user instead of silently building a half-broken call.
   const planId = (button.dataset.planId || '').trim();
   if (!planId) {
     showToast('Nedostaje plan_id. Ponovo pokreni "Sačuvaj i napravi plan".');
     return;
   }
-  button.disabled = true;
+  const api = window.pywebview && window.pywebview.api;
+  if (!api || typeof api.generate_campaign_content !== 'function' ||
+      typeof api.get_job_status !== 'function' ||
+      typeof api.cancel_job !== 'function') {
+    showToast('Interna greška: bridge nije dostupan. Ponovo pokreni aplikaciju.');
+    return;
+  }
+
   const originalLabel = button.textContent;
-  button.textContent = 'Generiram objave…';
   const resultNode = document.querySelector('[data-generate-result]');
-  try {
-    const api = window.pywebview && window.pywebview.api;
-    if (!api || typeof api.generate_campaign_content !== 'function') {
-      showToast('Interna greška: bridge nije dostupan. Ponovo pokreni aplikaciju.');
-      return;
+  button.disabled = true;
+  button.textContent = 'Pokrećem…';
+
+  let jobId = null;
+  let pollHandle = null;
+  function _stopPolling() {
+    if (pollHandle !== null) {
+      clearInterval(pollHandle);
+      pollHandle = null;
     }
-    const result = await api.generate_campaign_content({
-      campaign_id: campaignId,
-      plan_id: planId,
-    });
-    if (result && result.ok) {
-      const n = result.generated_count;
-      const f = result.failed_count;
-      // Toast + in-page callout so the user sees the count WITHOUT
-      // having to remember the toast (toasts auto-hide in 2.2s).
-      let toastMsg;
+  }
+  function _renderTerminal(state) {
+    _stopPolling();
+    const status = state && state.status;
+    const n = (state && state.generated_count) || 0;
+    const f = (state && state.failed_count) || 0;
+    const total = (state && state.progress_total) || 0;
+    let toastMsg;
+    if (status === 'SUCCEEDED') {
       if (n === 0 && f === 0) {
         toastMsg = 'Sadržaj je već generisan.';
       } else if (f === 0) {
@@ -304,29 +326,147 @@ async function generateContent(button) {
       } else {
         toastMsg = 'Generisano ' + n + ' od ' + (n + f) + ' objava. Za ' + f + ' neuspjelih pokušaj ponovo.';
       }
-      showToast(toastMsg);
-      if (resultNode) {
-        resultNode.textContent = toastMsg;
-        resultNode.hidden = false;
-      }
-    } else {
-      const msg = (result && result.error_message) ? result.error_message : 'Generisanje sadržaja nije uspjelo.';
+    } else if (status === 'CANCELLED') {
+      toastMsg = 'Otkazano. Generisano ' + n + ' od ' + total + '.';
+    } else {  // FAILED or anything unexpected
+      const errMsg = (state && state.error_message) || 'Generisanje sadržaja nije uspjelo.';
+      toastMsg = errMsg;
+    }
+    showToast(toastMsg);
+    if (resultNode) {
+      resultNode.textContent = toastMsg;
+      resultNode.hidden = false;
+    }
+    button.disabled = false;
+    button.textContent = originalLabel;
+  }
+
+  try {
+    // 1. Submit the job. The bridge returns synchronously with
+    //    ``ok=True, job_id=...`` after the sync validation phase.
+    const submitResult = await api.generate_campaign_content({
+      campaign_id: campaignId,
+      plan_id: planId,
+    });
+    if (!submitResult || !submitResult.ok) {
+      // Sync-layer failure: the bridge rejected before starting the
+      // job (boundary validation, plan lookup, JobManager shut
+      // down). No job_id to poll.
+      const msg = (submitResult && submitResult.error_message) ||
+        'Generisanje sadržaja nije uspjelo.';
       showToast(msg);
       if (resultNode) {
         resultNode.textContent = 'Greška: ' + msg;
         resultNode.hidden = false;
       }
+      button.disabled = false;
+      button.textContent = originalLabel;
+      return;
     }
+    jobId = submitResult.job_id;
+    // 2. Start polling for terminal status. The first poll is
+    //    immediate so the user sees progress within ~1.2s of the
+    //    click, not after the first interval.
+    let cancelledByUser = false;
+    const _showCancelHint = () => {
+      button.textContent = 'Otkaži (generišem…)';
+      button.dataset.wasCancel = '1';
+    };
+    const _showProgress = (state) => {
+      const cur = (state && state.progress_current) || 0;
+      const tot = (state && state.progress_total) || 0;
+      if (tot > 0) {
+        button.textContent = 'Generišem ' + cur + ' / ' + tot + '…';
+      } else {
+        button.textContent = 'Generiram objave…';
+      }
+    };
+    const _pollOnce = async () => {
+      try {
+        const state = await api.get_job_status({ job_id: jobId });
+        if (!state) return;
+        if (state.status === 'RUNNING' || state.status === 'PENDING' ||
+            state.status === 'CANCELLING') {
+          _showProgress(state);
+          return;
+        }
+        // Terminal: SUCCEEDED, FAILED, CANCELLED.
+        _renderTerminal(state);
+      } catch (err) {
+        // IPC blip: stop polling and surface the error. Leaving
+        // ``setInterval`` running forever is the bug review focus
+        // §3 explicitly calls out.
+        _stopPolling();
+        showToast('Greška pri praćenju posla: ' +
+          (err && err.message ? err.message : 'nepoznato.'));
+        button.disabled = false;
+        button.textContent = originalLabel;
+      }
+    };
+    // First paint: show a "cancel" affordance and start polling.
+    _showCancelHint();
+    pollHandle = setInterval(_pollOnce, POLL_INTERVAL_MS);
+    // Wire the cancel gesture: a second click while RUNNING calls
+    // ``cancel_job``. We swap the handler once and restore it
+    // on terminal exit.
+    const _cancel = async () => {
+      if (!jobId) return;
+      cancelledByUser = true;
+      button.textContent = 'Otkazujem…';
+      button.disabled = true;
+      try {
+        await api.cancel_job({ job_id: jobId });
+      } catch (err) {
+        showToast('Greška pri otkazivanju: ' +
+          (err && err.message ? err.message : 'nepoznato.'));
+      }
+    };
+    const _onClickWhileRunning = () => {
+      if (cancelledByUser) return;  // already in flight
+      _cancel();
+    };
+    button.addEventListener('click', _onClickWhileRunning);
+    // Reap the cancel handler on terminal exit.
+    const _onTerminal = (state) => {
+      button.removeEventListener('click', _onClickWhileRunning);
+      _renderTerminal(state);
+    };
+    // Replace the one-shot poll with a wrapper that calls _onTerminal
+    // instead of _renderTerminal so we can clean up the cancel
+    // listener too.
+    const _pollOnceWithCleanup = async () => {
+      try {
+        const state = await api.get_job_status({ job_id: jobId });
+        if (!state) return;
+        if (state.status === 'RUNNING' || state.status === 'PENDING' ||
+            state.status === 'CANCELLING') {
+          _showProgress(state);
+          return;
+        }
+        button.removeEventListener('click', _onClickWhileRunning);
+        _renderTerminal(state);
+      } catch (err) {
+        button.removeEventListener('click', _onClickWhileRunning);
+        _stopPolling();
+        showToast('Greška pri praćenju posla: ' +
+          (err && err.message ? err.message : 'nepoznato.'));
+        button.disabled = false;
+        button.textContent = originalLabel;
+      }
+    };
+    // Swap the interval to use the cleanup-aware version.
+    _stopPolling();
+    pollHandle = setInterval(_pollOnceWithCleanup, POLL_INTERVAL_MS);
   } catch (err) {
     // Belt-and-brace: the bridge contractually never raises, but the
-    // IPC layer itself could (network blip, pywebview shutdown). The
-    // catch makes the failure visible instead of silent.
-    showToast('Interna greška pri pozivu: ' + (err && err.message ? err.message : 'nepoznato.'));
+    // IPC layer itself could (network blip, pywebview shutdown).
+    _stopPolling();
+    showToast('Interna greška pri pozivu: ' +
+      (err && err.message ? err.message : 'nepoznato.'));
     if (resultNode) {
       resultNode.textContent = 'Interna greška.';
       resultNode.hidden = false;
     }
-  } finally {
     button.disabled = false;
     button.textContent = originalLabel;
   }
