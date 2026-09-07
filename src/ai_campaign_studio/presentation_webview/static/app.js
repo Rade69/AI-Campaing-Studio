@@ -558,11 +558,28 @@ async function exportCampaign(button) {
     button.disabled = false;
     button.textContent = originalLabel;
   }
+  // Persistent callout (like data-generate-result on Studio sadržaja):
+  // the toast alone auto-hides after ~2.2s, which is easy to miss --
+  // especially the zip_path, the one piece of information the user
+  // most needs after export ("gdje se to arhiviralo?"). The callout
+  // stays on screen until the next export attempt.
+  const resultNode = document.querySelector('[data-export-result]');
   if (result && result.ok) {
-    const path = result.zip_path ? ' (' + result.zip_path + ')' : '';
-    showToast('Izvoz gotov: ' + result.exported_count + ' objava, ' + result.skipped_count + ' preskočeno.' + path);
+    const path = result.zip_path ? ' Sačuvano u: ' + result.zip_path : '';
+    const msg = 'Izvoz gotov: ' + result.exported_count + ' objava, ' +
+      result.skipped_count + ' preskočeno.' + path;
+    showToast(msg);
+    if (resultNode) {
+      resultNode.textContent = msg;
+      resultNode.hidden = false;
+    }
   } else if (result) {
-    showToast((result && result.error_message) || 'Izvoz nije uspio.');
+    const msg = (result && result.error_message) || 'Izvoz nije uspio.';
+    showToast(msg);
+    if (resultNode) {
+      resultNode.textContent = 'Greška: ' + msg;
+      resultNode.hidden = false;
+    }
   }
 }
 })();

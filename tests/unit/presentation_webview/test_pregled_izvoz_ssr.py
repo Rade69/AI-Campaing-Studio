@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 import re
+from pathlib import Path
 
 from ai_campaign_studio.presentation_webview.screens.pregled_izvoz import (
     DEFAULT_FIXTURE,
@@ -96,6 +97,32 @@ def test_render_body_izvezi_zip_is_export_campaign() -> None:
         r"Izvezi ZIP paket</button>",
         body,
     )
+
+
+def test_render_body_has_export_result_callout() -> None:
+    """A persistent result callout must exist so the export outcome
+    (especially the ZIP path) doesn't disappear after the ~2.2s toast
+    auto-hides -- the one thing the user most needs to see after
+    clicking 'Izvezi ZIP paket' is WHERE it landed."""
+    body = render_body()
+    assert '<div class="callout" data-export-result hidden></div>' in body
+
+
+def test_app_js_export_handler_writes_zip_path_to_persistent_callout() -> None:
+    """The toast alone is not enough (Human Owner live-run feedback,
+    2026-09-07: exported successfully but no visible indication of
+    WHERE the ZIP landed). ``exportCampaign()`` must ALSO write the
+    result -- including ``zip_path`` -- into the persistent
+    ``data-export-result`` callout, not just a self-hiding toast."""
+    app_js_path = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "src" / "ai_campaign_studio" / "presentation_webview" / "static"
+        / "app.js"
+    )
+    js_text = app_js_path.read_text(encoding="utf-8")
+    assert "document.querySelector('[data-export-result]')" in js_text
+    assert "result.zip_path" in js_text
+    assert "resultNode.hidden = false" in js_text
 
 
 def test_render_body_stepper_step_5_active_all_prior_done() -> None:

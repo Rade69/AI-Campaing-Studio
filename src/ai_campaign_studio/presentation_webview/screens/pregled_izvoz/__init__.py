@@ -162,6 +162,7 @@ def render_body(fixture: PregledIzvozFixture | None = None) -> str:
         "Izvezi ZIP paket"
         "</button>"
         "</div>"
+        '<div class="callout" data-export-result hidden></div>'
         "</div>"
         "</div>"
     )
