@@ -19,14 +19,24 @@ allowed_paths:
   - tests/unit/presentation_webview/test_kampanje_ssr.py
   - tests/unit/presentation/test_contracts.py
   - tests/unit/presentation/test_ui_models.py
+  # -- proširenje 2026-09-07, vidi ACS-F1-046-addendum-scope-decision.md --
+  - src/ai_campaign_studio/ports/repositories.py
+  - src/ai_campaign_studio/infrastructure/database/repositories/sqlite_campaign_repository.py
+  - src/ai_campaign_studio/infrastructure/database/repositories/sqlite_brand_repository.py
+  - tests/unit/ports/test_repositories.py
+  - tests/unit/infrastructure/database/repositories/test_sqlite_campaign_repository.py
+  - tests/unit/infrastructure/database/repositories/test_sqlite_brand_repository.py
 forbidden_paths:
   - src/ai_campaign_studio/domain/
   - src/ai_campaign_studio/application/
-  - src/ai_campaign_studio/ports/
-  - src/ai_campaign_studio/infrastructure/
   - resources/migrations/
   - src/ai_campaign_studio/presentation_webview/screens/studio_sadrzaja/
   - src/ai_campaign_studio/presentation_webview/screens/pregled_izvoz/
+  # NAPOMENA: ports/ i infrastructure/ su djelimično dozvoljeni -- SAMO
+  # tačno ta tri fajla navedena gore u allowed_paths, tri NOVA aditivna
+  # metoda (list_campaigns, get_latest_plan_for_campaign, get_brand).
+  # Svi ostali ports/*.py i infrastructure/**/*.py fajlovi OSTAJU
+  # forbidden bez izuzetka.
 gitnexus_required: true
 adversarial_required: true
 gitnexus:
@@ -80,9 +90,11 @@ manje taskove -- NE pokušavati sve ekrane odjednom u ovom task-u.
   STVARAN `Campaign`/`CampaignBrief` model za dostupna polja PRIJE
   pisanja koda), `status`, `plan_item_count` (broj stavki plana ako
   plan postoji, inače 0 ili null -- implementer dokumentuje), `brand`
-  (ime brenda preko `brand_repo`), `created_at`/`updated_at` (ISO
+  (ime brenda preko `brand_repo.get_brand()`, novi aditivni metod --
+  vidi `ACS-F1-046-addendum-scope-decision.md`), `created_at` (ISO
   8601 string, NE Python `datetime` objekat -- json-serializable
-  contract).
+  contract). **`updated_at` je ISKLJUČEN iz scope-a** (polje ne
+  postoji nigdje u domain modelu -- vidi addendum za obrazloženje).
 - NIKAD ne vraća SQL/Path/exception objekte -- isti standard kao
   postojeće tri metode (PYWEBVIEW_SECURITY §3).
 - Prazna baza (nema kampanja) -> `{"ok": true, "campaigns": []}`, NE
@@ -143,7 +155,10 @@ manje taskove -- NE pokušavati sve ekrane odjednom u ovom task-u.
 - [ ] SSR (`render_body()`) i dalje radi OFFLINE (bez pywebview-a) sa
       fixture prikazom -- ne pokvaren postojeći test.
 - [ ] `domain/`, `application/`, `ports/`, `infrastructure/`,
-      `studio_sadrzaja/`, `pregled_izvoz/` NISU DIRANI.
+      `studio_sadrzaja/`, `pregled_izvoz/` NISU DIRANI. Van tri
+      eksplicitno navedena `ports/`/`infrastructure/` fajla (addendum
+      2026-09-07), nijedan drugi `ports/`/`infrastructure/` fajl NIJE
+      DIRAN.
 - [ ] `python -m pytest tests/unit/presentation_webview/
       tests/unit/presentation/ -v` prolazi.
 - [ ] `python -m pytest -q` (cijeli suite) prolazi, 0 regresija.
