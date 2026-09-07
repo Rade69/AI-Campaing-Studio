@@ -417,6 +417,7 @@ class CampaignBridgeApi:
                 plan = GenerateCampaignPlan(
                     campaign_repo=self._campaign_repo,
                     brand_repo=self._brand_repo,
+                    fact_repo=self._fact_repo,
                     prompt_repo=self._prompt_repo,
                     ai_port=adapter,
                     unit_of_work=self._uow,

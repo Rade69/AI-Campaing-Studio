@@ -150,6 +150,7 @@ def test_end_to_end_visual_system_round_trip(tmp_path: Path) -> None:
     plan = GenerateCampaignPlan(
         campaign_repo,
         brand_repo,
+        fact_repo,
         _FakePromptRepository(),
         _FakeAiPort(_valid_plan_payload()),
         uow,

@@ -41,6 +41,10 @@ def _rules() -> ClaimRules:
             "vodeći",
         ),
         currency_symbols=("KM", "BAM", "EUR", "€", "RSD"),
+        contact_info_patterns=(
+            r"(?:\+\d{1,3}[\s\-\.]?)?\d{2,3}[\s\-\./]?\d{3}[\s\-\.]?\d{3,4}",
+            r"\b(?:ulica|adresa|avenija|bulevar|trg|sokak|bb)\b[^,.;!?]*\d+",
+        ),
     )
 
 
@@ -97,6 +101,56 @@ def test_numeric_date_is_unsupported() -> None:
 def test_generic_number_is_unsupported() -> None:
     result = lint_claim(
         _claim(ClaimStatus.NON_FACTUAL, "Imamo 10 stomatologa"), _rules()
+    )
+    assert result.status is ClaimStatus.UNSUPPORTED
+    assert "unsupported-number" in result.reason_codes
+
+
+def test_phone_number_is_not_a_numeric_claim() -> None:
+    """Nalaz 2: a phone number must NOT hit the generic has_digit fallback."""
+    for text in ("Pozovite nas na 065 123 456.", "Kontakt: 033/123-456",
+                 "Broj telefona je +387 61 123 456."):
+        result = lint_claim(_claim(ClaimStatus.NON_FACTUAL, text), _rules())
+        assert result.status is ClaimStatus.NON_FACTUAL
+        assert "unsupported-number" not in result.reason_codes
+
+
+def test_street_address_is_not_a_numeric_claim() -> None:
+    """Nalaz 2: a street address must not hit the generic has_digit fallback."""
+    result = lint_claim(
+        _claim(ClaimStatus.NON_FACTUAL, "Nalazimo se u Ulica Kralja Petra 15."),
+        _rules(),
+    )
+    assert result.status is ClaimStatus.NON_FACTUAL
+    assert "unsupported-number" not in result.reason_codes
+
+
+def test_contact_info_rules_loaded_from_yaml() -> None:
+    """The contact-info patterns are data-driven (YAML), not hardcoded."""
+    rules = load_claim_rules(_RULES_PATH)
+    assert len(rules.contact_info_patterns) == 2
+
+
+def test_price_percent_duration_date_still_flagged() -> None:
+    """Regression guard: contact-info must NOT weaken real numeric signals."""
+    cases = [
+        ("Cijena je 30 KM", "unsupported-price"),
+        ("Uštedite 20%", "unsupported-percent"),
+        ("Traje 3 dana", "unsupported-duration"),
+        ("Od 01.01.2026", "unsupported-date"),
+    ]
+    for text, code in cases:
+        result = lint_claim(_claim(ClaimStatus.NON_FACTUAL, text), _rules())
+        assert result.status is ClaimStatus.UNSUPPORTED
+        assert code in result.reason_codes
+
+
+def test_generic_bare_number_still_unsupported() -> None:
+    """Regression guard: the generic fallback STILL catches an ungrounded
+    number with no context."""
+    result = lint_claim(
+        _claim(ClaimStatus.NON_FACTUAL, "Imamo 500 zadovoljnih klijenata"),
+        _rules(),
     )
     assert result.status is ClaimStatus.UNSUPPORTED
     assert "unsupported-number" in result.reason_codes

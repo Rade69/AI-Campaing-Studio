@@ -43,10 +43,17 @@ _DURATION_UNITS = (
 
 @dataclass(frozen=True)
 class ClaimRules:
-    """Loaded linter rules (prohibited terms + currency symbols)."""
+    """Loaded linter rules (prohibited terms + currency symbols + contact info).
+
+    ``contact_info_patterns`` are data-driven regex strings (from YAML) that
+    recognize phone numbers and street addresses. A claim that matches one of
+    them is treated as CONTACT INFO, not a numeric claim, so it does NOT get
+    ``unsupported-number``.
+    """
 
     prohibited_terms: tuple[str, ...]
     currency_symbols: tuple[str, ...]
+    contact_info_patterns: tuple[str, ...] = ()
 
 
 def load_claim_rules(path: Path) -> ClaimRules:
@@ -55,6 +62,7 @@ def load_claim_rules(path: Path) -> ClaimRules:
     return ClaimRules(
         prohibited_terms=tuple(raw["prohibited_terms"]),
         currency_symbols=tuple(raw["currency_symbols"]),
+        contact_info_patterns=tuple(raw.get("contact_info_patterns", ())),
     )
 
 
@@ -129,7 +137,19 @@ def lint_claim(claim: ContentClaim, rules: ClaimRules) -> ContentClaim:
 def _numeric_reason_code(text_folded: str, rules: ClaimRules) -> str | None:
     """Return the first matching numeric-signal reason code, or None.
 
-    Checked in order: price, percent, duration, date, generic number.
+    Checked in order: price, percent, duration, date, contact-info,
+    generic number.
+
+    Contact-info (phone/street address) is deliberately checked BEFORE the
+    generic ``has_digit`` fallback: a phone number or street number is not a
+    numeric CLAIM, so it must not escalate a contact-bearing claim to
+    ``UNSUPPORTED``. The heuristic is intentionally good-enough, not
+    perfect — it recognizes BHS phone formats (``065 123 456``,
+    ``033/123-456``, ``+387 61 123 456``) and address-like phrases (a street
+    keyword followed by a number before sentence punctuation). A phone-like
+    number embedded in a claim with an unrelated bare number would be missed
+    (both match, contact-info wins) — acceptable because a real marketing
+    claim that carries a phone number is overwhelmingly a contact line.
     """
     has_digit = re.search(r"\d", text_folded) is not None
 
@@ -148,6 +168,10 @@ def _numeric_reason_code(text_folded: str, rules: ClaimRules) -> str | None:
 
     if re.search(r"\d{1,2}\.\d{1,2}\.\d{2,4}", text_folded):
         return "unsupported-date"
+
+    for pattern in rules.contact_info_patterns:
+        if re.search(pattern, text_folded, re.IGNORECASE):
+            return None
 
     if has_digit:
         return "unsupported-number"

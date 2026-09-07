@@ -64,7 +64,7 @@ def run_system_b(
     )
 
     plan = GenerateCampaignPlan(
-        campaign_repo, brand_repo, prompt_repo, ai_port, unit_of_work
+        campaign_repo, brand_repo, fact_repo, prompt_repo, ai_port, unit_of_work
     ).execute(campaign.id)
 
     approved = ApproveCampaignPlan(campaign_repo, unit_of_work).execute(plan.id)

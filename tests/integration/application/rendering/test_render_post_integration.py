@@ -206,6 +206,7 @@ def _run_full_pipeline(tmp_path: Path):
     plan = GenerateCampaignPlan(
         campaign_repo,
         brand_repo,
+        fact_repo,
         _FakePromptRepository(),
         _FakeAiPort(_plan_payload()),
         uow,

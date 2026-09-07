@@ -170,6 +170,7 @@ def test_end_to_end_plan_post_layout_round_trip(tmp_path: Path) -> None:
     plan = GenerateCampaignPlan(
         campaign_repo,
         brand_repo,
+        fact_repo,
         _FakePromptRepository(),
         _FakeAiPort(_plan_payload()),
         uow,

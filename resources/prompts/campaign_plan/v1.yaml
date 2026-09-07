@@ -3,7 +3,8 @@ version: "1"
 purpose: Generate an ordered campaign plan from a campaign brief.
 input_contract: |
   BrandSnapshot summary, CampaignBrief, CampaignRole definitions,
-  campaign template candidate, fact categories available.
+  campaign template candidate, and the approved-facts catalog
+  (logical_fact_id + content) the plan items may reference.
 output_contract: |
   CampaignPlanOutputSchema (application/schemas/campaign_plan_output.py)
 language_support: EN or BHS_LATIN (NEUTRAL/BS/SR/HR) via ContentLanguageContext
@@ -12,10 +13,17 @@ instructions: |
   campaign brief, the allowed campaign roles and a candidate role template,
   produce an ordered plan of campaign items.
 
-  Each item must declare its role, topic, goal and the semantic facts it
+  Each item must declare its role, topic, goal and the approved facts it
   needs. The number of items must equal the brief's content_piece_count.
   Roles must be drawn from the provided campaign role definitions only.
   Every topic must be concrete and non-empty.
+
+  FACTS (critical): the user text contains an "Approved facts" section that
+  lists every approved fact as "logical_fact_id: content". When an item
+  needs a fact, set its facts_needed to the EXACT logical_fact_id from that
+  list (for example "fact-implants"), NOT a free-text phrase. Never invent
+  a fact id that is not present in the list. If an item genuinely needs no
+  approved fact (a pure CTA or creative post), use facts_needed: [].
 
   Respect the provided language context: language_family, regional_variant,
   locale, script, preferred_terms, forbidden_terms, regional_vocabulary and
@@ -26,9 +34,9 @@ examples:
     role: PROBLEM
     topic: "Visoki troškovi implantata"
     goal: "Pokrenuti svijest o cijeni"
-    facts_needed: ["cijena implantata", "lokacija ordinacije"]
+    facts_needed: ["fact-implants"]
   - |
     role: ACTION
     topic: "Zakažite besplatnu konsultaciju"
     goal: "Pretvoriti interes u termin"
-    facts_needed: ["kontakt telefon", "radno vrijeme"]
+    facts_needed: ["fact-location"]

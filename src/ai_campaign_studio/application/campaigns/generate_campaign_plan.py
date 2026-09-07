@@ -39,11 +39,14 @@ from ai_campaign_studio.domain.common.ids import (
     new_id,
 )
 from ai_campaign_studio.domain.common.timestamps import utc_now
+from ai_campaign_studio.domain.facts.entities import ApprovedFact
+from ai_campaign_studio.domain.facts.policies import is_fact_usable
 from ai_campaign_studio.ports.ai import AIRequest, TextGenerationPort
 from ai_campaign_studio.ports.prompts import PromptRepositoryPort
 from ai_campaign_studio.ports.repositories import (
     BrandRepositoryPort,
     CampaignRepositoryPort,
+    FactRepositoryPort,
 )
 
 _PROMPT_NAME = "campaign_plan"
@@ -69,12 +72,14 @@ class GenerateCampaignPlan:
         self,
         campaign_repo: CampaignRepositoryPort,
         brand_repo: BrandRepositoryPort,
+        fact_repo: FactRepositoryPort,
         prompt_repo: PromptRepositoryPort,
         ai_port: TextGenerationPort,
         unit_of_work: _UnitOfWork,
     ) -> None:
         self._campaign_repo = campaign_repo
         self._brand_repo = brand_repo
+        self._fact_repo = fact_repo
         self._prompt_repo = prompt_repo
         self._ai_port = ai_port
         self._unit_of_work = unit_of_work
@@ -94,13 +99,22 @@ class GenerateCampaignPlan:
         if brief is None:
             raise EntityNotFound(f"campaign brief {campaign.brief_id} not found")
 
+        snapshot_facts = self._fact_repo.list_snapshot_facts(
+            campaign.brand_snapshot_id
+        )
+        usable_facts = tuple(
+            fact for fact in snapshot_facts if is_fact_usable(fact)
+        )
+
         prompt = self._prompt_repo.get(_PROMPT_NAME, _PROMPT_VERSION)
         request = AIRequest(
             purpose=_PROMPT_NAME,
             prompt_name=_PROMPT_NAME,
             prompt_version=_PROMPT_VERSION,
             system_text=prompt.instructions,
-            user_text=_build_user_text(brief, snapshot, LEAD_GENERATION_V1),
+            user_text=_build_user_text(
+                brief, snapshot, usable_facts, LEAD_GENERATION_V1
+            ),
             json_schema=CampaignPlanOutput.model_json_schema(),
         )
 
@@ -146,12 +160,19 @@ class GenerateCampaignPlan:
 
 
 def _build_user_text(
-    brief: CampaignBrief, snapshot: BrandSnapshot, template: CampaignTemplate
+    brief: CampaignBrief,
+    snapshot: BrandSnapshot,
+    facts: tuple[ApprovedFact, ...],
+    template: CampaignTemplate,
 ) -> str:
-    """Assemble the user-side prompt context (brief + snapshot + roles + template).
+    """Assemble the user-side prompt context (brief + snapshot + facts + roles
+    + template).
 
     The prompt's ``instructions`` already live in ``system_text``; this payload
-    carries the concrete data. Plain text, no JSON, no LLM-dependent format.
+    carries the concrete data. The ``Approved facts`` section lists the
+    ``logical_fact_id`` for every usable fact so the model can reference an
+    EXACT id in ``facts_needed`` instead of inventing a phrase (web Claude
+    review 2026-09-07 Nalaz 1). Plain text, no JSON, no LLM-dependent format.
     """
     lines = [
         "## Campaign brief",
@@ -180,6 +201,13 @@ def _build_user_text(
         "voice.regional_vocabulary: " + ", ".join(snapshot.voice.regional_vocabulary)
     )
     lines.append("voice.tone_examples: " + "; ".join(snapshot.voice.tone_examples))
+
+    lines.append("## Approved facts")
+    if facts:
+        for fact in facts:
+            lines.append(f"- {fact.logical_fact_id}: {fact.content}")
+    else:
+        lines.append("(none)")
 
     lines.append("## Campaign roles")
     lines.append(", ".join(role.value for role in CampaignRole))
