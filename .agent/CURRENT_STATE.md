@@ -4,6 +4,34 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-046
+DONE — merged u main (PR #11, merge commit `f601624`).** Human Owner
+odobrenje: "Odobravam". Implementer: Crush; BF-1/2/3 fix: Codex sam
+(Human Owner presedan iz F1-047).
+
+**Napomena o procesu**: drugi Codex re-review NIJE zatražen za ovaj
+fix -- Codex je bio implementer fixa, pa bi Codex-ov review sopstvenog
+rada kršio "Implementer != reviewer" bez dodatne vrijednosti. Claude-ova
+nezavisna verifikacija (mutation-testing BF-2, provjera stvarnog
+`pywebviewready` mehanizma za BF-1, potvrda CLEAN/MERGEABLE za BF-3)
+je zamijenila tu rundu -- ispravljeno nakon što je brief za Codex već
+bio napisan i push-ovan (vidi `agent_reports/2026-09-07-ACS-F1-046-brief-za-codex-2.md`,
+ostaje kao istorijski dokument, nije poslat).
+
+**Sva 4 originalna nalaza iz web Claude review-a (2026-09-07) su sad
+zatvorena** (ACS-F1-045, ACS-F1-046, ACS-F1-047 merged; ACS-GUI-009
+je bio paralelan task, takođe merged). Nema više otvorenih taskova iz
+tog stabilizacionog kruga -- sljedeći korak je povratak na redovne
+Slice 1.5 use-case taskove (CSV/Excel import + manual mapping, po
+`TASK_ROUTING.md` dijelu B) ili novi hardening task za preostali
+secret-in-log rezidualni rizik (2 mjesta, iz GUI-009 final decision
+packet-a).
+
+Worktree uklonjen iz git-a (fizički folder ostaje zbog Windows ACL
+zaključanog fajla, bezopasno). GitNexus osvježen.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **ACS-F1-046
 (PR #11) — Codex REJECT (BF-1/2/3), Codex SAM popravio (Human Owner
 odluka), Claude nezavisno verifikovao, re-review zatražen.** Codex
 review: `agent_reports/2026-09-07-ACS-F1-046-review-codex.md`. Fix
