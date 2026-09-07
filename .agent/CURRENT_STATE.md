@@ -22,6 +22,11 @@ Codex brief: [agent_reports/2026-09-07-ACS-F1-047-brief-za-codex-3.md](../agent_
   mypy čisti. CI na PR #12 zeleno.
 - Ovo je treća uzastopna Codex runda za ACS-F1-047 -- ako prođe, ide
   na Human Owner odobrenje (HIGH task).
+- **Human Owner odluka (2026-09-07)**: ako Codex u ovoj (trećoj) rundi
+  ponovo nađe blocking nalaz na ACS-F1-047, fix radi DIREKTNO Codex
+  (ne ide se opet nazad MiniMax-u na četvrti fix-brief round-trip).
+  Koordinator i dalje nezavisno verifikuje bilo koji Codex-ov fix
+  prije push-a/merge-a, isti standard kao za implementer fix-ove.
 
 ---
 
