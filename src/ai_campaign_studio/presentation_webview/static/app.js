@@ -43,6 +43,19 @@
       // the button so the user can retry for failed pieces.
       generateContent(el);
     }
+    if(action==='approve-gate') {
+      // ACS-GUI-009: "Odobri kampanju" is a UI-only gate. The plan is
+      // already APPROVED before this screen (see ACS-GUI-008), so this
+      // button makes NO backend call — it just enables the "Izvezi ZIP
+      // paket" button and shows a confirmation toast.
+      approveGate(el);
+    }
+    if(action==='export-campaign') {
+      // ACS-GUI-009: "Izvezi ZIP paket" calls the real export bridge
+      // method. The button is revealed at runtime (boot IIFE) and
+      // enabled only after the approve-gate click above.
+      exportCampaign(el);
+    }
   }));
   // Language picker (Podešavanja → Jezik). Each row is a button with
   // ``data-action="lang-pick"`` and ``data-lang="<code>"``. Clicking
@@ -501,6 +514,57 @@ async function generateContent(button) {
     button.textContent = originalLabel;
   }
 }
+
+function approveGate(button) {
+  // ACS-GUI-009: UI-only gating. No backend call — the plan is already
+  // APPROVED before this screen (the content-generation step did it).
+  // Clicking "Odobri kampanju" is the user's confirmation that they
+  // reviewed the content, so we enable the export button.
+  const exportBtn = document.getElementById('btn-izvezi');
+  if (exportBtn) exportBtn.disabled = false;
+  showToast(button.dataset.message || 'Sadržaj pregledan.');
+}
+
+async function exportCampaign(button) {
+  // ACS-GUI-009: real export. Reads campaign_id/plan_id from the data
+  // attributes the boot IIFE populated from ``?campaign=``/``?plan=``
+  // (same boundary as ``generateContent``). Disabled during the call.
+  if (button.disabled) return;
+  const campaignId = (button.dataset.campaignId || '').trim();
+  const planId = (button.dataset.planId || '').trim();
+  if (!campaignId || !planId) {
+    showToast('Nedostaje campaign_id/plan_id. Ponovo pokreni "Sačuvaj i napravi plan".');
+    return;
+  }
+  button.disabled = true;
+  const originalLabel = button.textContent;
+  button.textContent = 'Izvozim…';
+  let result;
+  try {
+    const api = window.pywebview && window.pywebview.api;
+    if (!api || typeof api.export_campaign_package !== 'function') {
+      showToast('Interna greška: bridge nije dostupan. Ponovo pokreni aplikaciju.');
+      result = null;
+    } else {
+      result = await api.export_campaign_package({
+        campaign_id: campaignId,
+        plan_id: planId,
+      });
+    }
+  } catch (err) {
+    showToast('Interna greška pri pozivu: ' + (err && err.message ? err.message : 'nepoznato.'));
+    result = null;
+  } finally {
+    button.disabled = false;
+    button.textContent = originalLabel;
+  }
+  if (result && result.ok) {
+    const path = result.zip_path ? ' (' + result.zip_path + ')' : '';
+    showToast('Izvoz gotov: ' + result.exported_count + ' objava, ' + result.skipped_count + ' preskočeno.' + path);
+  } else if (result) {
+    showToast((result && result.error_message) || 'Izvoz nije uspio.');
+  }
+}
 })();
 
 (function(){
@@ -526,5 +590,15 @@ async function generateContent(button) {
     btn.dataset.campaignId=campaign;
     btn.dataset.planId=plan;
     btn.hidden=false;
+  }
+  // ACS-GUI-009 BF-1 equivalent: the live "Izvezi ZIP paket" button is
+  // ALWAYS emitted (hidden, empty data attributes) and revealed here when
+  // BOTH ``?campaign=`` AND ``?plan=`` are present. It stays ``disabled``
+  // until the "Odobri kampanju" approve-gate click enables it.
+  const exportBtn=document.querySelector('[data-action="export-campaign"]');
+  if(exportBtn && campaign && plan){
+    exportBtn.dataset.campaignId=campaign;
+    exportBtn.dataset.planId=plan;
+    exportBtn.hidden=false;
   }
 })();

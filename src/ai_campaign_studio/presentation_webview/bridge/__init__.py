@@ -48,10 +48,15 @@ from ai_campaign_studio.application.campaigns.create_campaign import CreateCampa
 from ai_campaign_studio.application.campaigns.generate_campaign_plan import (
     GenerateCampaignPlan,
 )
+from ai_campaign_studio.application.export import ExportCampaign
 from ai_campaign_studio.application.posts.generate_social_post import (
     GenerateSocialPost,
 )
 from ai_campaign_studio.application.schemas.campaign_brief import CampaignBriefInput
+from ai_campaign_studio.application.visual.generate_visual_system import (
+    GenerateVisualSystem,
+)
+from ai_campaign_studio.application.visual.plan_post_layout import PlanPostLayout
 from ai_campaign_studio.bootstrap import create_bootstrap
 from ai_campaign_studio.config.paths import AppPaths
 from ai_campaign_studio.config.settings import AppSettings
@@ -66,6 +71,7 @@ from ai_campaign_studio.domain.common.errors import (
 from ai_campaign_studio.domain.common.ids import (
     CampaignId,
     CampaignPlanId,
+    VisualSystemId,
 )
 from ai_campaign_studio.domain.content.entities import CampaignTarget
 from ai_campaign_studio.infrastructure.ai.provider_adapter_factory import (
@@ -78,16 +84,21 @@ from ai_campaign_studio.infrastructure.database.repositories import (
     SqliteCampaignRepository,
     SqliteContentRepository,
     SqliteFactRepository,
+    SqlitePerformanceRepository,
     SqliteProviderConfigRepository,
     SqliteRevisionRepository,
+    SqliteVisualRepository,
 )
 from ai_campaign_studio.infrastructure.database.unit_of_work import SqliteUnitOfWork
+from ai_campaign_studio.infrastructure.export import ZipExportWriter
 from ai_campaign_studio.infrastructure.prompts.yaml_prompt_repository import (
     YamlPromptRepository,
 )
+from ai_campaign_studio.infrastructure.rendering import PillowRenderer
 from ai_campaign_studio.jobs.cancellation import CancellationError
 from ai_campaign_studio.presentation.ui_models import (
     CampaignPlanResultUiModel,
+    ExportCampaignResultUiModel,
     GenerateContentResultUiModel,
     ProviderConfigResultUiModel,
 )
@@ -117,6 +128,10 @@ class _CallResources:
     # as the rest).
     content_repo: SqliteContentRepository
     revision_repo: SqliteRevisionRepository
+    # ACS-GUI-009: ``export_campaign_package`` reads/writes visual
+    # systems + layout specs and persists ``DistributionInstance`` rows.
+    visual_repo: SqliteVisualRepository
+    performance_repo: SqlitePerformanceRepository
     uow: SqliteUnitOfWork
 
 
@@ -138,6 +153,7 @@ _LIFECYCLE_ERROR_MAPPERS: dict[str, str] = {
     "generate_campaign_content": "_generate_err",
     "get_job_status": "_job_status_err",
     "cancel_job": "_job_status_err",
+    "export_campaign_package": "_export_err",
 }
 # Per-method fallback message used ONLY when the resource-lifecycle
 # fails (we never want to surface the underlying exception text;
@@ -149,6 +165,7 @@ _LIFECYCLE_ERROR_MESSAGES: dict[str, str] = {
     "generate_campaign_content": "Generisanje sadržaja nije uspjelo (interna greška).",
     "get_job_status": "Ne mogu pročitati status posla (interna greška).",
     "cancel_job": "Otkazivanje posla nije uspjelo (interna greška).",
+    "export_campaign_package": "Izvoz nije uspio (interna greška).",
 }
 
 
@@ -323,6 +340,14 @@ class CampaignBridgeApi:
         # scope (no need for a process-global).
         self._generation_locks: dict[tuple[str, str], threading.Lock] = {}
         self._generation_locks_guard = threading.Lock()
+        # ACS-GUI-009: in-process ``plan_id -> visual_system_id`` cache for
+        # export idempotency (``VisualRepositoryPort`` has no "get by plan_id"
+        # lookup). Same instance-level scope as ``_generation_locks``; a
+        # double-click that makes a SECOND visual system for the same plan is
+        # an accepted low-risk edge case (orphaned unused row, NOT duplicated
+        # exported content).
+        self._visual_system_by_plan: dict[str, str] = {}
+        self._visual_system_by_plan_guard = threading.Lock()
 
     # --- js_api surface ---
 
@@ -1003,6 +1028,199 @@ class CampaignBridgeApi:
             "error_code": code,
             "error_message": message,
         }
+
+    @_with_call_resources
+    def export_campaign_package(self, raw_payload: dict) -> dict:
+        """Build and ZIP-export an already-generated campaign (ACS-GUI-009).
+
+        First GUI→backend path that runs the real ``GenerateVisualSystem`` /
+        ``PlanPostLayout`` / ``ExportCampaign`` pipeline. ``ExportCampaign``
+        is a pure orchestrator (no AI) but the two upstream steps DO call the
+        AI port, so provider resolution is reused via ``_resolve_ai_adapter``
+        (single source of truth for priority/fallback).
+
+        Per PYWEBVIEW_SECURITY §3, this method NEVER raises into JS — every
+        error path returns a result dict with ``ok=False`` and a stable
+        ``error_code``. The result dict carries a filesystem ``zip_path``
+        (deliberately returned to the user; it is a path, not a secret), but
+        never an API key, token, SecretStore content, or traceback text.
+
+        Steps:
+        1. boundary-validate ``campaign_id`` + ``plan_id`` (the JS caller
+           forwards the plan_id from the earlier
+           ``create_campaign_and_generate_plan`` response, same as
+           ``generate_campaign_content`` — no raw-SQL "current plan" lookup);
+        2. load campaign + plan, require the plan to be APPROVED and to
+           belong to THIS campaign (BF-4 equivalent: a SUPERSEDED or any
+           other non-APPROVED plan is rejected up-front, 0 AI calls);
+        3. idempotently ensure a ``CampaignVisualSystem`` exists via the
+           in-process ``_visual_system_by_plan`` map (a second click does
+           NOT create a second visual system);
+        4. generate a per-post ``LayoutSpec`` for any piece that does not yet
+           have one (partial failure allowed — one AI error must not abort
+           the loop; ``ExportCampaign`` skips pieces without a layout);
+        5. run ``ExportCampaign`` with its CURRENT 7-parameter constructor
+           and write the ZIP to ``data_dir/exports/<campaign_id>.zip``.
+        """
+        # -- 1. Boundary validation (we do not trust JS types/values).
+        if not isinstance(raw_payload, dict):
+            return self._export_err(_ERROR_VALIDATION, "Pošiljka nije objekat.")
+        campaign_id_raw = raw_payload.get("campaign_id")
+        if not isinstance(campaign_id_raw, str) or not campaign_id_raw.strip():
+            return self._export_err(
+                _ERROR_VALIDATION, "campaign_id je obavezan (string)."
+            )
+        plan_id_raw = raw_payload.get("plan_id")
+        if not isinstance(plan_id_raw, str) or not plan_id_raw.strip():
+            return self._export_err(
+                _ERROR_VALIDATION,
+                "plan_id je obavezan (string). "
+                "Ponovo pokreni 'Sačuvaj i napravi plan'.",
+            )
+        campaign_id = CampaignId(campaign_id_raw.strip())
+        plan_id = CampaignPlanId(plan_id_raw.strip())
+
+        try:
+            # -- 2. Load campaign + plan; require APPROVED + ownership.
+            campaign = self._campaign_repo.get_campaign(campaign_id)
+            if campaign is None:
+                return self._export_err(
+                    _ERROR_VALIDATION,
+                    f"Kampanja {campaign_id} ne postoji.",
+                )
+            plan = self._campaign_repo.get_plan(plan_id)
+            if plan is None:
+                return self._export_err(
+                    _ERROR_VALIDATION,
+                    f"Plan {plan_id} ne postoji. "
+                    "Ponovo pokreni 'Sačuvaj i napravi plan'.",
+                )
+            if plan.campaign_id != campaign_id:
+                return self._export_err(
+                    _ERROR_VALIDATION,
+                    f"Plan {plan_id} ne pripada kampanji {campaign_id}.",
+                )
+            if plan.status is not CampaignPlanStatus.APPROVED:
+                return self._export_err(
+                    _ERROR_VALIDATION,
+                    f"Plan {plan_id} je u stanju {plan.status.value}, "
+                    "očekivano APPROVED. Sadržaj još nije generisan.",
+                )
+
+            # -- 3-5. The whole export sequence (get/create visual system ->
+            #    layout loop -> ExportCampaign.execute) runs under the SAME
+            #    per-(campaign_id, plan_id) lock as generate_campaign_content.
+            #    BF-2 (Codex): without this, two worker threads writing the
+            #    same ZIP path concurrently interleave ZipExportWriter's
+            #    mode="w" write and corrupt the archive. The lock also makes
+            #    the visual-system idempotency atomic (the read-check-create
+            #    sequence in ``_get_cached_visual_system`` is no longer a
+            #    TOCTOU race, so a concurrent double-click cannot create two
+            #    visual systems for the same plan).
+            with self._lock_for(str(campaign_id), str(plan_id)):
+                adapter = None
+                visual_system = self._get_cached_visual_system(
+                    campaign_id, plan_id
+                )
+                if visual_system is None:
+                    adapter, adapter_err = self._resolve_ai_adapter()
+                    if adapter_err is not None:
+                        return adapter_err
+                    try:
+                        visual_system, _ = GenerateVisualSystem(
+                            campaign_repo=self._campaign_repo,
+                            brand_repo=self._brand_repo,
+                            visual_repo=self._visual_repo,
+                            prompt_repo=self._prompt_repo,
+                            ai_port=adapter,
+                            unit_of_work=self._uow,
+                        ).execute(plan_id)
+                    except Exception:
+                        self._bootstrap.logger.exception(
+                            "GenerateVisualSystem failed (campaign=%s)",
+                            campaign_id,
+                        )
+                        return self._export_err(
+                            _ERROR_GENERATION,
+                            "AI generisanje vizuelnog sistema nije uspjelo.",
+                        )
+                    self._record_campaign_visual_system(
+                        plan_id, visual_system.id
+                    )
+
+                # -- 4. Per-post layout specs (only for pieces that still
+                #    need one). Partial failure allowed: one AI/layout error
+                #    must not abort the whole export — ``ExportCampaign``
+                #    already skips pieces that have no LayoutSpec.
+                for piece in self._content_repo.list_campaign_content(
+                    campaign_id
+                ):
+                    if (
+                        self._visual_repo.get_layout_spec_by_content_piece(
+                            piece.id
+                        )
+                        is not None
+                    ):
+                        continue
+                    if piece.payload is None:
+                        # No payload -> no layout can be generated;
+                        # ExportCampaign will skip it as well.
+                        continue
+                    if adapter is None:
+                        adapter, adapter_err = self._resolve_ai_adapter()
+                        if adapter_err is not None:
+                            return adapter_err
+                    try:
+                        PlanPostLayout(
+                            campaign_repo=self._campaign_repo,
+                            content_repo=self._content_repo,
+                            visual_repo=self._visual_repo,
+                            prompt_repo=self._prompt_repo,
+                            ai_port=adapter,
+                            unit_of_work=self._uow,
+                        ).execute(piece.id, visual_system.id, plan_id)
+                    except Exception:
+                        self._bootstrap.logger.exception(
+                            "PlanPostLayout failed (piece=%s)", piece.id
+                        )
+
+                # -- 5. ExportCampaign (current 7-parameter constructor).
+                exports_dir = self._user_data_dir() / "exports"
+                exports_dir.mkdir(parents=True, exist_ok=True)
+                output_zip_path = exports_dir / f"{campaign_id}.zip"
+                result = ExportCampaign(
+                    campaign_repo=self._campaign_repo,
+                    content_repo=self._content_repo,
+                    visual_repo=self._visual_repo,
+                    revision_repo=self._revision_repo,
+                    renderer=PillowRenderer(),
+                    export_writer=ZipExportWriter(),
+                    performance_repo=self._performance_repo,
+                ).execute(
+                    campaign_id,
+                    plan_id,
+                    visual_system.id,
+                    str(output_zip_path),
+                )
+
+                return asdict(
+                    ExportCampaignResultUiModel(
+                        ok=True,
+                        campaign_id=str(campaign_id),
+                        zip_path=str(output_zip_path),
+                        exported_count=len(result.exported_content_piece_ids),
+                        skipped_count=len(result.skipped_content_piece_ids),
+                        error_code=None,
+                        error_message=None,
+                    )
+                )
+        except Exception:
+            self._bootstrap.logger.exception("unexpected export bridge error")
+            return self._export_err(
+                _ERROR_INTERNAL,
+                "Izvoz nije uspio — pogledajte log aplikacije.",
+            )
+
     @_with_call_resources
     def configure_provider(self, raw_payload: dict) -> dict:
         """Persist a provider API key into the real SecretStore (ACS-GUI-007).
@@ -1121,6 +1339,8 @@ class CampaignBridgeApi:
             provider_config_repo=SqliteProviderConfigRepository(connection),
             content_repo=SqliteContentRepository(connection),
             revision_repo=SqliteRevisionRepository(connection),
+            visual_repo=SqliteVisualRepository(connection),
+            performance_repo=SqlitePerformanceRepository(connection),
             uow=SqliteUnitOfWork(connection),
         )
         token = self._active_resources.set(resources)
@@ -1170,6 +1390,19 @@ class CampaignBridgeApi:
         # row per generated piece. Same per-call lifetime.
         return self._resources().revision_repo
 
+    @property
+    def _visual_repo(self) -> SqliteVisualRepository:
+        # ACS-GUI-009: ``export_campaign_package`` reads/writes visual
+        # systems + layout specs. Same per-call lifetime.
+        return self._resources().visual_repo
+
+    @property
+    def _performance_repo(self) -> SqlitePerformanceRepository:
+        # ACS-GUI-009: ``ExportCampaign`` persists one
+        # ``DistributionInstance`` per exported piece. Same per-call
+        # lifetime.
+        return self._resources().performance_repo
+
     # --- helpers (internal, not exposed to JS) ---
 
     def _lock_for(
@@ -1192,6 +1425,81 @@ class CampaignBridgeApi:
                 lock = threading.Lock()
                 self._generation_locks[key] = lock
             return lock
+
+    def _resolve_ai_adapter(self) -> tuple[Any, dict | None]:
+        """Resolve a configured provider into a text-generation adapter.
+
+        Returns ``(adapter, None)`` on success or ``(None, error_dict)`` on
+        failure. Reuses ``_resolve_provider()`` and the existing
+        ``build_text_generation_adapter`` factory so the provider-resolution
+        logic (priority + fallback) has a single source of truth — no
+        duplicated ordering code here.
+        """
+        provider_code, api_key = self._resolve_provider()
+        if provider_code is None:
+            return None, self._export_err(
+                _ERROR_NO_PROVIDER,
+                "Nijedan AI provajder nije podešen. Podesi API ključ.",
+            )
+        if not api_key:
+            return None, self._export_err(
+                _ERROR_KEY_MISSING,
+                f"Provajder {provider_code} je konfigurisan ali API ključ "
+                "nije dostupan.",
+            )
+        try:
+            adapter = build_text_generation_adapter(provider_code, api_key)
+        except Exception as exc:
+            # BF-1 (Codex): the SDK may inline the credential into the
+            # exception message. ``logger.exception`` would log the full
+            # traceback + ``str(exc)`` (secret leak); ``logger.error`` with
+            # only ``type(exc).__name__`` + the safe provider_code logs no
+            # secret text. Same shape as ``configure_provider`` (ACS-GUI-007
+            # BF-3).
+            self._bootstrap.logger.error(
+                "adapter factory failed for %s (%s)",
+                provider_code,
+                type(exc).__name__,
+            )
+            return None, self._export_err(
+                _ERROR_KEY_MISSING,
+                f"Ne mogu instancirati adapter za {provider_code}.",
+            )
+        return adapter, None
+
+    def _get_cached_visual_system(
+        self, campaign_id: CampaignId, plan_id: CampaignPlanId
+    ) -> Any | None:
+        """Return the in-process cached visual system for a plan, or None.
+
+        ``VisualRepositoryPort`` has no ``get_visual_system_by_plan`` lookup,
+        so the bridge keeps a small instance-level ``plan_id ->
+        visual_system_id`` map (same style as ``_generation_locks``). The
+        value is re-read through ``get_visual_system`` and verified to still
+        belong to the campaign (self-healing if the DB row was wiped).
+        """
+        vs_id = self._visual_system_by_plan.get(str(plan_id))
+        if vs_id is None:
+            return None
+        visual_system = self._visual_repo.get_visual_system(VisualSystemId(vs_id))
+        if visual_system is None or str(visual_system.campaign_id) != str(campaign_id):
+            return None
+        return visual_system
+
+    def _record_campaign_visual_system(
+        self, plan_id: CampaignPlanId, visual_system_id: VisualSystemId
+    ) -> None:
+        """Best-effort in-process record of ``plan_id -> visual_system_id``.
+
+        A double-click that (in theory) creates a SECOND CampaignVisualSystem
+        for the same plan is an accepted low-risk edge case (an orphaned,
+        unused row — NOT duplicated exported content, unlike the
+        ContentPiece duplicates BF-3 protects against). No full DB-backed
+        protection is warranted here. The map is guarded like
+        ``_generation_locks``.
+        """
+        with self._visual_system_by_plan_guard:
+            self._visual_system_by_plan[str(plan_id)] = str(visual_system_id)
 
     def _ensure_brand(self):
         """Read brand-seed.json; if missing or stale, re-seed from fixture.
@@ -1391,6 +1699,28 @@ class CampaignBridgeApi:
                 ok=False,
                 campaign_id=None,
                 job_id=None,
+                error_code=code,
+                error_message=message,
+            )
+        )
+
+    @staticmethod
+    def _export_err(code: str, message: str) -> dict:
+        """Error result for ``export_campaign_package`` only.
+
+        Uses ``ExportCampaignResultUiModel`` (NOT ``_err()`` /
+        ``_provider_err()`` / ``_generate_err()``) so the return dict has
+        the EXACT shape the JS caller expects: ``{ok, campaign_id, zip_path,
+        exported_count, skipped_count, error_code, error_message}`` and
+        nothing else.
+        """
+        return asdict(
+            ExportCampaignResultUiModel(
+                ok=False,
+                campaign_id=None,
+                zip_path=None,
+                exported_count=None,
+                skipped_count=None,
                 error_code=code,
                 error_message=message,
             )

@@ -5,9 +5,14 @@ plus a 2-column grid (quality checks / export package), and the shared
 5-step stepper (step 5 active, steps 1–4 done). Visual port of
 ``docs/gui-v3/screens/08_pregled_izvoz/index.html``.
 
-Does NOT own any real use-case wiring: "Odobri kampanju" and "Izvezi ZIP
-paket" are ``data-action="toast"`` stubs — the real approve/export pipeline
-is G10+ (Performance / ZIP export) scope, not this GUI-BASE tier.
+"Odobri kampanju" is a UI-only gate (``data-action="approve-gate"``) that
+enables the "Izvezi ZIP paket" button; it makes NO backend call (the plan is
+already APPROVED before this screen — see ACS-GUI-008). "Izvezi ZIP paket"
+(``data-action="export-campaign"``) is wired to the real
+``export_campaign_package`` bridge method via ``app.js``. The export button is
+ALWAYS emitted (``hidden`` by default, empty ``data-campaign-id``/
+``data-plan-id``) and revealed at runtime by ``app.js`` when both ``?campaign=``
+and ``?plan=`` are present (ACS-GUI-009 BF-1 equivalent).
 """
 
 from __future__ import annotations
@@ -90,10 +95,10 @@ DEFAULT_FIXTURE = PregledIzvozFixture(
         "slike i sidecar manifest."
     ),
     odobri_toast=(
-        "Odobravanje kampanje — kasnije vodi u ApproveCampaign use-case."
+        "Sadržaj pregledan. Sada možeš izvesti ZIP paket."
     ),
     izvezi_toast=(
-        "Izvoz ZIP paketa — kasnije vodi u export manifest/zip pipeline."
+        "Izvoz ZIP paketa — pokreće render i pakovanje sadržaja."
     ),
 )
 
@@ -135,7 +140,7 @@ def render_body(fixture: PregledIzvozFixture | None = None) -> str:
         "<h2>Pregled i izvoz</h2>"
         "<p>Završna kontrola prije odobrenja i izvoza paketa.</p>"
         "</div>"
-        f'<button class="btn success" data-action="toast" '
+        f'<button class="btn success" data-action="approve-gate" '
         f'data-message="{html.escape(fx.odobri_toast)}">'
         "Odobri kampanju"
         "</button>"
@@ -151,8 +156,9 @@ def render_body(fixture: PregledIzvozFixture | None = None) -> str:
         f'<p class="muted small">{html.escape(fx.export_intro)}</p>'
         f"{rows}"
         '<div class="actions">'
-        f'<button class="btn primary" data-action="toast" '
-        f'data-message="{html.escape(fx.izvezi_toast)}">'
+        f'<button id="btn-izvezi" class="btn primary" '
+        f'data-action="export-campaign" data-campaign-id="" data-plan-id="" '
+        f'title="{html.escape(fx.izvezi_toast)}" hidden disabled>'
         "Izvezi ZIP paket"
         "</button>"
         "</div>"

@@ -27,6 +27,9 @@ _EXPECTED_METHODS = {
     # skipped). Same narrow-surface rule as the other two js_api
     # methods.
     "generate_campaign_content",
+    # Added in ACS-GUI-009: real ZIP export (Pregled i izvoz →
+    # "Izvezi ZIP paket"). Same narrow-surface, one-positional-dict rule.
+    "export_campaign_package",
 }
 
 
@@ -77,6 +80,21 @@ def test_bridge_implements_generate_campaign_content() -> None:
 
     method = getattr(CampaignBridgeApi, "generate_campaign_content", None)
     assert method is not None, "bridge must expose generate_campaign_content"
+    import inspect
+    sig = inspect.signature(method)
+    assert list(sig.parameters) == ["self", "raw_payload"]
+
+
+def test_bridge_implements_export_campaign_package() -> None:
+    """ACS-GUI-009: ``export_campaign_package`` is the fourth js_api
+    method. Same one-positional-dict shape — the JS caller passes
+    ``{campaign_id, plan_id}`` and receives an
+    ``ExportCampaignResultUiModel``-shaped dict.
+    """
+    from ai_campaign_studio.presentation_webview.bridge import CampaignBridgeApi
+
+    method = getattr(CampaignBridgeApi, "export_campaign_package", None)
+    assert method is not None, "bridge must expose export_campaign_package"
     import inspect
     sig = inspect.signature(method)
     assert list(sig.parameters) == ["self", "raw_payload"]
