@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime
+from typing import cast
 
 from ai_campaign_studio.domain.common.ids import (
     CampaignId,
@@ -27,6 +28,7 @@ from ai_campaign_studio.domain.common.ids import (
 )
 from ai_campaign_studio.domain.performance.entities import (
     DistributionInstance,
+    MatchStatus,
     PerformanceImportBatch,
     PerformanceImportRow,
     PerformanceSnapshot,
@@ -100,6 +102,22 @@ class SqlitePerformanceRepository:
         ).fetchone()
         if row is None:
             return None
+        return self._distribution_instance_from_row(row)
+
+    def list_distribution_instances_by_campaign(
+        self, campaign_id: CampaignId
+    ) -> tuple[DistributionInstance, ...]:
+        rows = self._connection.execute(
+            "SELECT * FROM distribution_instances WHERE campaign_id = ?"
+            " ORDER BY id",
+            (campaign_id,),
+        ).fetchall()
+        return tuple(self._distribution_instance_from_row(row) for row in rows)
+
+    @staticmethod
+    def _distribution_instance_from_row(
+        row: sqlite3.Row,
+    ) -> DistributionInstance:
         return DistributionInstance(
             id=DistributionInstanceId(row["id"]),
             campaign_id=CampaignId(row["campaign_id"]),
@@ -266,14 +284,16 @@ class SqlitePerformanceRepository:
         self._connection.execute(
             "INSERT INTO performance_import_rows (id, batch_id, row_number,"
             " raw_values_json, mapped_values_json, errors_json,"
-            " distribution_instance_id) VALUES (?, ?, ?, ?, ?, ?, ?)"
+            " distribution_instance_id, match_status) VALUES"
+            " (?, ?, ?, ?, ?, ?, ?, ?)"
             " ON CONFLICT(id) DO UPDATE SET"
             " batch_id=excluded.batch_id,"
             " row_number=excluded.row_number,"
             " raw_values_json=excluded.raw_values_json,"
             " mapped_values_json=excluded.mapped_values_json,"
             " errors_json=excluded.errors_json,"
-            " distribution_instance_id=excluded.distribution_instance_id",
+            " distribution_instance_id=excluded.distribution_instance_id,"
+            " match_status=excluded.match_status",
             (
                 row.id,
                 row.batch_id,
@@ -282,6 +302,7 @@ class SqlitePerformanceRepository:
                 json.dumps(row.mapped_values),
                 json.dumps(row.errors),
                 row.distribution_instance_id,
+                row.match_status,
             ),
         )
 
@@ -322,4 +343,17 @@ class SqlitePerformanceRepository:
                 if row["distribution_instance_id"] is not None
                 else None
             ),
+            match_status=_match_status_from_db(row["match_status"]),
         )
+
+
+_VALID_MATCH_STATUSES = ("UNMATCHED", "AMBIGUOUS", "MATCHED")
+
+
+def _match_status_from_db(value: str | None) -> MatchStatus | None:
+    """Reconstruct ``match_status``, refusing unknown persisted values."""
+    if value is None:
+        return None
+    if value not in _VALID_MATCH_STATUSES:
+        raise ValueError(f"unknown match_status value in DB: {value}")
+    return cast(MatchStatus, value)
