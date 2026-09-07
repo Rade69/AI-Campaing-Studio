@@ -3,7 +3,38 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-045
+**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-047
+(MiniMax) — Claude review REQUIRED FIX, NIJE push-ovano na origin,
+Codex runda čeka.** Implementer evidence:
+[agent_reports/2026-09-06-ACS-F1-047-evidence.md](../agent_reports/2026-09-06-ACS-F1-047-evidence.md).
+Review: [agent_reports/2026-09-07-ACS-F1-047-review-claude.md](../agent_reports/2026-09-07-ACS-F1-047-review-claude.md).
+
+- Objective #1 (`JobManager.update_progress`), DTO shrink (7→5 polja),
+  `get_job_status`/`cancel_job`, BF-4 (SUPERSEDED)/idempotentnost --
+  svi nezavisno reprodukovani, PASS.
+- **BLOCKING**: closure nema deterministički način da sazna sopstveni
+  `job_id` -- `_find_current_job_id` "pogađa" tražeći TAČNO JEDAN
+  `RUNNING` job na CIJELOM (dijeljenom, `max_workers=4`) JobManager-u;
+  čim postoje 2+ RUNNING joba BILO KOG tipa, oba/jedan dobiju `""`, pa
+  progress i terminalni `generated_count`/`content_piece_ids` ostaju
+  na 0/() iako je sadržaj stvarno generisan. Reprodukovano izolovano
+  (5/5) I potvrđeno da se već dešava u MiniMax-ovom VLASTITOM BF-3
+  concurrent-lock testu (2/3 poziva ambiguous) -- test prolazi jer
+  provjerava samo agregatni DB count, ne per-job outcome. Verifikovan
+  fix (prototipiran): `CancellationToken` nosi svoj `job_id` (postavljen
+  u `submit()` gdje je već poznat) -- deterministički, bez ambiguity-a
+  ikad. Tražim od MiniMax-a: primijeniti fix + novi regression test
+  (2 konkurentna joba za RAZLIČITE parove, asertuje per-job outcome).
+- 3 manja nalaza (jeftina, ista runda): netačna dokstring tvrdnja
+  "single executor thread" (opasna ako neko povjeruje i ukloni lock),
+  zastarjeli komentar o staroj 7-polje DTO formi, mrtav kod u `app.js`
+  (`_pollOnce`/`_onTerminal` definisani ali nikad korišteni).
+  `jobs/models.py` izmijenjen van `allowed_paths` bez prijave (benigno,
+  retroaktivno odobreno zajedno sa `jobs/cancellation.py` za fix).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **ACS-F1-045
 DONE — merged u main (PR #10, merge commit `a7cc1ef`).** Implementer:
 Pi. Fix za Nalaz 1 (fact-grounded planning) + Nalaz 2 (claim_linter
 contact-info) iz web Claude review-a. Review: Claude (MEDIUM, §29) —
