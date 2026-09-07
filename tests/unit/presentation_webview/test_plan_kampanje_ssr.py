@@ -80,7 +80,7 @@ def test_render_body_back_link_is_real() -> None:
 def test_render_body_odobri_plan_links_to_kalendar_with_campaign() -> None:
     body = render_body()
     assert (
-        '<a class="btn primary" '
+        '<a class="btn primary" data-next-step '
         'href="../kalendar/index.html?campaign=Proljetna%20kolekcija">'
         "Odobri plan i nastavi →</a>"
     ) in body

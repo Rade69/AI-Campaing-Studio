@@ -618,6 +618,29 @@ async function exportCampaign(button) {
     exportBtn.dataset.planId=plan;
     exportBtn.hidden=false;
   }
+  // Human Owner live-run feedback, 2026-09-07: the "next step" links
+  // on Plan kampanje / Kalendar / Studio sadržaja (build-time static
+  // hrefs, needed for the offline/SSR preview) silently dropped
+  // ``?campaign=``/``?plan=`` on every hop after the first ("Sačuvaj i
+  // napravi plan" is the only step that navigates via JS with the
+  // real ids). A user clicking through the real flow therefore always
+  // landed on Studio sadržaja / Pregled i izvoz with NO query params,
+  // so their live buttons ("Generiši sadržaj" / "Izvezi ZIP paket")
+  // never appeared. Every page in the flow marks its own "next step"
+  // link with ``data-next-step``; when this page's OWN URL carries
+  // both ids, rewrite that link's href to carry them forward too.
+  if(campaign && plan){
+    document.querySelectorAll('[data-next-step]').forEach(function(a){
+      const href=a.getAttribute('href');
+      if(!href) return;
+      const base=href.split('?')[0];
+      a.setAttribute(
+        'href',
+        base + '?campaign=' + encodeURIComponent(campaign)
+          + '&plan=' + encodeURIComponent(plan)
+      );
+    });
+  }
 })();
 
 // --- ACS-F1-046: Kampanje lista — read-path hydration ---

@@ -143,7 +143,8 @@ def test_render_body_pregled_i_izvoz_is_real_forward_link() -> None:
     to reach step 5 / the export screen (Human Owner feedback, 2026-09-03)."""
     body = render_body()
     assert (
-        '<a class="btn primary" href="../pregled_izvoz/index.html">'
+        '<a class="btn primary" data-next-step '
+        'href="../pregled_izvoz/index.html">'
         "Pregled i izvoz →</a>"
     ) in body
 

@@ -162,7 +162,8 @@ def render_body(fixture: PlanKampanjeFixture | None = None) -> str:
         f'data-message="{html.escape(fx.regenerisi_toast)}">'
         "Regeneriši plan"
         "</button>"
-        f'<a class="btn primary" href="{html.escape(kalendar_href)}">'
+        f'<a class="btn primary" data-next-step '
+        f'href="{html.escape(kalendar_href)}">'
         "Odobri plan i nastavi →</a>"
         "</div>"
     )

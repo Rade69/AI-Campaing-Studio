@@ -14,6 +14,8 @@ from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 from urllib.request import url2pathname
 
+import pytest
+
 from ai_campaign_studio.presentation_webview.screens import write_all_pages
 from ai_campaign_studio.presentation_webview.screens._static_pages import (
     WORKFLOW_ITEMS,
@@ -324,3 +326,103 @@ def test_write_all_pages_pregled_izvoz_carries_live_export_button(
     assert 'data-action="approve-gate"' in pregled_html
     # The legacy "toast" stub for the export button is GONE.
     assert 'data-action="toast"' not in pregled_html
+
+
+def test_next_step_links_carry_campaign_and_plan_through_the_whole_flow(
+    tmp_path: Path,
+) -> None:
+    """Human Owner live-run feedback, 2026-09-07: clicking through the
+    real flow (Plan kampanje -> Kalendar -> Studio sadržaja -> Pregled
+    i izvoz) always landed on the LAST two screens with NO query
+    params, because every "next step" link past the first was a
+    build-time static href (needed for the offline/SSR preview) that
+    never carried the runtime ``campaign``/``plan`` ids forward. Only
+    "Sačuvaj i napravi plan" (JS-driven navigation) got it right.
+
+    This test loads the REAL committed ``app.js`` in Node and proves
+    the boot IIFE rewrites every ``[data-next-step]`` link's ``href``
+    to include the CURRENT page's own ``?campaign=``/``?plan=`` ids --
+    on each of the three affected screens, chained, exactly the click
+    path a real user follows.
+    """
+    import json
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is unavailable; executable app.js regression skipped")
+
+    app_js_path = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "src" / "ai_campaign_studio" / "presentation_webview" / "static"
+        / "app.js"
+    )
+    harness = r"""
+const fs=require('fs'),vm=require('vm');
+const src=fs.readFileSync(process.argv[1],'utf8');
+
+function runPage(search, links){
+  const anchors=links.map(href=>({
+    _href:href,
+    getAttribute(n){ return n==='href' ? this._href : null; },
+    setAttribute(n,v){ if(n==='href') this._href=v; },
+  }));
+  const document={
+    querySelectorAll(sel){
+      if(sel==='[data-next-step]') return anchors;
+      return [];
+    },
+    querySelector(){ return null; },
+    getElementById(){ return null; },
+  };
+  const window={addEventListener(){}};
+  const context={
+    window, document, location:{search}, URLSearchParams,
+    setInterval(){return 1;}, clearInterval(){}, setTimeout, clearTimeout,
+    console,
+  };
+  vm.createContext(context);
+  vm.runInContext(src, context);
+  return anchors.map(a=>a._href);
+}
+
+// Step 2 (Plan kampanje): page URL has campaign+plan -> its own
+// "next step" link (to Kalendar) must gain both.
+const step2=runPage(
+  '?campaign=c-123&plan=p-456',
+  ['../kalendar/index.html?campaign=Fixture%20Name']
+);
+// Step 3 (Kalendar): simulate having landed there WITH the ids the
+// fixed step-2 link now carries -- its own "next step" link (to
+// Studio sadrzaja) must ALSO gain both.
+const step3=runPage(
+  '?campaign=c-123&plan=p-456',
+  ['../studio_sadrzaja/index.html']
+);
+// Step 4 (Studio sadrzaja): same -- its "next step" link (to Pregled
+// i izvoz) must gain both.
+const step4=runPage(
+  '?campaign=c-123&plan=p-456',
+  ['../pregled_izvoz/index.html']
+);
+
+console.log(JSON.stringify({step2: step2[0], step3: step3[0], step4: step4[0]}));
+"""
+    completed = subprocess.run(
+        [node, "-e", harness, str(app_js_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    result = json.loads(completed.stdout)
+    assert result["step2"] == (
+        "../kalendar/index.html?campaign=c-123&plan=p-456"
+    )
+    assert result["step3"] == (
+        "../studio_sadrzaja/index.html?campaign=c-123&plan=p-456"
+    )
+    assert result["step4"] == (
+        "../pregled_izvoz/index.html?campaign=c-123&plan=p-456"
+    )

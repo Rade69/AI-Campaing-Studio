@@ -110,7 +110,8 @@ def render_body(fixture: KalendarFixture | None = None) -> str:
         '<div class="actions" data-campaign-only hidden>'
         '<a class="btn" href="../plan_kampanje/index.html">'
         "← Plan kampanje</a>"
-        '<a class="btn primary" href="../studio_sadrzaja/index.html">'
+        '<a class="btn primary" data-next-step '
+        'href="../studio_sadrzaja/index.html">'
         "Nastavi na Studio sadržaja →</a>"
         "</div>"
     )

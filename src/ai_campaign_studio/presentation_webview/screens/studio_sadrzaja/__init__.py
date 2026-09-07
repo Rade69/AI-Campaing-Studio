@@ -226,7 +226,8 @@ def _edit_card(fx: StudioSadrzajaFixture) -> str:
         "Pošalji na reviziju"
         "</button>"
         f"{generate_button}"
-        '<a class="btn primary" href="../pregled_izvoz/index.html">'
+        '<a class="btn primary" data-next-step '
+        'href="../pregled_izvoz/index.html">'
         "Pregled i izvoz →</a>"
         "</div>"
         f"{result_node}"
