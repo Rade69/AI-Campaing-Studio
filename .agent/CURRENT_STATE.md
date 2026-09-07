@@ -3,7 +3,39 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **STOP na
+**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-GUI-009
+(v2, PR #9) — Codex adversarial rereview REJECT, 3 blocking nalaza,
+sva tri nezavisno reprodukovana od koordinatora, fix-brief napisan i
+poslat Crush-u.** Nalazi (`agent_reports/2026-09-07-ACS-GUI-009-review-codex.md`):
+
+1. **BF-1 (security)** -- `_resolve_ai_adapter` hvata grešku
+   `build_text_generation_adapter`-a preko `logger.exception(...)`,
+   što upisuje pun exception tekst/traceback u application log. Ako
+   SDK ikad ubaci API ključ u poruku greške, ključ trajno završi u
+   logu (JS-facing rezultat ostaje čist). Koordinator reprodukovao
+   sentinel test uživo: `secret_in_result=False`,
+   `secret_in_logs=True`.
+2. **BF-2 (concurrency, najozbiljniji)** -- `export_campaign_package`
+   nema lock oko cijele sekvence (visual system → layout loop →
+   `ExportCampaign.execute`); `ZipExportWriter.write_zip` otvara
+   fiksnu putanju `exports/<campaign_id>.zip` sa `ZipFile(mode="w")`
+   bez atomic temp+rename. Codex-ov kontrolisani test: 9/50
+   korumpiranih ZIP-ova. Koordinator nezavisno reprodukovao vlastitim
+   dva-thread barrier testom: 7/30 korumpiranih.
+3. **BF-3 (test gaps)** -- nema regresije za plan koji pripada drugoj
+   kampanji ni za tačan DTO key-set na `create_connection` lifecycle
+   failure; test helper `_seed_brand_and_campaign` hardkodira
+   `plan-1`/`item-1...`, pa dvostruki poziv NE pravi dva nezavisna
+   plana (drugi seed prepisuje isti ID) -- potvrđeno čitanjem koda.
+
+Fix-brief napisan: [agent_reports/2026-09-07-ACS-GUI-009-fix-brief-za-crush.md](../agent_reports/2026-09-07-ACS-GUI-009-fix-brief-za-crush.md)
+(commit `3295298`, push-ovan, CI zeleno, GitNexus osvježen). PR #9 se
+NE MERGE-uje dok Codex ne ponovi review i ne da PASS -- HIGH task, pun
+ciklus i dalje važi.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **STOP na
 novim use-case-ovima -- nezavisna "web Claude" review otkrila 4
 potvrđena, ozbiljna nalaza u već mergovanom kodu.** Koordinator je
 SVAKI nalaz nezavisno reprodukovao stvarnim izvršavanjem (ne prihvatio
@@ -58,12 +90,13 @@ odvojeni -- `application/campaigns+posts/` vs `presentation_webview/
 screens/kampanje/` vs `jobs/`+`presentation_webview/screens/
 studio_sadrzaja/`).
 
-**GUI-008/009 status nepromijenjen** -- ACS-GUI-009 (export) i dalje
-čeka Codex adversarial rundu (PR #9), nastavlja se paralelno sa gornja
-tri fix taska pošto ne dijeli fajlove sa njima na način koji bi
-smetao (dijeli `bridge/__init__.py` sa ACS-F1-046/047 -- implementeri
-MORAJU koordinisati redoslijed merge-a/rebase-a, isti obrazac kao
-GUI-008/009 međusobno).
+**GUI-009 status ažuriran** (vidi najnoviji zapis na vrhu fajla) --
+Codex adversarial runda za PR #9 je vraćena, REJECT sa 3 blocking
+nalaza, fix-brief poslat Crush-u. Nastavlja se paralelno sa gornja tri
+fix taska pošto ne dijeli fajlove sa njima na način koji bi smetao
+(dijeli `bridge/__init__.py` sa ACS-F1-046/047 -- implementeri MORAJU
+koordinisati redoslijed merge-a/rebase-a, isti obrazac kao GUI-008/009
+međusobno).
 
 **Dodjela agenata (2026-09-07, na osnovu ranijeg rada svakog)**:
 - **Pi** → ACS-F1-045 (fact-grounded planning + claim_linter) --
