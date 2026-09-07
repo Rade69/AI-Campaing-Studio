@@ -4,6 +4,36 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-047
+(PR #12) — Codex re-review REJECT (BF-CODEX-3), nezavisno reprodukovano
+Node harness-om, fix-brief-3 poslat MiniMax-u.** BF-CODEX-1/2 su
+POTVRĐENO zatvoreni (Codex eksplicitno kaže). Codex re-review:
+`H:\ai-campaign-studio-worktrees\ACS-F1-047-job-manager-wiring\agent_reports\2026-09-07-ACS-F1-047-rereview-codex.md`.
+Fix-brief: [agent_reports/2026-09-07-ACS-F1-047-fix-brief-3-za-minimax.md](../agent_reports/2026-09-07-ACS-F1-047-fix-brief-3-za-minimax.md).
+
+- **BF-CODEX-3**: ista "ne-blokirajuća opservacija" koju sam ja
+  prijavio Codex-u u prošloj rundi na procjenu -- Codex ju je uživo
+  reprodukovao (JS harness) i eskalirao u blocking, jer je gore nego
+  što sam pretpostavio: `acsJobActive` marker se postavlja TEK POSLIJE
+  `await`-a, pa dva brza klika prije IPC round-trip-a oba prolaze
+  guard, proizvode 2 backend submita i 2 listenera na istom dugmetu;
+  prvi terminalni tracker prerano čisti dijeljeni marker, otvarajući
+  TREĆI, spurious submit.
+- **Nezavisno reprodukovano** vlastitim standalone Node harness-om
+  (repo nema JS test infra -- izvučen tačan `generateContent()` tekst,
+  stub `document`/`window.pywebview`, odgođen submit Promise, 2 klika
+  prije resolve-a): `submit_calls=2`, marker `undefined` tokom race-a,
+  2 click listenera. Identično Codex-ovom nalazu.
+- **Fix**: marker se postavlja SINHRONO prije prvog `await`-a (odmah
+  poslije `api`-availability provjere); dodano čišćenje markera na
+  sync-reject grani (ranije nije trebalo jer marker nije bio postavljen
+  tako rano). Test: preporučena ista standalone Node skripta kao dokaz
+  (nova trajna JS test infrastruktura je van scope-a ove runde --
+  zasebna odluka ako MiniMax to poželi).
+- PR #12 ostaje unmerged, treća Codex runda slijedi poslije fixa.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **ACS-F1-047
 (PR #12) — fix runda 4 za oba Codex blocking nalaza potvrđena, push-
 ovano (rebase na main), traži se Codex re-review.** Fix evidence
 (implementer): `agent_reports/2026-09-07-ACS-F1-047-fix-brief-4-evidence.md`.
