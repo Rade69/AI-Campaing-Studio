@@ -4,6 +4,28 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-047
+(PR #12) — BF-CODEX-3 fix potvrđen, push-ovano, treći Codex re-review
+zatražen.** Fix evidence:
+`agent_reports/2026-09-07-ACS-F1-047-fix-brief-5-evidence.md`.
+Codex brief: [agent_reports/2026-09-07-ACS-F1-047-brief-za-codex-3.md](../agent_reports/2026-09-07-ACS-F1-047-brief-za-codex-3.md).
+
+- Marker (`acsJobActive`) pomjeren na sinhrono mjesto prije prvog
+  `await`-a, sync-reject grana čisti marker -- pročitan cio diff,
+  `button.disabled` NIJE vraćen (BF-CODEX-1 bi se pokvario),
+  `try/finally` iz BF-CODEX-2 netaknut.
+- Implementer-ov Node repro (`bf-codex-3-repro.js`) koristi RUČNO
+  PISANU kopiju "AFTER" logike, ne ekstrakciju iz stvarnog `app.js`a
+  -- slabiji dokaz nego što izgleda. Napravio SOPSTVENU verifikaciju
+  koja ekstrahuje TAČAN tekst iz COMMITTED `app.js`-a i pokreće ga u
+  Node-u: `submit_calls=1` (FIXED), potvrđeno protiv stvarnog koda.
+- Rebase na main čist. Nezavisno reprodukovano: 1071 testova, ruff,
+  mypy čisti. CI na PR #12 zeleno.
+- Ovo je treća uzastopna Codex runda za ACS-F1-047 -- ako prođe, ide
+  na Human Owner odobrenje (HIGH task).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **ACS-F1-047
 (PR #12) — Codex re-review REJECT (BF-CODEX-3), nezavisno reprodukovano
 Node harness-om, fix-brief-3 poslat MiniMax-u.** BF-CODEX-1/2 su
 POTVRĐENO zatvoreni (Codex eksplicitno kaže). Codex re-review:
