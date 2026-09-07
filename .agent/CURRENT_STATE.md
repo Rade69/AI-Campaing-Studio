@@ -3,7 +3,35 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-047
+**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-GUI-009
+(v2, PR #9) — Crush-ov fix za BF-1/2/3 potvrđen (uključujući mutation-
+testing), push-ovano preko VELIKOG ručnog rebase-a, Codex re-review
+zatražen.** Fix evidence: `agent_reports/2026-09-07-ACS-GUI-009-fix-v2-evidence.md`.
+Codex brief: [agent_reports/2026-09-07-ACS-GUI-009-brief-za-codex-2.md](../agent_reports/2026-09-07-ACS-GUI-009-brief-za-codex-2.md).
+
+- BF-1/BF-2 oba mutation-testirana od koordinatora (vraćen stari kod,
+  novi testovi padaju kako treba, fix vraćen, testovi prolaze).
+- **Rebase je bio veliki** -- branch je baziran OD PRIJE ACS-F1-045/046/047
+  (sva tri merge-ovana u međuvremenu). Konflikt u `bridge/__init__.py`
+  (F1-047-ove nove `get_job_status`/`cancel_job` vs. GUI-009-ov novi
+  `export_campaign_package`, oba dodata na istom mjestu) i u
+  `test_campaign_bridge_api.py` (uključujući DVIJE različite verzije
+  `_seed_brand_and_campaign`-a sa različitim parametrima -- F1-047-ov
+  `plan_id`/`item_id_prefix` protiv Crush-ovog `plan_id_suffix`).
+  Ručno riješeno: zadržan F1-047-ov oblik (već korišten od postojećih
+  testova), Crush-ov novi test preveden na taj oblik. Provjereno brojem
+  test funkcija prije/poslije (56+7=63, tačno) + punim gate-om.
+- Nezavisno reprodukovano nakon rebase-a: 1087 testova, ruff, mypy
+  čisti. CI na PR #9 zeleno.
+- Crush-ova OUT_OF_SCOPE napomena potvrđena: `create_campaign_and_generate_plan`/
+  `generate_campaign_content` imaju isti secret-in-log `logger.exception`
+  obrazac (GUI-005/008 postojeći kod) -- preporučen zaseban hardening
+  task, nije dio ovog fixa.
+- Čeka Codex re-review (HIGH risk, pun ciklus).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **ACS-F1-047
 DONE — merged u main (PR #12, merge commit `e7adb51`).** Human Owner
 odobrenje: "Odobravam". Implementer: MiniMax.
 
