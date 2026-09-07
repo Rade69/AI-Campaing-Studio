@@ -4,6 +4,25 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-GUI-009
+(v2, PR #9) — Codex round 2: PASS_WITH_NOTES, bez blocking nalaza.
+READY FOR HUMAN OWNER APPROVAL.** Final decision packet:
+[agent_reports/2026-09-07-ACS-GUI-009-final-decision-packet.md](../agent_reports/2026-09-07-ACS-GUI-009-final-decision-packet.md).
+
+- Codex je concurrent-export regresiju pokrenuo JOŠ 10 puta (preko 90
+  ukupnih pokušaja kroz cio ciklus, 0 korupcija sa fix-om) i potvrdio
+  da veliki rebase kroz ACS-F1-045/046/047 nije unio regresiju u
+  dijeljenom kodu. Nezavisno reprodukovano od koordinatora: 1087
+  testova, ruff, mypy čisti, CI zeleno.
+- Jedan prihvaćen rezidualni rizik: isti secret-in-log obrazac na DVA
+  DRUGA, neizmijenjena mjesta (`create_campaign_and_generate_plan`/
+  `generate_campaign_content`) -- Codex eksplicitno potvrdio
+  neblokirajuće, preporučen zaseban mali hardening task poslije ovog
+  merge-a.
+- Čeka Human Owner odluku za merge PR #9.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **ACS-GUI-009
 (v2, PR #9) — Crush-ov fix za BF-1/2/3 potvrđen (uključujući mutation-
 testing), push-ovano preko VELIKOG ručnog rebase-a, Codex re-review
 zatražen.** Fix evidence: `agent_reports/2026-09-07-ACS-GUI-009-fix-v2-evidence.md`.
