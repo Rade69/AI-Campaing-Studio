@@ -4,6 +4,29 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-GUI-009
+DONE — merged u main (PR #9, merge commit `b501a16`).** Human Owner
+odobrenje: "Odobravam". Implementer: Crush.
+
+Prvi GUI→backend put koji pokreće stvaran `GenerateVisualSystem` →
+`PlanPostLayout` → `ExportCampaign` lanac (vizuelni sistem + layout +
+render + ZIP export). Pun HIGH-risk ciklus (v1→v2 rewrite, Claude
+review, Codex REJECT→fix→PASS_WITH_NOTES, veliki rebase kroz
+ACS-F1-045/046/047) -- svi detalji u
+[agent_reports/2026-09-07-ACS-GUI-009-final-decision-packet.md](../agent_reports/2026-09-07-ACS-GUI-009-final-decision-packet.md).
+Post-merge CI zeleno na main. Oba worktree-a (v1 napušteni pokušaj i
+v2) uklonjena. GitNexus osvježen.
+
+**Preostao je zaseban, ne-blokirajući follow-up**: mali hardening task
+za secret-in-log obrazac na 2 preostala mjesta
+(`create_campaign_and_generate_plan`/`generate_campaign_content`) --
+Codex potvrdio neblokirajuće, nije napisan task contract još.
+
+**Jedini preostali otvoreni task iz originalna 4 nalaza**: ACS-F1-046
+(Kampanje read-path, Crush, PR #11) čeka Codex adversarial rundu.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **ACS-GUI-009
 (v2, PR #9) — Codex round 2: PASS_WITH_NOTES, bez blocking nalaza.
 READY FOR HUMAN OWNER APPROVAL.** Final decision packet:
 [agent_reports/2026-09-07-ACS-GUI-009-final-decision-packet.md](../agent_reports/2026-09-07-ACS-GUI-009-final-decision-packet.md).
