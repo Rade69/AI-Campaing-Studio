@@ -42,7 +42,7 @@ def _rules() -> ClaimRules:
         ),
         currency_symbols=("KM", "BAM", "EUR", "€", "RSD"),
         contact_info_patterns=(
-            r"(?:\+\d{1,3}[\s\-\.]?)?\d{2,3}[\s\-\./]?\d{3}[\s\-\.]?\d{3,4}",
+            r"(?:\+\d{1,3}[\s\-\.]?)?\d{2,3}[\s\-\./]\d{3}[\s\-\.]?\d{3,4}",
             r"\b(?:ulica|adresa|avenija|bulevar|trg|sokak|bb)\b[^,.;!?]*\d+",
         ),
     )
@@ -123,6 +123,22 @@ def test_street_address_is_not_a_numeric_claim() -> None:
     )
     assert result.status is ClaimStatus.NON_FACTUAL
     assert "unsupported-number" not in result.reason_codes
+
+
+def test_bare_long_number_without_separator_is_not_contact_info() -> None:
+    """Review F1 (Claude): a bare 8-10 digit run with NO separator is NOT a
+    phone number and must still hit the generic unsupported-number fallback.
+    The phone pattern requires at least one separator between the first two
+    digit groups so a fabricated big number (clients/views/followers) cannot
+    slip through as "contact info"."""
+    for text in (
+        "Imamo preko 12345678 zadovoljnih klijenata.",
+        "Pregledano 123456789 puta.",
+        "Dosegli smo 1234567890 pratilaca.",
+    ):
+        result = lint_claim(_claim(ClaimStatus.NON_FACTUAL, text), _rules())
+        assert result.status is ClaimStatus.UNSUPPORTED
+        assert "unsupported-number" in result.reason_codes
 
 
 def test_contact_info_rules_loaded_from_yaml() -> None:
