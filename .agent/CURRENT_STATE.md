@@ -29,9 +29,22 @@ Oba nalaza potvrđuju vrijednost STVARNOG klik-kroz testiranja --
 pytest E2E test (koji poziva bridge metode direktno) ih NIJE mogao
 uhvatiti jer ne prolazi kroz stvarnu HTML navigaciju.
 
-**Sljedeći korak**: korisnik ponovo pokreće pravu aplikaciju i
-provodi cio tok (Opis kampanje → ... → Pregled i izvoz → export) da
-potvrdi da su OBA nalaza stvarno zatvorena.
+**POTVRĐENO (2026-09-07, Human Owner uživo)**: cio tok proveden ručno
+kroz stvarnu desktop aplikaciju od početka do kraja -- Opis kampanje →
+Sačuvaj i napravi plan → Odobri plan i nastavi → Nastavi na Studio
+sadržaja → Generiši sadržaj → Pregled i izvoz → Odobri kampanju →
+Izvezi ZIP paket. Rezultat na disku
+(`exports/2de1ee61-d9f7-4835-b625-b380b5d3739c.zip` + raspakovan
+sadržaj): `manifest.json` sa 3 stavke (svaka sa campaign/plan/item/
+content_piece/revision ID-jem + `analytics_match_key`), svaka stavka
+ima stvaran `feed.png` + `caption.txt` (koherentan BHS tekst o zubnim
+implantatima, ne fixture) + `content.json`. Oba GUI navigaciona
+nalaza potvrđeno zatvorena kroz stvarnu upotrebu, ne samo kroz teste.
+
+**Ovo zaokružuje kompletan dokazni lanac za 2026-09-07**: automatski
+live pytest E2E test (bridge sloj, DeepSeek) → ručni GUI klik-kroz
+test (isti tok, prava desktop aplikacija) → oba PASS, ista stvarna
+funkcionalnost potvrđena na dva različita nivoa.
 
 ---
 
