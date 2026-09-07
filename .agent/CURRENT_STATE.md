@@ -4,6 +4,39 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-047
+(PR #12) — Codex REJECT, 2 blocking nalaza, oba nezavisno reprodukovana,
+fix-brief-2 poslat MiniMax-u.** Codex review:
+`H:\ai-campaign-studio-worktrees\ACS-F1-047-job-manager-wiring\agent_reports\2026-09-07-ACS-F1-047-review-codex.md`.
+Fix-brief: [agent_reports/2026-09-07-ACS-F1-047-fix-brief-2-za-minimax.md](../agent_reports/2026-09-07-ACS-F1-047-fix-brief-2-za-minimax.md).
+
+- **BF-CODEX-1**: `app.js` -- generate dugme ostaje `disabled=true`
+  KROZ CIJELI RUNNING period (nikad se ne vraća na `false` poslije
+  submita), a disabled HTML dugme ne emituje `click` event, pa
+  `_onClickWhileRunning`/`cancel_job` NIKAD ne dobiju priliku kroz GUI
+  iako backend cancel radi ispravno kad se pozove direktno. Potvrđeno
+  čitanjem koda. **Naivan fix je opasan**: postoji page-load-time
+  delegirani click listener na svaki `[data-action]` element koji
+  poziva `generateContent(button)` iznova čim `button.disabled` postane
+  `false` -- prost skidanje `disabled`-a bi isti klik ISTOVREMENO slao
+  cancel I pokretao NOVI submit. Preporučen fix: poseban re-entrancy
+  marker (`button.dataset`) odvojen od `.disabled` atributa.
+- **BF-CODEX-2**: `_patch_terminal_state(...)` je izvan `for` petlje u
+  `_run_generate_content_locked`, dostiže se SAMO na prirodan izlazak
+  -- `CancellationError` (cooperative cancel) je preskače u potpunosti,
+  pa terminal `JobState` ostaje na default `generated_count=0,
+  content_piece_ids=()` iako je sadržaj STVARNO perzistiran. Nezavisno
+  reprodukovano uživo (4 stavke, cancel mid-loop): DB 2 reda, terminal
+  DTO 0 -- identično Codex-ovim brojevima. Usput otkriveno: MiniMax-ov
+  postojeći cancel test sinhronizuje na `generated_count` polje koje se
+  NIKAD ne mijenja tokom petlje (samo `progress_current` se ažurira) --
+  test-ov "mid-loop" tajming je bio slučajan, ne namjeran. Preporučen
+  fix: `try/finally` oko petlje, jedan `_patch_terminal_state` call-site
+  umjesto dva.
+- PR #12 ostaje unmerged dok Codex ne ponovi review.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **ACS-F1-047
 (MiniMax) — fix runda 2 potvrđena, push-ovano, PR #12 otvoren, čeka
 Codex.** Fix evidence:
 [agent_reports/2026-09-07-ACS-F1-047-fix-brief-3-evidence.md](../agent_reports/2026-09-07-ACS-F1-047-fix-brief-3-evidence.md).
