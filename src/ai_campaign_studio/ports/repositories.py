@@ -209,6 +209,10 @@ class PerformanceRepositoryPort(Protocol):
         self, distribution_instance_id: DistributionInstanceId
     ) -> DistributionInstance | None: ...
 
+    def list_distribution_instances_by_campaign(
+        self, campaign_id: CampaignId
+    ) -> tuple[DistributionInstance, ...]: ...
+
     def save_performance_import_batch(
         self, batch: PerformanceImportBatch
     ) -> None: ...

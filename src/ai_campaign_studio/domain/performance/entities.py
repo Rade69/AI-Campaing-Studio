@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from ai_campaign_studio.domain.common.ids import (
     CampaignId,
@@ -24,6 +24,11 @@ from ai_campaign_studio.domain.performance.metrics import (
     CanonicalMetricSet,
     MetricPeriod,
 )
+
+# Matching outcome for one imported row (P1.5-G4, Faza 0.7 §14).
+# ``None`` means matching was never attempted; a non-None value is the
+# recorded, persisted outcome of one matching attempt.
+MatchStatus = Literal["UNMATCHED", "AMBIGUOUS", "MATCHED"]
 
 
 @dataclass(frozen=True)
@@ -95,8 +100,8 @@ class PerformanceImportRow:
     ``mapped_values`` maps canonical field -> string value for MATCHED
     columns only. ``errors`` is empty for a valid row; invalid rows are
     STILL persisted (never silently dropped). ``distribution_instance_id``
-    stays ``None`` at import time — the separate matching gate (P1.5-G4)
-    fills it later.
+    stays ``None`` at import time — the matching gate (P1.5-G4) fills it
+    later; ``match_status`` records that outcome (``None`` = never attempted).
     """
 
     id: PerformanceImportRowId
@@ -106,3 +111,4 @@ class PerformanceImportRow:
     mapped_values: dict[str, str]
     errors: tuple[str, ...]
     distribution_instance_id: DistributionInstanceId | None = None
+    match_status: MatchStatus | None = None
