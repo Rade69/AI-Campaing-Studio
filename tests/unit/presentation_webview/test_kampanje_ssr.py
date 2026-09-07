@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 import re
+from pathlib import Path
 
 from ai_campaign_studio.presentation_webview.screens.kampanje import (
     DEFAULT_FIXTURE,
@@ -216,3 +217,36 @@ def test_render_body_emits_no_remote_assets() -> None:
         "unpkg.com",
     ):
         assert forbidden not in body
+
+
+def test_app_js_has_escape_html_and_load_campaigns() -> None:
+    """ACS-F1-046: the app.js read-path hydration must escape every
+    interpolated value before inserting it into the DOM (XSS surface —
+    the campaign name comes from user/AI text). String-assertion on the
+    JS ``escapeHtml`` helper + its call sites in ``loadCampaigns``.
+    """
+    app_js_path = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "src" / "ai_campaign_studio" / "presentation_webview" / "static"
+        / "app.js"
+    )
+    js_text = app_js_path.read_text(encoding="utf-8")
+
+    # escapeHtml maps all five dangerous chars.
+    assert "escapeHtml" in js_text
+    assert "&lt;" in js_text
+    assert "&gt;" in js_text
+    assert "&amp;" in js_text
+    assert "&quot;" in js_text
+    assert "&#39;" in js_text
+
+    # loadCampaigns escapes every interpolated value before DOM insertion.
+    assert "loadCampaigns" in js_text
+    assert "escapeHtml(c.name)" in js_text
+    assert "escapeHtml(c.brand)" in js_text
+    assert "escapeHtml(c.status)" in js_text
+    assert "escapeHtml(c.created_at)" in js_text
+
+    # The read bridge method is wired and called on page load.
+    assert "list_campaigns" in js_text
+    assert "loadCampaigns();" in js_text

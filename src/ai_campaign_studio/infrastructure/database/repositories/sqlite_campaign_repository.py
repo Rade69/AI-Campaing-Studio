@@ -139,6 +139,13 @@ class SqliteCampaignRepository:
             return None
         return _campaign_from_row(row)
 
+    def list_campaigns(self) -> tuple[Campaign, ...]:
+        """All campaigns, newest first (``created_at DESC``)."""
+        rows = self._connection.execute(
+            "SELECT * FROM campaigns ORDER BY created_at DESC"
+        ).fetchall()
+        return tuple(_campaign_from_row(row) for row in rows)
+
     def get_plan(self, plan_id: CampaignPlanId) -> CampaignPlan | None:
         row = self._connection.execute(
             "SELECT * FROM campaign_plans WHERE id = ?", (plan_id,)
@@ -148,6 +155,34 @@ class SqliteCampaignRepository:
         item_rows = self._connection.execute(
             "SELECT * FROM campaign_items WHERE plan_id = ? ORDER BY \"order\"",
             (plan_id,),
+        ).fetchall()
+        return CampaignPlan(
+            id=CampaignPlanId(row["id"]),
+            campaign_id=CampaignId(row["campaign_id"]),
+            version=row["version"],
+            status=CampaignPlanStatus(row["status"]),
+            created_at=datetime.fromisoformat(row["created_at"]),
+            items=tuple(_item_from_row(item_row) for item_row in item_rows),
+        )
+
+    def get_latest_plan_for_campaign(
+        self, campaign_id: CampaignId
+    ) -> CampaignPlan | None:
+        """Most recent plan for a campaign (highest ``version``), or None.
+
+        Same item-loading shape as ``get_plan``; only the plan lookup
+        differs (by ``campaign_id`` + ``version DESC``, not by ``id``).
+        """
+        row = self._connection.execute(
+            "SELECT * FROM campaign_plans WHERE campaign_id = ?"
+            " ORDER BY version DESC LIMIT 1",
+            (campaign_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        item_rows = self._connection.execute(
+            "SELECT * FROM campaign_items WHERE plan_id = ? ORDER BY \"order\"",
+            (row["id"],),
         ).fetchall()
         return CampaignPlan(
             id=CampaignPlanId(row["id"]),

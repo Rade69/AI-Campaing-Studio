@@ -2557,3 +2557,105 @@ def test_export_campaign_package_lifecycle_failure_returns_exact_dto_keys(
     assert result["campaign_id"] is None
     assert result["exported_count"] is None
     assert result["skipped_count"] is None
+
+
+# --- ACS-F1-046: list_campaigns (first READ js_api method) ------------------
+
+
+def test_list_campaigns_empty_db_returns_ok_empty_list(tmp_path) -> None:
+    """Empty DB is a valid success, NOT an error."""
+    bridge = _isolated_bridge(tmp_path)
+    result = bridge.list_campaigns({})
+    assert result["ok"] is True
+    assert result["campaigns"] == ()
+
+
+def test_list_campaigns_returns_seeded_campaign_with_plan(tmp_path) -> None:
+    """A campaign WITH a plan returns the correct ``plan_item_count``,
+    ``name`` (from the brief's ``offer``) and ``brand`` (brand name)."""
+    bridge = _isolated_bridge(tmp_path)
+    campaign_id, _plan_id = _seed_brand_and_campaign(bridge, num_items=3)
+
+    result = bridge.list_campaigns({})
+    assert result["ok"] is True, result
+    assert len(result["campaigns"]) == 1
+    row = result["campaigns"][0]
+    assert row["id"] == campaign_id
+    assert row["name"] == "Test offer"
+    assert isinstance(row["brand"], str) and row["brand"]
+    assert "BrightSmile" in row["brand"]
+    assert row["plan_item_count"] == 3
+    assert row["status"] in {"DRAFT", "PLAN_GENERATED", "PLAN_APPROVED"}
+    assert isinstance(row["created_at"], str)
+
+
+def test_list_campaigns_campaign_without_plan_has_zero_items(tmp_path) -> None:
+    """A campaign with no plan -> ``plan_item_count=0`` (not an error)."""
+    from ai_campaign_studio.application.campaigns.create_campaign import (
+        CreateCampaign,
+    )
+    from ai_campaign_studio.infrastructure.database.connection import (
+        create_connection,
+    )
+    from ai_campaign_studio.infrastructure.database.repositories import (
+        SqliteCampaignRepository,
+    )
+    from ai_campaign_studio.infrastructure.database.unit_of_work import (
+        SqliteUnitOfWork,
+    )
+
+    bridge = _isolated_bridge(tmp_path)
+    with bridge._resource_scope():
+        brand_id, snapshot_id = bridge._ensure_brand()
+
+    connection = create_connection(bridge._bootstrap.paths.database_path)
+    try:
+        CreateCampaign(
+            campaign_repo=SqliteCampaignRepository(connection),
+            unit_of_work=SqliteUnitOfWork(connection),
+        ).execute(brand_id, snapshot_id, {
+            "offer": "No plan offer",
+            "goal": "g",
+            "audience_text": "a",
+            "targets": [
+                {
+                    "channel": "SOCIAL",
+                    "platform_code": "INSTAGRAM",
+                    "format_code": "FEED_POST",
+                }
+            ],
+            "content_piece_count": 2,
+            "content_language_context": "BHS_LATIN",
+        })
+        connection.commit()
+    finally:
+        connection.close()
+
+    result = bridge.list_campaigns({})
+    assert result["ok"] is True, result
+    assert len(result["campaigns"]) == 1
+    row = result["campaigns"][0]
+    assert row["name"] == "No plan offer"
+    assert row["plan_item_count"] == 0
+
+
+def test_list_campaigns_is_json_serializable_and_no_secret_leak(tmp_path) -> None:
+    """The read result never carries secret/path/exception text and is
+    fully JSON-serializable."""
+    bridge = _isolated_bridge(tmp_path)
+    _seed_brand_and_campaign(bridge)
+
+    result = bridge.list_campaigns({})
+    blob = json.dumps(result)  # must not raise
+    for forbidden in ("api_key", "secret", "password", "token"):
+        assert forbidden not in blob
+
+
+def test_list_campaigns_works_from_fresh_worker_thread(tmp_path) -> None:
+    """Thread-safety: ``list_campaigns`` runs under ``_with_call_resources``
+    (per-call connection) exactly like the write methods."""
+    bridge = _isolated_bridge(tmp_path)
+    _seed_brand_and_campaign(bridge)
+    result = _call_on_fresh_thread(bridge.list_campaigns, {})
+    assert result["ok"] is True
+    assert len(result["campaigns"]) == 1

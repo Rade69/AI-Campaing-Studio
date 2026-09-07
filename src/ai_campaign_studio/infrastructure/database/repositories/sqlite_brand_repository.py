@@ -39,6 +39,18 @@ class SqliteBrandRepository:
             (brand.id, brand.name, brand.created_at.isoformat()),
         )
 
+    def get_brand(self, brand_id: BrandId) -> Brand | None:
+        row = self._connection.execute(
+            "SELECT * FROM brands WHERE id = ?", (brand_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return Brand(
+            id=BrandId(row["id"]),
+            name=row["name"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+        )
+
     def save_snapshot(self, snapshot: BrandSnapshot) -> None:
         self._connection.execute(
             "INSERT INTO brand_snapshots (id, brand_id, version, language,"

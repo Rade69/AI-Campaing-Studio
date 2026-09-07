@@ -17,6 +17,7 @@ from ai_campaign_studio.domain.campaign.entities import (
     CampaignPlan,
 )
 from ai_campaign_studio.domain.common.ids import (
+    BrandId,
     BrandSnapshotId,
     CampaignId,
     CampaignPlanId,
@@ -48,6 +49,8 @@ class BrandRepositoryPort(Protocol):
     """Persistence for ``Brand`` and ``BrandSnapshot``."""
 
     def save_brand(self, brand: Brand) -> None: ...
+
+    def get_brand(self, brand_id: BrandId) -> Brand | None: ...
 
     def save_snapshot(self, snapshot: BrandSnapshot) -> None: ...
 
@@ -82,6 +85,12 @@ class CampaignRepositoryPort(Protocol):
     def get_campaign(self, campaign_id: CampaignId) -> Campaign | None: ...
 
     def get_plan(self, plan_id: CampaignPlanId) -> CampaignPlan | None: ...
+
+    def list_campaigns(self) -> tuple[Campaign, ...]: ...
+
+    def get_latest_plan_for_campaign(
+        self, campaign_id: CampaignId
+    ) -> CampaignPlan | None: ...
 
     def delete_campaign(
         self, campaign_id: CampaignId, *, brief_id: str | None = None

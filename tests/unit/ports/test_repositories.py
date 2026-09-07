@@ -26,6 +26,10 @@ def test_ports_are_runtime_checkable() -> None:
         def save_brand(self, brand) -> None:
             del brand
 
+        def get_brand(self, brand_id):
+            del brand_id
+            return None
+
         def save_snapshot(self, snapshot) -> None:
             del snapshot
 

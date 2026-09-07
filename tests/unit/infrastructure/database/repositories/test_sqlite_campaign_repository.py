@@ -237,3 +237,97 @@ def test_delete_campaign_signature_accepts_optional_brief_id(
     repo.delete_campaign(CampaignId("cmp-1"), brief_id=brief_id)
     assert conn.execute("SELECT COUNT(*) FROM campaigns").fetchone()[0] == 0
     conn.close()
+
+
+# --- ACS-F1-046: list_campaigns / get_latest_plan_for_campaign -------------
+
+
+def test_list_campaigns_empty_db_returns_empty_tuple(tmp_path) -> None:
+    """No campaigns -> ``()``, not an error (the bridge maps this to an
+    empty list, never raises)."""
+    repo, conn = _setup_db(tmp_path)
+    assert repo.list_campaigns() == ()
+    conn.close()
+
+
+def test_list_campaigns_returns_newest_first(tmp_path) -> None:
+    """Ordering contract: ``created_at DESC`` (newest first)."""
+    repo, conn = _setup_db(tmp_path)
+    repo.save_brief(_brief())  # campaigns.brief_id has an FK to campaign_briefs
+    older = Campaign(
+        id=CampaignId("cmp-older"),
+        brand_id=BrandId("brand-1"),
+        brand_snapshot_id=BrandSnapshotId("snap-1"),
+        brief_id="brief-1",
+        status=CampaignStatus.DRAFT,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    newer = Campaign(
+        id=CampaignId("cmp-newer"),
+        brand_id=BrandId("brand-1"),
+        brand_snapshot_id=BrandSnapshotId("snap-1"),
+        brief_id="brief-1",
+        status=CampaignStatus.DRAFT,
+        created_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    repo.save_campaign(older)
+    repo.save_campaign(newer)
+
+    result = repo.list_campaigns()
+    assert [str(c.id) for c in result] == ["cmp-newer", "cmp-older"]
+    conn.close()
+
+
+def test_get_latest_plan_for_campaign_no_plan_returns_none(tmp_path) -> None:
+    """A campaign with no plan at all -> ``None`` (bridge maps to
+    ``plan_item_count=0``)."""
+    repo, conn = _setup_db(tmp_path)
+    repo.save_brief(_brief())
+    repo.save_campaign(_campaign("cmp-1"))
+    assert repo.get_latest_plan_for_campaign(CampaignId("cmp-1")) is None
+    conn.close()
+
+
+def test_get_latest_plan_for_campaign_returns_highest_version(tmp_path) -> None:
+    """Two plans for the same campaign -> the HIGHEST ``version`` wins,
+    with its items loaded (same item-loading shape as ``get_plan``)."""
+    from ai_campaign_studio.domain.campaign.entities import (
+        CampaignItem,
+        CampaignPlan,
+    )
+
+    repo, conn = _setup_db(tmp_path)
+    repo.save_brief(_brief())
+    repo.save_campaign(_campaign("cmp-1"))
+
+    def _plan(plan_id: str, version: int) -> CampaignPlan:
+        return CampaignPlan(
+            id=CampaignPlanId(plan_id),
+            campaign_id=CampaignId("cmp-1"),
+            version=version,
+            status=CampaignPlanStatus.DRAFT,
+            created_at=_CREATED_AT,
+            items=(
+                CampaignItem(
+                    id=CampaignItemId(f"item-{plan_id}"),
+                    order=1,
+                    role=CampaignRole.PROBLEM,
+                    topic=f"t-{plan_id}",
+                    goal="g",
+                    status=CampaignItemStatus.PLANNED,
+                    target_audience_id=None,
+                    facts_needed=(),
+                ),
+            ),
+        )
+
+    repo.save_plan(_plan("plan-1", 1))
+    repo.save_plan(_plan("plan-2", 2))
+
+    result = repo.get_latest_plan_for_campaign(CampaignId("cmp-1"))
+    assert result is not None
+    assert str(result.id) == "plan-2"
+    assert result.version == 2
+    assert len(result.items) == 1
+    assert str(result.items[0].id) == "item-plan-2"
+    conn.close()

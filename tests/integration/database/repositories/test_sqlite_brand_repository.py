@@ -177,6 +177,27 @@ def test_get_unknown_snapshot_returns_none(tmp_path: Path) -> None:
     connection.close()
 
 
+def test_get_brand_round_trip(tmp_path: Path) -> None:
+    """ACS-F1-046: ``get_brand`` reads the ``Brand`` row back (used by the
+    Kampanje list to show the brand name)."""
+    connection = _setup_db(tmp_path)
+    repo = SqliteBrandRepository(connection)
+    brand = _brand()
+    repo.save_brand(brand)
+    loaded = repo.get_brand(BrandId("brand-1"))
+    assert loaded == brand
+    connection.close()
+
+
+def test_get_unknown_brand_returns_none(tmp_path: Path) -> None:
+    """Null-safe: a missing ``brand_id`` returns ``None`` (the bridge maps
+    it to an empty brand string), never raises."""
+    connection = _setup_db(tmp_path)
+    repo = SqliteBrandRepository(connection)
+    assert repo.get_brand(BrandId("missing")) is None
+    connection.close()
+
+
 def test_foreign_keys_are_enforced(tmp_path: Path) -> None:
     connection = _setup_db(tmp_path)
     with pytest.raises(sqlite3.IntegrityError):
