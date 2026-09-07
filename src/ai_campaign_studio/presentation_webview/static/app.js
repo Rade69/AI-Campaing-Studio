@@ -602,3 +602,79 @@ async function exportCampaign(button) {
     exportBtn.hidden=false;
   }
 })();
+
+// --- ACS-F1-046: Kampanje lista — read-path hydration ---
+//
+// The Kampanje screen is SSR-rendered at build time from DEFAULT_FIXTURE
+// (see screens/kampanje/__init__.py). At runtime we REPLACE that fixture
+// table with REAL data from the first read js_api method
+// ``list_campaigns``. The SSR fixture stays as the offline fallback (when
+// pywebview is absent, ``loadCampaigns`` returns early and the fixture
+// stays visible). Every interpolated value MUST go through ``escapeHtml``
+// before entering the DOM — the bridge returns arbitrary user/AI text
+// (campaign name comes from the brief's ``offer``), so XSS is a real
+// surface and this mirrors the Python ``html.escape`` on the SSR side.
+(function(){
+  // ``app.js`` is shared by every screen. A page-specific marker prevents
+  // this hydration from ever touching Plan kampanje (or any future table).
+  const table=document.querySelector('[data-campaigns-table]');
+  if(!table) return;
+
+  function escapeHtml(value){
+    return String(value).replace(/[&<>"']/g, function(ch){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+    });
+  }
+
+  async function loadCampaigns(){
+    const api=window.pywebview && window.pywebview.api;
+    if(!api || typeof api.list_campaigns !== 'function'){
+      // Offline/debug preview (no bridge): keep the SSR fixture as-is.
+      return;
+    }
+    let result;
+    try{
+      result=await api.list_campaigns({});
+    }catch(err){
+      // Never break the page; the fixture stays visible.
+      return;
+    }
+    if(!result || result.ok !== true){
+      return;
+    }
+    const campaigns=result.campaigns || [];
+    const thead='<thead><tr>' +
+      '<th>Kampanja</th><th>Brend</th><th>Status</th>' +
+      '<th>Planirano</th><th>Kreirano</th><th></th>' +
+      '</tr></thead>';
+    if(campaigns.length===0){
+      table.innerHTML=thead +
+        '<tbody><tr><td colspan="6" class="muted">' +
+        'Nema kreiranih kampanja. Napravi prvu preko \'Opis kampanje\'.' +
+        '</td></tr></tbody>';
+      return;
+    }
+    const rows=campaigns.map(function(c){
+      return '<tr>' +
+        '<td><b>'+escapeHtml(c.name)+'</b></td>' +
+        '<td>'+escapeHtml(c.brand)+'</td>' +
+        '<td>'+escapeHtml(c.status)+'</td>' +
+        '<td>'+escapeHtml(String(c.plan_item_count))+'</td>' +
+        '<td>'+escapeHtml(c.created_at)+'</td>' +
+        '<td class="right"><a class="btn" href="../opis_kampanje/index.html">Otvori</a></td>' +
+        '</tr>';
+    }).join('');
+    table.innerHTML=thead+'<tbody>'+rows+'</tbody>';
+  }
+
+  // pywebview injects ``window.pywebview.api`` asynchronously. Keep the
+  // immediate fast path for already-ready/debug environments, otherwise
+  // wait for the documented readiness event exactly once. Offline browser
+  // previews never emit it, so their SSR fixture remains untouched.
+  const api=window.pywebview && window.pywebview.api;
+  if(api && typeof api.list_campaigns === 'function'){
+    loadCampaigns();
+  }else{
+    window.addEventListener('pywebviewready', loadCampaigns, {once:true});
+  }
+})();

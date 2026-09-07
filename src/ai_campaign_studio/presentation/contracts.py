@@ -15,6 +15,7 @@ from ai_campaign_studio.presentation.ui_models import (
     CampaignPlanResultUiModel,
     ExportCampaignResultUiModel,
     GenerateContentResultUiModel,
+    ListCampaignsResultUiModel,
     ProviderConfigResultUiModel,
     ProviderStatusUiModel,
 )
@@ -64,3 +65,7 @@ class PresentationFacade(Protocol):
     def export_campaign_package(
         self, raw_payload: dict[str, Any]
     ) -> ExportCampaignResultUiModel: ...
+
+    def list_campaigns(
+        self, raw_payload: dict[str, Any] | None = None
+    ) -> ListCampaignsResultUiModel: ...

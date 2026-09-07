@@ -30,6 +30,10 @@ _EXPECTED_METHODS = {
     # Added in ACS-GUI-009: real ZIP export (Pregled i izvoz →
     # "Izvezi ZIP paket"). Same narrow-surface, one-positional-dict rule.
     "export_campaign_package",
+    # Added in ACS-F1-046: first READ js_api method (Kampanje list).
+    # ``raw_payload`` is optional (app.js may call with no args), but
+    # still one-dict-shaped when provided, consistent with the others.
+    "list_campaigns",
 }
 
 
@@ -95,6 +99,24 @@ def test_bridge_implements_export_campaign_package() -> None:
 
     method = getattr(CampaignBridgeApi, "export_campaign_package", None)
     assert method is not None, "bridge must expose export_campaign_package"
+
     import inspect
+
+    sig = inspect.signature(method)
+    assert list(sig.parameters) == ["self", "raw_payload"]
+
+
+def test_bridge_implements_list_campaigns() -> None:
+    """ACS-F1-046: ``list_campaigns`` is the first READ js_api method.
+    ``raw_payload`` is optional (defaults to None) so app.js can call it
+    with no args; the contract still declares it on the facade.
+    """
+    from ai_campaign_studio.presentation_webview.bridge import CampaignBridgeApi
+
+    method = getattr(CampaignBridgeApi, "list_campaigns", None)
+    assert method is not None, "bridge must expose list_campaigns"
+
+    import inspect
+
     sig = inspect.signature(method)
     assert list(sig.parameters) == ["self", "raw_payload"]

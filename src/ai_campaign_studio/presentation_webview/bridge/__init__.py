@@ -98,8 +98,10 @@ from ai_campaign_studio.infrastructure.rendering import PillowRenderer
 from ai_campaign_studio.jobs.cancellation import CancellationError
 from ai_campaign_studio.presentation.ui_models import (
     CampaignPlanResultUiModel,
+    CampaignSummaryUiModel,
     ExportCampaignResultUiModel,
     GenerateContentResultUiModel,
+    ListCampaignsResultUiModel,
     ProviderConfigResultUiModel,
 )
 
@@ -154,6 +156,7 @@ _LIFECYCLE_ERROR_MAPPERS: dict[str, str] = {
     "get_job_status": "_job_status_err",
     "cancel_job": "_job_status_err",
     "export_campaign_package": "_export_err",
+    "list_campaigns": "_list_err",
 }
 # Per-method fallback message used ONLY when the resource-lifecycle
 # fails (we never want to surface the underlying exception text;
@@ -166,6 +169,7 @@ _LIFECYCLE_ERROR_MESSAGES: dict[str, str] = {
     "get_job_status": "Ne mogu pročitati status posla (interna greška).",
     "cancel_job": "Otkazivanje posla nije uspjelo (interna greška).",
     "export_campaign_package": "Izvoz nije uspio (interna greška).",
+    "list_campaigns": "Učitavanje kampanja nije uspjelo (interna greška).",
 }
 
 
@@ -1320,6 +1324,56 @@ class CampaignBridgeApi:
             )
         )
 
+    @_with_call_resources
+    def list_campaigns(self, raw_payload: dict | None = None) -> dict:
+        """Read every campaign for the Kampanje list (ACS-F1-046).
+
+        The FIRST read js_api method on the bridge (the other three are
+        write-only). Returns every campaign, newest first, as
+        ``CampaignSummaryUiModel`` dicts. No pagination (campaign count is
+        small today). Never raises into JS and never leaks secret/path/
+        exception text (PYWEBVIEW_SECURITY §3). ``raw_payload`` is accepted
+        only for call-shape consistency with the other methods (app.js
+        passes ``{}``); its contents are ignored.
+        """
+        del raw_payload
+        try:
+            campaigns = self._campaign_repo.list_campaigns()
+            summaries: list[CampaignSummaryUiModel] = []
+            for campaign in campaigns:
+                brief = self._campaign_repo.get_brief(campaign.brief_id)
+                name = brief.offer if brief is not None else str(campaign.id)
+                plan = self._campaign_repo.get_latest_plan_for_campaign(
+                    campaign.id
+                )
+                plan_item_count = len(plan.items) if plan is not None else 0
+                brand = self._brand_repo.get_brand(campaign.brand_id)
+                brand_name = brand.name if brand is not None else ""
+                summaries.append(
+                    CampaignSummaryUiModel(
+                        id=str(campaign.id),
+                        name=name,
+                        status=campaign.status.value,
+                        plan_item_count=plan_item_count,
+                        brand=brand_name,
+                        created_at=campaign.created_at.isoformat(),
+                    )
+                )
+            return asdict(
+                ListCampaignsResultUiModel(
+                    ok=True,
+                    campaigns=tuple(summaries),
+                    error_code=None,
+                    error_message=None,
+                )
+            )
+        except Exception:
+            self._bootstrap.logger.exception("list_campaigns failed")
+            return self._list_err(
+                _ERROR_INTERNAL,
+                "Učitavanje kampanja nije uspjelo (interna greška).",
+            )
+
     # --- per-call SQLite resources ---
 
     @contextmanager
@@ -1721,6 +1775,24 @@ class CampaignBridgeApi:
                 zip_path=None,
                 exported_count=None,
                 skipped_count=None,
+                error_code=code,
+                error_message=message,
+            )
+        )
+
+    @staticmethod
+    def _list_err(code: str, message: str) -> dict:
+        """Error result for ``list_campaigns`` only.
+
+        Uses ``ListCampaignsResultUiModel`` (NOT ``_err()`` /
+        ``_provider_err()`` / ``_generate_err()``) so the return dict has
+        the EXACT shape the JS caller expects: ``{ok, campaigns,
+        error_code, error_message}`` and nothing else.
+        """
+        return asdict(
+            ListCampaignsResultUiModel(
+                ok=False,
+                campaigns=(),
                 error_code=code,
                 error_message=message,
             )

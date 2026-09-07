@@ -149,3 +149,39 @@ class ExportCampaignResultUiModel:
     skipped_count: int | None
     error_code: str | None
     error_message: str | None
+
+
+@dataclass(frozen=True)
+class CampaignSummaryUiModel:
+    """One row of the Kampanje list (ACS-F1-046 read path).
+
+    ``name`` is the campaign brief's ``offer`` (the ``Campaign`` entity has
+    no ``name`` field); ``brand`` is the brand's ``name`` (or ``""`` if the
+    brand lookup fails, which should not happen in practice because
+    ``campaign.brand_id`` is FK-referenced); ``plan_item_count`` is ``0``
+    when the campaign has no plan yet. ``created_at`` is an ISO 8601 string
+    (the ``Campaign`` entity has no ``updated_at`` — deliberately excluded
+    from this task). Every field is JSON-safe.
+    """
+
+    id: str
+    name: str
+    status: str
+    plan_item_count: int
+    brand: str
+    created_at: str
+
+
+@dataclass(frozen=True)
+class ListCampaignsResultUiModel:
+    """Result of a ``list_campaigns`` call (ACS-F1-046).
+
+    ``campaigns`` is ordered newest-first (``created_at DESC``). An empty
+    list is a valid success (``ok=True``), NOT an error. Never carries
+    secret/path/exception text.
+    """
+
+    ok: bool
+    campaigns: tuple[CampaignSummaryUiModel, ...]
+    error_code: str | None
+    error_message: str | None

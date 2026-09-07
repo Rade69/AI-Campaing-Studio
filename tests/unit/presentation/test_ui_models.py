@@ -5,8 +5,10 @@ from dataclasses import asdict
 
 from ai_campaign_studio.presentation.ui_models import (
     CampaignPlanResultUiModel,
+    CampaignSummaryUiModel,
     ExportCampaignResultUiModel,
     GenerateContentResultUiModel,
+    ListCampaignsResultUiModel,
     NotificationLevel,
     NotificationUiModel,
     ProviderConfigResultUiModel,
@@ -432,3 +434,57 @@ def test_export_campaign_result_carries_no_secret_field() -> None:
         "error_code",
         "error_message",
     }
+
+
+def test_campaign_summary_ui_model_shape() -> None:
+    """ACS-F1-046: one Kampanje-list row is JSON-safe with the exact
+    fields the bridge produces (created_at as ISO string, no updated_at)."""
+    row = CampaignSummaryUiModel(
+        id="cmp-1",
+        name="Test offer",
+        status="PLAN_GENERATED",
+        plan_item_count=3,
+        brand="BrightSmile",
+        created_at="2026-01-01T00:00:00+00:00",
+    )
+    blob = asdict(row)
+    assert blob == {
+        "id": "cmp-1",
+        "name": "Test offer",
+        "status": "PLAN_GENERATED",
+        "plan_item_count": 3,
+        "brand": "BrightSmile",
+        "created_at": "2026-01-01T00:00:00+00:00",
+    }
+
+
+def test_list_campaigns_result_empty_success_shape() -> None:
+    """ACS-F1-046: empty list is a valid success (``ok=True``), not an error."""
+    result = ListCampaignsResultUiModel(
+        ok=True,
+        campaigns=(),
+        error_code=None,
+        error_message=None,
+    )
+    blob = asdict(result)
+    assert blob == {
+        "ok": True,
+        "campaigns": (),
+        "error_code": None,
+        "error_message": None,
+    }
+
+
+def test_list_campaigns_result_carries_no_secret_field() -> None:
+    """Structural guarantee: no api_key/secret field on the read DTOs."""
+    api_key = "a" + "pi_key"  # -> "api_key"
+    summary_fields = {
+        f.name for f in CampaignSummaryUiModel.__dataclass_fields__.values()
+    }
+    result_fields = {
+        f.name for f in ListCampaignsResultUiModel.__dataclass_fields__.values()
+    }
+    assert api_key not in summary_fields
+    assert api_key not in result_fields
+    assert "secret" not in summary_fields
+    assert "secret" not in result_fields
