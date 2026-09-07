@@ -3,7 +3,38 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **Secret-in-log
+**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **Prvi PRAVI
+live vertical-slice test kroz bridge sloj -- PASS.** Human Owner je
+zatražio pravi test protiv pravog AI provajdera (DeepSeek); usput
+otkriveno da DeepSeek NIKAD nije bio povezan na
+`provider_adapter_factory.py` (dokumentovano kao "follow-up" još iz
+ACS-GUI-005, nikad urađeno) -- popravljeno (`c4ae050`). Napisan i
+prvi put pokrenut `tests/integration/presentation_webview/bridge/
+test_campaign_bridge_end_to_end.py` (`369ea05`) -- fajl koji je
+VIŠE PUTA pominjan u evidence izvještajima (GUI-005, F1-047, GUI-009)
+kao "treba pokrenuti prije release-a" ali NIKAD nije postojao.
+
+**Rezultat (uživo, sa stvarnim DeepSeek API pozivom)**:
+```
+campaign_id=9a92273d-d2bc-4d2a-b18c-4c290370c243
+plan_id=d410e131-10a1-4518-a022-96b57a8af6be
+generated=2 (od 2)
+zip=...\exports\9a92273d-d2bc-4d2a-b18c-4c290370c243.zip
+PASSED
+```
+
+Kompletna petlja (create → plan → approve → generate content → vidljivo
+u `list_campaigns` → `export_campaign_package` produkuje validan ZIP)
+je PRVI PUT dokazana kroz STVARAN `CampaignBridgeApi` sloj (ne
+application use-case-e direktno kao G10/A19), sa stvarnim eksternim
+AI pozivom. Test je izolovan (tmp DB + `EnvironmentSecretStore`,
+nikad ne dodiruje pravu produkcijsku bazu/keyring) i trajno je dio
+repo-a (`pytest.mark.skipif` bez env varijable -- CI ga uvijek
+preskače, nikad ne pada).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **Secret-in-log
 hardening zatvoren (commit `03312b0`), merged direktno u main.**
 Poslednji rezidualni rizik iz GUI-009 final decision packet-a
 (`create_campaign_and_generate_plan`/`generate_campaign_content`-ov
