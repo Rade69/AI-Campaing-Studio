@@ -20,8 +20,15 @@ from ai_campaign_studio.domain.brand.value_objects import (
 from ai_campaign_studio.domain.campaign.entities import Campaign, CampaignBrief
 from ai_campaign_studio.domain.campaign.enums import CampaignStatus
 from ai_campaign_studio.domain.common.errors import EntityNotFound, InvariantViolation
-from ai_campaign_studio.domain.common.ids import BrandId, BrandSnapshotId, CampaignId
+from ai_campaign_studio.domain.common.ids import (
+    BrandId,
+    BrandSnapshotId,
+    CampaignId,
+    FactId,
+)
 from ai_campaign_studio.domain.content.entities import CampaignTarget
+from ai_campaign_studio.domain.facts.entities import ApprovedFact, SourceReference
+from ai_campaign_studio.domain.facts.enums import FactStatus
 from ai_campaign_studio.ports.ai import AIRequest, AIResponse
 from ai_campaign_studio.ports.prompts import PromptDefinition
 
@@ -94,6 +101,22 @@ class _FakePromptRepository:
         )
 
 
+class _FakeFactRepository:
+    def __init__(self, facts: tuple[ApprovedFact, ...]) -> None:
+        self._facts = facts
+
+    def list_snapshot_facts(self, snapshot_id) -> tuple[ApprovedFact, ...]:  # noqa: ANN001
+        del snapshot_id
+        return self._facts
+
+    def save_fact(self, fact) -> None:  # noqa: ANN001
+        del fact
+
+    def get_fact(self, fact_id):  # noqa: ANN001
+        del fact_id
+        return None
+
+
 class _FakeAiPort:
     def __init__(self, payload: dict | None) -> None:
         self._payload = payload
@@ -107,6 +130,48 @@ class _FakeAiPort:
             latency_ms=1,
             structured_payload=self._payload,
         )
+
+
+def _facts() -> tuple[ApprovedFact, ...]:
+    """The three brightsmile.json facts, matching the real fixture."""
+    return (
+        ApprovedFact(
+            id=FactId("f-1"),
+            logical_fact_id="fact-location",
+            version=1,
+            content=(
+                "BrightSmile Dental se nalazi u centru grada, na adresi"
+                " Ulica Primjera 12."
+            ),
+            source_ref=SourceReference(source_type="fixture", uri="fixture://x"),
+            status=FactStatus.APPROVED,
+            created_at=_CREATED_AT,
+        ),
+        ApprovedFact(
+            id=FactId("f-2"),
+            logical_fact_id="fact-implants",
+            version=1,
+            content=(
+                "Klinika nudi titanijumske zubne implantate sa keramičkim"
+                " krunicama."
+            ),
+            source_ref=SourceReference(source_type="fixture", uri="fixture://x"),
+            status=FactStatus.APPROVED,
+            created_at=_CREATED_AT,
+        ),
+        ApprovedFact(
+            id=FactId("f-3"),
+            logical_fact_id="fact-team",
+            version=1,
+            content=(
+                "Tim čine specijalisti oralne hirurgije i protetike sa preko"
+                " 10 godina iskustva."
+            ),
+            source_ref=SourceReference(source_type="fixture", uri="fixture://x"),
+            status=FactStatus.APPROVED,
+            created_at=_CREATED_AT,
+        ),
+    )
 
 
 def _snapshot() -> BrandSnapshot:
@@ -189,6 +254,7 @@ def _make_use_case(campaign, brief, ai_port):
     return GenerateCampaignPlan(
         _FakeCampaignRepository(campaign, brief),
         _FakeBrandRepository(_snapshot()),
+        _FakeFactRepository(_facts()),
         _FakePromptRepository(),
         ai_port,
         _FakeUnitOfWork(),
@@ -206,6 +272,22 @@ def test_happy_path_generates_and_advances_status() -> None:
     assert ai_port.requests  # AI was actually called
     # campaign status advanced to PLAN_GENERATED in the repo
     assert use_case._campaign_repo.campaign.status is CampaignStatus.PLAN_GENERATED
+
+
+def test_prompt_contains_approved_facts_with_logical_ids() -> None:
+    """Nalaz 1 (web Claude review): the AI must SEE the real fact catalog
+    with exact logical_fact_id values, not invent phrases from the brief."""
+    ai_port = _FakeAiPort(_payload(_valid_items()))
+    use_case = _make_use_case(_campaign(), _brief(3), ai_port)
+
+    use_case.execute(CampaignId("campaign-1"))
+
+    user_text = ai_port.requests[0].user_text
+    assert "## Approved facts" in user_text
+    assert "fact-location" in user_text
+    assert "fact-implants" in user_text
+    assert "fact-team" in user_text
+    assert "Ulica Primjera 12" in user_text
 
 
 def test_unknown_campaign_raises() -> None:

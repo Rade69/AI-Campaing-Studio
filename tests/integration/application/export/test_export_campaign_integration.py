@@ -236,6 +236,7 @@ def test_end_to_end_export_writes_valid_zip_with_real_pngs(
     plan = GenerateCampaignPlan(
         campaign_repo,
         brand_repo,
+        fact_repo,
         _FakePromptRepository(),
         _FakeAiPort(_plan_payload()),
         uow,
@@ -443,7 +444,7 @@ def test_export_zip_is_byte_stable_across_runs(tmp_path: Path) -> None:
             snapshot.brand_id, snapshot.id, _brief()
         )
         plan = GenerateCampaignPlan(
-            campaign_repo, brand_repo, _FakePromptRepository(),
+            campaign_repo, brand_repo, fact_repo, _FakePromptRepository(),
             _FakeAiPort(_plan_payload()), uow,
         ).execute(campaign.id)
         approved = ApproveCampaignPlan(campaign_repo, uow).execute(plan.id)

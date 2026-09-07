@@ -11,6 +11,9 @@ from ai_campaign_studio.application.campaigns.create_campaign import CreateCampa
 from ai_campaign_studio.application.campaigns.generate_campaign_plan import (
     GenerateCampaignPlan,
 )
+from ai_campaign_studio.application.posts.select_allowed_facts import (
+    select_allowed_facts,
+)
 from ai_campaign_studio.domain.campaign.enums import CampaignStatus
 from ai_campaign_studio.infrastructure.database.connection import create_connection
 from ai_campaign_studio.infrastructure.database.migrations import run_migrations
@@ -152,6 +155,7 @@ def test_end_to_end_fixture_to_plan(tmp_path: Path) -> None:
     generate = GenerateCampaignPlan(
         campaign_repo,
         brand_repo,
+        fact_repo,
         _FakePromptRepository(),
         _FakeAiPort(_valid_payload()),
         uow,
@@ -183,6 +187,7 @@ def test_generate_plan_is_atomic_on_mid_failure(tmp_path: Path) -> None:
     generate = GenerateCampaignPlan(
         failing_repo,
         brand_repo,
+        fact_repo,
         _FakePromptRepository(),
         _FakeAiPort(_valid_payload()),
         uow,
@@ -197,4 +202,69 @@ def test_generate_plan_is_atomic_on_mid_failure(tmp_path: Path) -> None:
     assert persisted.status is CampaignStatus.DRAFT
     assert connection.execute("SELECT COUNT(*) FROM campaign_plans").fetchone()[0] == 0
     assert connection.execute("SELECT COUNT(*) FROM campaign_items").fetchone()[0] == 0
+    connection.close()
+
+
+def test_fact_id_from_catalog_is_found_by_select_allowed_facts(
+    tmp_path: Path,
+) -> None:
+    """Nalaz 1 fix, end-to-end: the fake AI returns the EXACT
+    ``logical_fact_id`` the new prompt teaches (``fact-implants``), and the
+    UNCHANGED ``select_allowed_facts`` matching actually finds the fact."""
+    connection = _setup_db(tmp_path)
+    brand_repo = SqliteBrandRepository(connection)
+    fact_repo = SqliteFactRepository(connection)
+    campaign_repo = SqliteCampaignRepository(connection)
+    uow = SqliteUnitOfWork(connection)
+
+    snapshot = LoadBrandFixture(brand_repo, fact_repo, uow).execute(_FIXTURE_PATH)
+    campaign = CreateCampaign(campaign_repo, uow).execute(
+        snapshot.brand_id, snapshot.id, _valid_brief()
+    )
+
+    payload = {
+        "campaign_theme": "Healthy smile",
+        "items": [
+            {
+                "order": 1,
+                "role": "PROBLEM",
+                "topic": "Cost of implants",
+                "goal": "awareness",
+                "facts_needed": ["fact-implants"],
+            },
+            {
+                "order": 2,
+                "role": "EDUCATION",
+                "topic": "Implant process",
+                "goal": "educate",
+                "facts_needed": ["fact-team"],
+            },
+            {
+                "order": 3,
+                "role": "ACTION",
+                "topic": "Book consultation",
+                "goal": "convert",
+                "facts_needed": ["fact-location"],
+            },
+        ],
+    }
+    generate = GenerateCampaignPlan(
+        campaign_repo,
+        brand_repo,
+        fact_repo,
+        _FakePromptRepository(),
+        _FakeAiPort(payload),
+        uow,
+    )
+    plan = generate.execute(campaign.id)
+
+    snapshot_facts = fact_repo.list_snapshot_facts(snapshot.id)
+
+    first = plan.items[0]
+    allowed = select_allowed_facts(first, snapshot_facts)
+    assert len(allowed.fact_ids) == 1
+    matched_fact = next(
+        f for f in snapshot_facts if f.logical_fact_id == "fact-implants"
+    )
+    assert allowed.fact_ids[0] == matched_fact.id
     connection.close()
