@@ -4,6 +4,33 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-047
+(PR #12) — fix runda 4 za oba Codex blocking nalaza potvrđena, push-
+ovano (rebase na main), traži se Codex re-review.** Fix evidence
+(implementer): `agent_reports/2026-09-07-ACS-F1-047-fix-brief-4-evidence.md`.
+Codex re-review brief: [agent_reports/2026-09-07-ACS-F1-047-brief-za-codex-2.md](../agent_reports/2026-09-07-ACS-F1-047-brief-za-codex-2.md).
+
+- **BF-CODEX-1 fix**: `button.disabled` uklonjen sa write-putanje,
+  re-entrancy guard premješten na `button.dataset.acsJobActive`
+  marker odvojen od `.disabled`. Provjereno čitanjem diff-a.
+- **BF-CODEX-2 fix**: `_patch_terminal_state` sad u `finally` bloku
+  oko cijele petlje, jedan call-site za oba izlazna puta. **Mutation
+  testirano**: privremeno vraćen stari kod dok su novi testovi aktivni
+  -> `test_cancel_job_actually_stops_the_loop`-ova nova asercija puca
+  sa `0 == 2` (identično Codex-ovoj originalnoj reprodukciji),
+  potvrđujući da test stvarno hvata regresiju. Fajl odmah vraćen.
+- **Nova, ne-blokirajuća opservacija (moja)**: uklanjanje
+  `button.disabled` sa početka funkcije otvara uzak double-click race
+  prije nego se `acsJobActive` marker postavi (poslije IPC round-trip-a)
+  -- backend closure-ov per-pair lock je BEZUSLOVAN pa nema
+  data-korupcije, samo kozmetički dupli job-tracker. Prenešeno Codex-u
+  na procjenu (blocking vs. hardening-backlog), nije tražen fix u ovoj
+  rundi.
+- Rebase na main čist. Nezavisno reprodukovano: 1071 testova, ruff,
+  mypy čisti. CI na PR #12 zeleno.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **ACS-F1-047
 (PR #12) — Codex REJECT, 2 blocking nalaza, oba nezavisno reprodukovana,
 fix-brief-2 poslat MiniMax-u.** Codex review:
 `H:\ai-campaign-studio-worktrees\ACS-F1-047-job-manager-wiring\agent_reports\2026-09-07-ACS-F1-047-review-codex.md`.
