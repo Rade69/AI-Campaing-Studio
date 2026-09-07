@@ -128,3 +128,24 @@ class GenerateContentResultUiModel:
     job_id: str | None
     error_code: str | None
     error_message: str | None
+
+
+@dataclass(frozen=True)
+class ExportCampaignResultUiModel:
+    """Result of an "Izvezi ZIP paket" click (ACS-GUI-009 bridge).
+
+    Returned by ``CampaignBridgeApi.export_campaign_package`` and converted
+    to a plain ``dict`` before crossing the pywebview ``js_api`` boundary.
+    ``zip_path`` is an ABSOLUTE local filesystem path (the export contract
+    deliberately returns it to the user instead of opening a file-picker in
+    this task) — it is a path, not a secret/token/API key, and never contains
+    ``SecretStore`` content or traceback text.
+    """
+
+    ok: bool
+    campaign_id: str | None
+    zip_path: str | None
+    exported_count: int | None
+    skipped_count: int | None
+    error_code: str | None
+    error_message: str | None

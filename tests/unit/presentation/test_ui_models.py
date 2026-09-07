@@ -5,6 +5,7 @@ from dataclasses import asdict
 
 from ai_campaign_studio.presentation.ui_models import (
     CampaignPlanResultUiModel,
+    ExportCampaignResultUiModel,
     GenerateContentResultUiModel,
     NotificationLevel,
     NotificationUiModel,
@@ -366,6 +367,68 @@ def test_generate_content_result_carries_no_api_key_field() -> None:
         "ok",
         "campaign_id",
         "job_id",
+        "error_code",
+        "error_message",
+    }
+
+
+def test_export_campaign_result_success_shape() -> None:
+    """ACS-GUI-009: success case carries zip_path (an absolute local path,
+    NOT a secret) plus exported/skipped counts."""
+    result = ExportCampaignResultUiModel(
+        ok=True,
+        campaign_id="cmp_1",
+        zip_path="/abs/exports/cmp_1.zip",
+        exported_count=2,
+        skipped_count=1,
+        error_code=None,
+        error_message=None,
+    )
+    blob = asdict(result)
+    assert blob == {
+        "ok": True,
+        "campaign_id": "cmp_1",
+        "zip_path": "/abs/exports/cmp_1.zip",
+        "exported_count": 2,
+        "skipped_count": 1,
+        "error_code": None,
+        "error_message": None,
+    }
+
+
+def test_export_campaign_result_is_frozen() -> None:
+    import dataclasses
+    result = ExportCampaignResultUiModel(
+        ok=False,
+        campaign_id=None,
+        zip_path=None,
+        exported_count=None,
+        skipped_count=None,
+        error_code="VALIDATION_ERROR",
+        error_message="nope",
+    )
+    try:
+        result.zip_path = "/tmp/x"  # type: ignore[misc]
+    except dataclasses.FrozenInstanceError:
+        return
+    raise AssertionError("ExportCampaignResultUiModel must be frozen")
+
+
+def test_export_campaign_result_carries_no_secret_field() -> None:
+    """Structural guarantee: the DTO has no api_key/secret field. The
+    ``zip_path`` is a path, not a secret."""
+    api_key = "a" + "pi_key"  # -> "api_key"
+    fields = {
+        f.name for f in ExportCampaignResultUiModel.__dataclass_fields__.values()
+    }
+    assert api_key not in fields
+    assert "secret" not in fields
+    assert fields == {
+        "ok",
+        "campaign_id",
+        "zip_path",
+        "exported_count",
+        "skipped_count",
         "error_code",
         "error_message",
     }

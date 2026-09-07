@@ -296,3 +296,31 @@ def test_app_js_iife_wires_studio_generate_button_when_both_ids_in_url(
     # The button is the only ``[data-action="generate-content"]`` in
     # the static HTML.
     assert studio_html.count('data-action="generate-content"') == 1
+
+
+def test_write_all_pages_pregled_izvoz_carries_live_export_button(
+    tmp_path: Path,
+) -> None:
+    """ACS-GUI-009 BF-1 equivalent: the BUILD-TIME static HTML for
+    Pregled i izvoz MUST carry the live "Izvezi ZIP paket" button
+    (hidden + empty data attributes + disabled) so the ``app.js`` boot
+    IIFE can reveal it at runtime when both ``?campaign=`` AND
+    ``?plan=`` are present. The "Odobri kampanju" approve-gate button is
+    also always emitted (UI-only gate, no backend call).
+    """
+    pages = write_all_pages(tmp_path)
+    pregled_html = pages["pregled_izvoz"].read_text(encoding="utf-8")
+
+    # Live export button is always emitted with placeholder (empty) ids,
+    # hidden + disabled (the JS boot IIFE reveals it, the approve-gate
+    # click enables it).
+    assert 'data-action="export-campaign"' in pregled_html
+    assert 'data-campaign-id=""' in pregled_html
+    assert 'data-plan-id=""' in pregled_html
+    assert 'id="btn-izvezi"' in pregled_html
+    assert "hidden" in pregled_html
+    assert "disabled" in pregled_html
+    # The approve-gate button is emitted too.
+    assert 'data-action="approve-gate"' in pregled_html
+    # The legacy "toast" stub for the export button is GONE.
+    assert 'data-action="toast"' not in pregled_html

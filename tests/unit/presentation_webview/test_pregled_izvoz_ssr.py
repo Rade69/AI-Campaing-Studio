@@ -1,9 +1,10 @@
 """Tests for the Pregled i izvoz (step 5) screen body renderer.
 
 Acceptance for ACS-GUI-003: 3-column content-card grid, 2-column quality/
-export grid, stepper step 5 active with steps 1–4 done, and both "Odobri
-kampanju" and "Izvezi ZIP paket" as toast stubs (real approve/export is
-G10+ scope).
+export grid, stepper step 5 active with steps 1–4 done. As of ACS-GUI-009,
+"Odobri kampanju" is a UI-only gate (``data-action="approve-gate"``) and
+"Izvezi ZIP paket" is wired to the real export bridge
+(``data-action="export-campaign"``, always emitted hidden + disabled).
 """
 
 from __future__ import annotations
@@ -77,19 +78,21 @@ def test_render_body_emits_export_rows_and_zip_button() -> None:
     assert "Izvezi ZIP paket" in body
 
 
-def test_render_body_odobri_kampanju_is_toast_stub() -> None:
+def test_render_body_odobri_kampanju_is_approve_gate() -> None:
     body = render_body()
     assert re.search(
-        r'<button class="btn success" data-action="toast"[^>]*>'
+        r'<button class="btn success" data-action="approve-gate"[^>]*>'
         r"Odobri kampanju</button>",
         body,
     )
 
 
-def test_render_body_izvezi_zip_is_toast_stub() -> None:
+def test_render_body_izvezi_zip_is_export_campaign() -> None:
     body = render_body()
     assert re.search(
-        r'<button class="btn primary" data-action="toast"[^>]*>'
+        r'<button id="btn-izvezi" class="btn primary" '
+        r'data-action="export-campaign" data-campaign-id="" data-plan-id=""'
+        r'[^>]*hidden disabled>'
         r"Izvezi ZIP paket</button>",
         body,
     )

@@ -13,6 +13,7 @@ from ai_campaign_studio.localization.enums import AppLocale
 from ai_campaign_studio.presentation.state import AppRuntimeState
 from ai_campaign_studio.presentation.ui_models import (
     CampaignPlanResultUiModel,
+    ExportCampaignResultUiModel,
     GenerateContentResultUiModel,
     ProviderConfigResultUiModel,
     ProviderStatusUiModel,
@@ -59,3 +60,7 @@ class PresentationFacade(Protocol):
     def generate_campaign_content(
         self, raw_payload: dict[str, Any]
     ) -> GenerateContentResultUiModel: ...
+
+    def export_campaign_package(
+        self, raw_payload: dict[str, Any]
+    ) -> ExportCampaignResultUiModel: ...
