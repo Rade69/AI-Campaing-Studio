@@ -3,7 +3,48 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-GUI-009
+**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-045
+DONE — merged u main (PR #10, merge commit `a7cc1ef`).** Implementer:
+Pi. Fix za Nalaz 1 (fact-grounded planning) + Nalaz 2 (claim_linter
+contact-info) iz web Claude review-a. Review: Claude (MEDIUM, §29) —
+1 runda sa jednim traženim fix-om, pa PASS.
+
+- Nezavisno reprodukovano PRIJE fix-a: end-to-end lanac (fixture →
+  `GenerateCampaignPlan` → `select_allowed_facts` preko
+  `logical_fact_id`) za sva 3 facta iz `brightsmile.json` (ne samo
+  jedan) -- Nalaz 1 STVARNO zatvoren. Svih 5 van-scope fajlova/6
+  poziva `GenerateCampaignPlan(...)` pojedinačno provjereno kao
+  ispravno ažurirano (grep sweep na 11 ukupnih poziva u 8 fajlova).
+- **GitNexus tooling nalaz (bilježim za buduće reference)**: `impact`
+  na `GenerateCampaignPlan` upstream, čak i sa `includeTests: true`,
+  ne vidi test-fajl pozivaoce (samo 2 direktna importer-a od stvarnih
+  7+) -- reprodukovano nezavisno iz GLAVNOG, ispravno indeksiranog
+  checkout-a, nije worktree-binding artefakt. **Za promjenu potpisa
+  konstruktora koja pogađa test fajlove, ručni `grep -rn "ClassName("`
+  ostaje autoritet -- GitNexus impact/detect-changes sam po sebi NIJE
+  dovoljan dokaz potpunosti.**
+- Jedan REQUIRED fix prije merge-a (moj nalaz, ne Pi-jev): novi
+  contact-info telefon-regex je imao SVA tri separatora opciona, pa je
+  goli neseparirani niz od 8-10 cifara (npr. fabrikovan broj
+  klijenata/pregleda) pogrešno prolazio kao "kontakt info" i
+  izbjegavao `unsupported-number` -- nova rupa koju je ovaj fix
+  uvodio, netestirana. Pi popravio u jednom commit-u (`c62e758`):
+  jedan `?` uklonjen (bar jedan separator sad obavezan), plus jedan
+  regression test. Ja nezavisno reprodukovao ispravku (regex-nivo +
+  pun pytest 1061/ruff/mypy) prije merge-a.
+- Detalji: [agent_reports/2026-09-07-ACS-F1-045-pi.md](../agent_reports/2026-09-07-ACS-F1-045-pi.md)
+  (Pi evidence), [agent_reports/2026-09-07-ACS-F1-045-review-claude.md](../agent_reports/2026-09-07-ACS-F1-045-review-claude.md)
+  (review). Post-merge CI zeleno na main. Worktree uklonjen (clean).
+
+**Preostala 2 od 4 fix taska i dalje otvorena**: ACS-F1-046 (Kampanje
+read-path, Crush, scope proširen za 3 aditivna repo metoda -- vidi
+addendum) i ACS-F1-047 (JobManager wiring, MiniMax) -- oba čekaju
+implementer evidence. ACS-GUI-009 (v2, Crush) čeka fix na Codex-ov
+REJECT (BF-1/2/3, vidi fix-brief).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **ACS-GUI-009
 (v2, PR #9) — Codex adversarial rereview REJECT, 3 blocking nalaza,
 sva tri nezavisno reprodukovana od koordinatora, fix-brief napisan i
 poslat Crush-u.** Nalazi (`agent_reports/2026-09-07-ACS-GUI-009-review-codex.md`):
