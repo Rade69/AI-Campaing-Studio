@@ -3,7 +3,34 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-047
+**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-046
+(Crush) — Claude review PASS, push-ovano, PR #11 otvoren, čeka Codex.**
+Evidence: [agent_reports/2026-09-07-ACS-F1-046-kampanje-read-path-evidence.md](../agent_reports/2026-09-07-ACS-F1-046-kampanje-read-path-evidence.md).
+Codex brief: [agent_reports/2026-09-07-ACS-F1-046-brief-za-codex.md](../agent_reports/2026-09-07-ACS-F1-046-brief-za-codex.md).
+
+- Prvi READ js_api metod na bridge-u (`list_campaigns`) + 3 aditivna
+  repo metoda (odobreno proširenje scope-a) + `app.js` DOM hidratacija.
+  SSR `render_body()` netaknut (offline fallback).
+- Implementer je ostavio izmjene NECOMMIT-ovane (razlikuje se od
+  Pi-jevog/MiniMax-ovog obrasca ove sedmice) -- koordinator commit-ovao
+  u ime implementer-a nakon PASS review-a (uobičajen korak, ne presedan
+  problem).
+- Pun diff pročitan fajl-po-fajl. Dva ne-blokirajuća opažanja: (1)
+  `logger.exception` u catch-all-u je konzistentan sa postojećim
+  obrascem u fajlu i ne dodiruje kredencijale (nema secret-in-log
+  rizika); (2) dinamička tabela ima 6 kolona naspram SSR fixture-ovih 7
+  (namjerno, stvaran model nema "sljedeći korak"/"zadnja izmjena") --
+  preporučen vizuelni sanity-check prije Human Owner odobrenja, nije
+  code-level blocker.
+- Rebase na main (preko ACS-F1-045 merge-a) čist, bez konflikta.
+  Nezavisno reprodukovano nakon rebase-a: 1077 testova, ruff, mypy
+  čisti. CI na PR #11 zeleno.
+- Čeka Codex adversarial rundu (HIGH risk, pun ciklus) prije Human
+  Owner odobrenja.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **ACS-F1-047
 (MiniMax) — Claude review REQUIRED FIX, NIJE push-ovano na origin,
 Codex runda čeka.** Implementer evidence:
 [agent_reports/2026-09-06-ACS-F1-047-evidence.md](../agent_reports/2026-09-06-ACS-F1-047-evidence.md).
