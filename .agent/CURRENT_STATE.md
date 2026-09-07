@@ -3,7 +3,58 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-GUI-008
+**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-044
+(P1.5-G4 Matching) merged u main preko PR #8.** `MatchPerformanceImportBatch.execute(
+batch_id, campaign_id) -> MatchResult` matchuje uvezene
+`PerformanceImportRow` redove na `DistributionInstance` preko
+prioriteta 1 (`external_content_id`, tačan string match) pa prioriteta
+2 (`analytics_match_key`, izračunat preko VEĆ POSTOJEĆEG
+`compute_analytics_match_key` sa istim 4-tuple redoslijedom kao
+`export_campaign.py` — nema stored kolone, poredi se u Python-u nad
+`list_distribution_instances_by_campaign(campaign_id)` rezultatom).
+Prioritet 3 (stable-ID fallback) i 4 (manual confirmation UI) OSTAJU
+namjerno van scope-a, budući task. `PerformanceImportRow.match_status`
+(`MATCHED`/`AMBIGUOUS`/`UNMATCHED`/`None`) aditivno polje -- `None` =
+nikad pokušano (idempotentnost: samo takvi redovi se diraju).
+
+**Scope napomena (implementer transparentno prijavio, koordinator
+riješio)**: kontrakt nije predvidio da `performance_import_rows`
+(migracija `0007`, ACS-F1-043) nema kolonu za `match_status`, a
+`resources/migrations/` je bio u `forbidden_paths` -- implementer je
+dodao `0008_performance_import_row_match_status.sql` (`ALTER TABLE ...
+ADD COLUMN match_status TEXT NULL`, nedestruktivno) kao
+OUT_OF_SCOPE_FINDING i eksplicitno pitao da li to gura task iz MEDIUM
+u HIGH. **Koordinator je provjerio TAČAN tekst pravila** (ne
+parafrazu): kanonsko §3 kaže HIGH je "DB schema/migration sa
+POSTOJEĆIM PODACIMA" ili destruktivna migracija -- ova migracija je
+NIJEDNO (aditivna, nullable, tabela stara jedan dan bez ijednog
+stvarnog korisničkog reda, aplikacija nema javno izdanje). §4 (koje bi
+bilo apsolutno "migracija je uvijek HIGH") je eksplicitno OGRANIČENO
+na P0 fazu, odavno zatvorenu. **Odluka: MEDIUM zadržan, §29 skraćeni
+put primijenjen.** Ovo je presedan za buduće slične "implementer je
+dodao malu aditivnu migraciju usput" situacije -- ne eskalirati
+automatski na HIGH bez provjere da li migracija stvarno dira postojeće
+podatke ili je destruktivna.
+
+Koordinator nezavisno potvrdio, ne samo prihvatio tvrdnju: (1) diff
+scope tačno 9 fajlova, (2) **mutation-testirao kontrolni tok uživo**
+(privremeno omogućio fall-through sa prioriteta 1 AMBIGUOUS na
+prioritet 2, potvrdio da test STVARNO padne sa pogrešnim `MATCHED`
+umjesto `AMBIGUOUS`, vratio), (3) cross-campaign izolacioni test
+STVARNO koristi DVIJE seed-ovane kampanje/DistributionInstance u bazi,
+ne mock, (4) GitNexus `detect_changes` (detached HEAD u glavnom
+checkout-u) vratio `risk_level: low`, `affected_count: 0`, (5)
+1053/1053 (worktree) / 1052+1-poznat-lažni-alarm (main) + ruff/mypy
+čisti, (6) CI zeleno na tačan commit `8f80d14`. Worktree i branch
+uklonjeni, evidence arhiviran.
+
+**Sljedeći korak**: P1.5-G3/G4 lanac je time zatvoren (dio 1 kolona-
+mapping, dio 2 perzistencija+use-case-i, G4 matching prioritet 1+2).
+Preostaje: P1.5-G5 Metric Calculation (Faza 1 v1.5 §20 --
+CTR/CPC/CPM/CPA/ROAS) kad korisnik da signal; ACS-GUI-009 (Pregled i
+izvoz) i dalje čeka rebase na ACS-GUI-008/HOTFIX-002 obrazac.
+
+Prethodni entry (2026-09-07): **ACS-GUI-008
 (Studio sadržaja -- stvarno generisanje objava) merged u main preko PR
 #4, Human Owner eksplicitno odobrio.** Prvi GUI klik koji stvarno
 poziva `ApproveCampaignPlan`+`GenerateSocialPost` (idempotentno,
