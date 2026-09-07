@@ -362,6 +362,35 @@ def test_no_provider_configured_returns_no_provider_error(tmp_path) -> None:
     assert "nijedan ai provajder" in result["error_message"].lower()
 
 
+def test_create_campaign_adapter_factory_failure_does_not_log_secret(
+    tmp_path, caplog
+) -> None:
+    """Hardening follow-up (ACS-GUI-009 final decision packet residual
+    risk): ``create_campaign_and_generate_plan`` has its OWN adapter-
+    factory except branch (separate from ``_resolve_ai_adapter``,
+    which BF-1 already fixed). The SDK may inline the credential into
+    its exception message, so ``logger.exception`` here would leak it
+    the same way BF-1 did."""
+    import logging
+
+    bridge = _isolated_bridge(tmp_path)
+    _configure_provider(bridge, "OPENAI")
+    sentinel = "sk-SECRET-SENTINEL-HARDENING"
+
+    with caplog.at_level(logging.DEBUG), patch.object(
+        bridge._bootstrap.secret_store, "get_secret", return_value=sentinel
+    ), patch(
+        "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
+        side_effect=RuntimeError("adapter rejected credential=" + sentinel),
+    ):
+        result = bridge.create_campaign_and_generate_plan(_valid_brief())
+
+    assert result["ok"] is False
+    assert result["error_code"] == "PROVIDER_KEY_MISSING"
+    assert sentinel not in json.dumps(result)
+    assert sentinel not in caplog.text
+
+
 def test_configured_provider_but_no_key_returns_key_missing(tmp_path) -> None:
     bridge = _isolated_bridge(tmp_path)
     _configure_provider(bridge, "OPENAI")
@@ -1596,6 +1625,39 @@ def test_generate_content_unexpected_exception_in_adapter_factory(
     assert "factory exploded unexpectedly" not in final["error_message"]
     # The "Traceback" marker is logged but never reaches the user.
     assert "Traceback" not in final["error_message"]
+
+
+def test_generate_content_adapter_factory_failure_does_not_log_secret(
+    tmp_path, caplog
+) -> None:
+    """Hardening follow-up (ACS-GUI-009 final decision packet residual
+    risk): the ``generate_campaign_content`` job closure has its OWN
+    adapter-factory except branch (separate from ``_resolve_ai_adapter``,
+    which BF-1 already fixed). The SDK may inline the credential into
+    its exception message, so ``logger.exception`` here would leak it
+    into the application log even though the terminal ``JobState``
+    error message stays scrubbed."""
+    import logging
+
+    bridge = _isolated_bridge(tmp_path)
+    _configure_provider(bridge, "OPENAI")
+    campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
+    sentinel = "sk-SECRET-SENTINEL-HARDENING2"
+
+    with caplog.at_level(logging.DEBUG), patch.object(
+        bridge._bootstrap.secret_store, "get_secret", return_value=sentinel
+    ), patch(
+        "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
+        side_effect=RuntimeError("adapter rejected credential=" + sentinel),
+    ):
+        result = bridge.generate_campaign_content(
+            {"campaign_id": campaign_id, "plan_id": plan_id}
+        )
+        final = _wait_for_job_terminal(bridge, result["job_id"])
+
+    assert final["status"] == "FAILED"
+    assert sentinel not in json.dumps(final)
+    assert sentinel not in caplog.text
 
 
 # ----------------------------------------------------------------------

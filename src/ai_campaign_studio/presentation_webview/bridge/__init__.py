@@ -416,9 +416,16 @@ class CampaignBridgeApi:
             #    (no SecretStore access) — per contract.
             try:
                 adapter = build_text_generation_adapter(provider_code, api_key)
-            except Exception:
-                self._bootstrap.logger.exception(
-                    "adapter factory failed for %s", provider_code
+            except Exception as exc:
+                # Same secret-in-log hardening as _resolve_ai_adapter
+                # (ACS-GUI-009 BF-1): an SDK may inline the credential
+                # into its exception message, so logger.exception's
+                # full traceback/str(exc) would leak it. Log only the
+                # safe provider_code and the exception class name.
+                self._bootstrap.logger.error(
+                    "adapter factory failed for %s (%s)",
+                    provider_code,
+                    type(exc).__name__,
                 )
                 return self._err(
                     _ERROR_KEY_MISSING,
@@ -810,9 +817,16 @@ class CampaignBridgeApi:
         try:
             adapter = build_text_generation_adapter(provider_code, api_key)
         except Exception as exc:
-            self._bootstrap.logger.exception(
-                "generate_campaign_content job: adapter factory failed for %s",
+            # Same secret-in-log hardening as _resolve_ai_adapter
+            # (ACS-GUI-009 BF-1): an SDK may inline the credential
+            # into its exception message, so logger.exception's full
+            # traceback/str(exc) would leak it. Log only the safe
+            # provider_code and the exception class name.
+            self._bootstrap.logger.error(
+                "generate_campaign_content job: adapter factory failed"
+                " for %s (%s)",
                 provider_code,
+                type(exc).__name__,
             )
             raise RuntimeError(
                 f"Could not instantiate adapter for {provider_code}: "
