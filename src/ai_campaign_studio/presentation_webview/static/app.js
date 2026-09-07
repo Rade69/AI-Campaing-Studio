@@ -615,6 +615,11 @@ async function exportCampaign(button) {
 // (campaign name comes from the brief's ``offer``), so XSS is a real
 // surface and this mirrors the Python ``html.escape`` on the SSR side.
 (function(){
+  // ``app.js`` is shared by every screen. A page-specific marker prevents
+  // this hydration from ever touching Plan kampanje (or any future table).
+  const table=document.querySelector('[data-campaigns-table]');
+  if(!table) return;
+
   function escapeHtml(value){
     return String(value).replace(/[&<>"']/g, function(ch){
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
@@ -622,8 +627,6 @@ async function exportCampaign(button) {
   }
 
   async function loadCampaigns(){
-    const table=document.querySelector('table.table');
-    if(!table) return;
     const api=window.pywebview && window.pywebview.api;
     if(!api || typeof api.list_campaigns !== 'function'){
       // Offline/debug preview (no bridge): keep the SSR fixture as-is.
@@ -664,5 +667,14 @@ async function exportCampaign(button) {
     table.innerHTML=thead+'<tbody>'+rows+'</tbody>';
   }
 
-  loadCampaigns();
+  // pywebview injects ``window.pywebview.api`` asynchronously. Keep the
+  // immediate fast path for already-ready/debug environments, otherwise
+  // wait for the documented readiness event exactly once. Offline browser
+  // previews never emit it, so their SSR fixture remains untouched.
+  const api=window.pywebview && window.pywebview.api;
+  if(api && typeof api.list_campaigns === 'function'){
+    loadCampaigns();
+  }else{
+    window.addEventListener('pywebviewready', loadCampaigns, {once:true});
+  }
 })();

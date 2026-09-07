@@ -2659,3 +2659,29 @@ def test_list_campaigns_works_from_fresh_worker_thread(tmp_path) -> None:
     result = _call_on_fresh_thread(bridge.list_campaigns, {})
     assert result["ok"] is True
     assert len(result["campaigns"]) == 1
+
+
+def test_list_campaigns_lifecycle_failure_returns_safe_exact_dto(
+    tmp_path, caplog
+) -> None:
+    """A connection-open failure must not leak its message/path to JS/logs."""
+    import logging
+
+    bridge = _isolated_bridge(tmp_path)
+    sentinel = "SQL=C:/private/campaigns.db SECRET-LIKE-DETAIL"
+
+    with caplog.at_level(logging.ERROR), patch(
+        "ai_campaign_studio.presentation_webview.bridge.create_connection",
+        side_effect=RuntimeError(sentinel),
+    ):
+        result = bridge.list_campaigns({})
+
+    assert set(result) == {"ok", "campaigns", "error_code", "error_message"}
+    assert result == {
+        "ok": False,
+        "campaigns": (),
+        "error_code": "INTERNAL_ERROR",
+        "error_message": "Učitavanje kampanja nije uspjelo (interna greška).",
+    }
+    assert sentinel not in json.dumps(result)
+    assert sentinel not in caplog.text

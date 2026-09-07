@@ -108,7 +108,7 @@ def render_body(fixture: KampanjeFixture | None = None) -> str:
         "</button>"
         "</div>"
         '<div class="card">'
-        '<table class="table">'
+        '<table class="table" data-campaigns-table>'
         "<thead>"
         "<tr>"
         "<th>Kampanja</th>"

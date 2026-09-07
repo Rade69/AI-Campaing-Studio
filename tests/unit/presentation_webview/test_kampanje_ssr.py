@@ -10,8 +10,13 @@ first campaign-workflow step (``../opis_kampanje/index.html``); only
 from __future__ import annotations
 
 import dataclasses
+import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from ai_campaign_studio.presentation_webview.screens.kampanje import (
     DEFAULT_FIXTURE,
@@ -98,7 +103,7 @@ def test_render_body_emits_table_with_three_rows() -> None:
 def test_render_body_uses_v3_table_classes() -> None:
     body = render_body()
     for needle in (
-        '<table class="table">',
+        '<table class="table" data-campaigns-table>',
         "<thead>",
         "<tbody>",
         "right",
@@ -250,3 +255,94 @@ def test_app_js_has_escape_html_and_load_campaigns() -> None:
     # The read bridge method is wired and called on page load.
     assert "list_campaigns" in js_text
     assert "loadCampaigns();" in js_text
+    assert "document.querySelector('[data-campaigns-table]')" in js_text
+    assert "window.addEventListener('pywebviewready', loadCampaigns" in js_text
+
+
+def test_app_js_campaign_hydration_lifecycle_and_screen_isolation() -> None:
+    """Execute the committed shared JS against a tiny DOM double.
+
+    Regression coverage for Codex BF-1/BF-2: late pywebview injection must
+    hydrate on ``pywebviewready``; a non-Kampanje ``table.table`` must remain
+    untouched; the immediate path must still escape untrusted row values.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is unavailable; executable app.js regression skipped")
+
+    app_js_path = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "src" / "ai_campaign_studio" / "presentation_webview" / "static"
+        / "app.js"
+    )
+    harness = r"""
+const fs=require('fs'),vm=require('vm');
+const src=fs.readFileSync(process.argv[1],'utf8');
+function makeContext(markerTable,genericTable,withApi){
+  const listeners={}, state={apiCalls:0};
+  const document={
+    querySelectorAll(){return[];},
+    querySelector(s){
+      if(s==='[data-campaigns-table]') return markerTable;
+      if(s==='table.table') return genericTable;
+      return null;
+    },
+    getElementById(){return null;}
+  };
+  const window={addEventListener(n,f){(listeners[n]??=[]).push(f);}};
+  const installApi=()=>{window.pywebview={api:{async list_campaigns(){
+    state.apiCalls+=1;
+    return {ok:true,campaigns:[{id:'c1',name:'<img onerror=x>',
+      brand:'<svg onload=x>',status:'<script>x</script>',plan_item_count:2,
+      created_at:'2026-09-07T12:00:00+00:00'}]};
+  }}};};
+  if(withApi) installApi();
+  const context={window,document,location:{search:''},URLSearchParams,
+    setInterval(){return 1;},clearInterval(){},setTimeout,clearTimeout,console};
+  vm.createContext(context);
+  return {context,listeners,state,installApi};
+}
+(async()=>{
+  const lateTable={innerHTML:'SSR FIXTURE'};
+  const late=makeContext(lateTable,null,false);
+  vm.runInContext(src,late.context);
+  late.installApi();
+  for(const fn of late.listeners.pywebviewready||[]) await fn();
+  await new Promise(r=>setTimeout(r,0));
+
+  const planTable={innerHTML:'PLAN TABLE'};
+  const plan=makeContext(null,planTable,true);
+  vm.runInContext(src,plan.context);
+  await new Promise(r=>setTimeout(r,0));
+
+  const immediateTable={innerHTML:'SSR FIXTURE'};
+  const immediate=makeContext(immediateTable,null,true);
+  vm.runInContext(src,immediate.context);
+  await new Promise(r=>setTimeout(r,0));
+
+  console.log(JSON.stringify({
+    readyListeners:(late.listeners.pywebviewready||[]).length,
+    lateHydrated:lateTable.innerHTML.includes('&lt;img onerror=x&gt;'),
+    planUntouched:planTable.innerHTML==='PLAN TABLE',
+    planApiCalls:plan.state.apiCalls,
+    immediateEscaped:immediateTable.innerHTML.includes('&lt;script&gt;x&lt;/script&gt;'),
+    immediateRaw:/<img|<svg|<script/.test(immediateTable.innerHTML)
+  }));
+})().catch(e=>{console.error(e);process.exitCode=1;});
+"""
+    completed = subprocess.run(
+        [node, "-e", harness, str(app_js_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    result = json.loads(completed.stdout)
+    assert result == {
+        "readyListeners": 1,
+        "lateHydrated": True,
+        "planUntouched": True,
+        "planApiCalls": 0,
+        "immediateEscaped": True,
+        "immediateRaw": False,
+    }
