@@ -3,7 +3,51 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-06 (coordinator: claude) — **ACS-F1-043
+**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-GUI-008
+(Studio sadržaja -- stvarno generisanje objava) merged u main preko PR
+#4, Human Owner eksplicitno odobrio.** Prvi GUI klik koji stvarno
+poziva `ApproveCampaignPlan`+`GenerateSocialPost` (idempotentno,
+partial-failure tolerantno). HIGH risk, pun ciklus kroz **TRI runde
+fixova**:
+
+1. Originalna implementacija (MiniMax) -- Claude review našao sirov SQL
+   u bridge-u (workaround za nedostajuću repo-metodu); popravljeno
+   threading `plan_id`-a kroz postojeći `CampaignPlanResultUiModel`
+   DTO umjesto SQL-a.
+2. Codex adversarial review (runda 1) -- BF-1 (produkcijski HTML nikad
+   nije dobijao live dugme -- SSR-at-build-time strukturno ne može
+   nositi runtime `campaign_id`/`plan_id`; fix proširio POSTOJEĆI
+   `app.js` `?campaign=` IIFE obrazac koji `kalendar` ekran već koristi,
+   ne izmišljen nov mehanizam), BF-2 (SQLite thread-affinity crash --
+   izdvojen kao CRITICAL **ACS-HOTFIX-002** jer je pogađao CIJELI
+   bridge, ne samo ovaj task -- vidi prošli entry), BF-3 (konkurentna
+   idempotentnost -- in-process lock po `(campaign_id, plan_id)` paru),
+   BF-4 (`SUPERSEDED` plan tiho tretiran kao odobren -- sad eksplicitno
+   odbijen, 0 AI poziva).
+3. Codex adversarial review (runda 2) -- BF-5 (resource-lifecycle greška
+   za `generate_campaign_content` vraćala pogrešan DTO oblik --
+   `CampaignPlanResultUiModel` polja umjesto `GenerateContentResultUiModel`
+   polja; fix: dict-dispatch tabela `_LIFECYCLE_ERROR_MAPPERS` po imenu
+   metode umjesto hardkodiranog if/elif). Codex runda 3: PASS, nula
+   nalaza.
+
+Koordinator je SVAKI nalaz nezavisno reprodukovao i mutation-testirao
+(ne samo prihvatio implementer/Codex tvrdnju) -- uključujući ponavljanje
+Codex-ove TAČNE `OSError` reprodukcije za BF-5. Finalno stanje: 1042/1042
+test, ruff/mypy čisti, CI zeleno na tačan mergovani commit (`67a8ae0`),
+GitNexus impact LOW na `CampaignBridgeApi`/`ApproveCampaignPlan`/
+`GenerateSocialPost`. Worktree i branch uklonjeni, svi Codex/implementer
+evidence fajlovi arhivirani.
+
+**Sljedeći korak**: ACS-GUI-009 (Pregled i izvoz) dijeli ISTI
+`bridge/__init__.py`/`contracts.py`/`ui_models.py` -- implementer MORA
+rebase-ovati na ovaj merge (donosi HOTFIX-002 lifecycle pattern +
+`plan_id` threading + `_LIFECYCLE_ERROR_MAPPERS` obrazac koji GUI-009
+treba primijeniti na SVOJU novu `export_campaign_package` metodu od
+početka, ne dodavati naknadno kao fix rundu). Takođe: P1.5-G4 Matching
+(ACS-F1-044, kontrakt napisan, čeka implementera).
+
+Prethodni entry (2026-09-06): **ACS-F1-043
 (P1.5-G3 dio 2 -- CSV import perzistencija + tri use-case-a) merged u
 main preko PR #6.** `PerformanceImportRow` entitet + migracija
 `0007_performance_import_rows.sql` (tačan sljedeći slobodan broj) +
