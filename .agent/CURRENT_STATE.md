@@ -3,7 +3,69 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-044
+**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **STOP na
+novim use-case-ovima -- nezavisna "web Claude" review otkrila 4
+potvrđena, ozbiljna nalaza u već mergovanom kodu.** Koordinator je
+SVAKI nalaz nezavisno reprodukovao stvarnim izvršavanjem (ne prihvatio
+na riječ) -- sva 4 su TAČNA, ništa preuveličano:
+
+1. **`select_allowed_facts` (A11) praktično ne radi na fleksivnom
+   BHS jeziku** -- pravi uzrok NIJE u matching kodu (ID-match VEĆ
+   radi), nego što `GenerateCampaignPlan` UOPŠTE ne prikazuje AI-ju
+   katalog odobrenih činjenica kad generiše plan -- AI izmišlja
+   `facts_needed` fraze bez uvida u stvaran katalog, a
+   `resources/prompts/campaign_plan/v1.yaml` few-shot AKTIVNO uči
+   fraze koje su dokazano 0-pogodak (`"lokacija ordinacije"`
+   testirano uživo protiv `brightsmile.json`). Fix: ACS-F1-045.
+2. **`claim_linter` flaguje telefon/adresu kao `unsupported-number`**
+   (generic `has_digit` fallback hvata SVAKU cifru koja nije već
+   price/percent/duration/date) -- kombinovano sa #1, realna objava
+   skoro uvijek završava `NEEDS_REVIEW`, status bez informacione
+   vrijednosti. Fix: ACS-F1-045 (isti kontrakt, Dio B).
+3. **Nijedan GUI ekran ne čita iz baze** -- `write_all_pages()` je
+   čist build-time SSR sa `DEFAULT_FIXTURE`, bridge ima SAMO 3
+   write-only js_api metode, nula read-metoda. Korisnik ne može
+   vidjeti nijednu stvarno kreiranu kampanju/sadržaj kroz GUI. Fix
+   (prvi ekran, obrazac za ostale): ACS-F1-046.
+4. **`JobManager` (316 LOC, testiran) postoji, nula `submit()`
+   poziva u cijelom `src/`** -- `generate_campaign_content` vrti
+   sinhronu petlju AI poziva unutar jednog `js_api` poziva (plan sa
+   12 stavki × ~10s = ~2 min zamrznuto dugme, bez progress-a,
+   otkazivanja, djelimičnog prikaza tokom rada). Fix: ACS-F1-047.
+
+**Dodatna nijansa koju je koordinator otkrio, ne web Claude** (bitna
+korekcija ranijeg G10 zapisa): R1 rezultat (System B uvijek 0
+`claim_linter` kršenja naspram Control A-inih 6-9) mjeri BROJ
+kršenja, NE stopu `VERIFIED_BY_FACT` vezivanja. Ako AI, vidjevši
+prazan `AllowedFactSet` (zbog Nalaza 1), ispravno izbjegava
+IZMIŠLJANJE konkretnih brojeva umjesto da ih fabrikuje, to objašnjava
+"0 kršenja" BEZ da dokazuje da sistem stvarno PRENOSI odobrene
+činjenice. **R1/G10 ostaje validan dokaz da sistem ne fabrikuje
+činjenice -- ali NIJE dokaz da sistem stvarno koristi stvarne odobrene
+činjenice u sadržaju.** To su dvije različite tvrdnje; G10 je dokazao
+prvu, ne drugu. Nakon ACS-F1-045, vrijedi ponovo izmjeriti stopu
+`VERIFIED_BY_FACT` da se ova druga tvrdnja stvarno provjeri.
+
+**Odluka Human Ownera (2026-09-07)**: stati sa svim NOVIM use-case
+taskovima (P1.5-G5 itd.) dok se sva 4 nalaza ne isprave. Napisana su
+tri task contracta: [agent_reports/ACS-F1-045-task-contract.md](../agent_reports/ACS-F1-045-task-contract.md)
+(Nalaz 1+2, MEDIUM, prioritet #1), [agent_reports/ACS-F1-046-task-contract.md](../agent_reports/ACS-F1-046-task-contract.md)
+(Nalaz 3 -- Kampanje lista kao prvi read-path ekran, HIGH, prioritet
+#2), [agent_reports/ACS-F1-047-task-contract.md](../agent_reports/ACS-F1-047-task-contract.md)
+(Nalaz 4 -- JobManager wiring, HIGH, prioritet #3). Redoslijed
+(implementer/agenti mogu raditi paralelno pošto su fajlovi potpuno
+odvojeni -- `application/campaigns+posts/` vs `presentation_webview/
+screens/kampanje/` vs `jobs/`+`presentation_webview/screens/
+studio_sadrzaja/`).
+
+**GUI-008/009 status nepromijenjen** -- ACS-GUI-009 (export) i dalje
+čeka Codex adversarial rundu (PR #9), nastavlja se paralelno sa gornja
+tri fix taska pošto ne dijeli fajlove sa njima na način koji bi
+smetao (dijeli `bridge/__init__.py` sa ACS-F1-046/047 -- implementeri
+MORAJU koordinisati redoslijed merge-a/rebase-a, isti obrazac kao
+GUI-008/009 međusobno).
+
+Prethodni entry (2026-09-07): **ACS-F1-044
 (P1.5-G4 Matching) merged u main preko PR #8.** `MatchPerformanceImportBatch.execute(
 batch_id, campaign_id) -> MatchResult` matchuje uvezene
 `PerformanceImportRow` redove na `DistributionInstance` preko
