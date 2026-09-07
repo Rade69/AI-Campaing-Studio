@@ -118,6 +118,35 @@ class _CallResources:
     uow: SqliteUnitOfWork
 
 
+# ACS-GUI-008 (fix-brief-3 / Codex BF-5): lifecycle error mapper
+# dispatch. ``_with_call_resources`` catches exceptions raised by
+# ``_resource_scope()`` itself (e.g. SQLite open/close failure)
+# BEFORE the wrapped method's own try/except sees them. Without an
+# operation-aware mapper, every non-``configure_provider`` method
+# used to fall through to ``self._err()`` — which builds a
+# ``CampaignPlanResultUiModel`` dict and therefore lacks the
+# generate-content DTO's ``generated_count`` / ``failed_count`` /
+# ``content_piece_ids`` keys. JS callers typed to the right DTO got
+# missing fields on the one failure path that is hardest to recover
+# from silently. Fix: each public method declares which DTO it
+# returns, and the decorator dispatches accordingly. New methods
+# MUST add an entry here.
+_LIFECYCLE_ERROR_MAPPERS: dict[str, str] = {
+    "configure_provider": "_provider_err",
+    "create_campaign_and_generate_plan": "_err",
+    "generate_campaign_content": "_generate_err",
+}
+# Per-method fallback message used ONLY when the resource-lifecycle
+# fails (we never want to surface the underlying exception text;
+# provider secrets could in theory end up in a downstream
+# adapter's exception message).
+_LIFECYCLE_ERROR_MESSAGES: dict[str, str] = {
+    "configure_provider": "Konfiguracija provajdera nije uspjela (interna greška).",
+    "create_campaign_and_generate_plan": "Interna greška — pogledajte log aplikacije.",
+    "generate_campaign_content": "Generisanje sadržaja nije uspjelo (interna greška).",
+}
+
+
 def _with_call_resources(method: Callable[..., dict]) -> Callable[..., dict]:
     """Run one public bridge method with a fresh, thread-local DB graph."""
 
@@ -131,19 +160,27 @@ def _with_call_resources(method: Callable[..., dict]) -> Callable[..., dict]:
             # own error mapping. Keep the js_api no-raise contract and do
             # not log exception text: configure_provider's args may carry
             # an API key even though the DB exception normally would not.
+            # BF-5 (Codex runda 2): dispatch to the DTO-specific error
+            # mapper so the result has the EXACT key set the public
+            # contract promises for THIS method (not a different
+            # method's DTO leaking through ``_err()``). Unknown methods
+            # fall back to ``_err`` (the plan-flow DTO) which is the
+            # historical default; the table is the source of truth.
             self._bootstrap.logger.error(
                 "bridge resource lifecycle failed for %s (err=%s)",
                 method.__name__,
                 type(exc).__name__,
             )
-            if method.__name__ == "configure_provider":
-                return self._provider_err(
-                    _ERROR_INTERNAL,
-                    "Konfiguracija provajdera nije uspjela (interna greška).",
-                )
-            return self._err(
+            mapper_name = _LIFECYCLE_ERROR_MAPPERS.get(
+                method.__name__, "_err"
+            )
+            mapper = getattr(self, mapper_name)
+            return mapper(
                 _ERROR_INTERNAL,
-                "Interna greška — pogledajte log aplikacije.",
+                _LIFECYCLE_ERROR_MESSAGES.get(
+                    method.__name__,
+                    "Interna greška — pogledajte log aplikacije.",
+                ),
             )
 
     return _wrapped

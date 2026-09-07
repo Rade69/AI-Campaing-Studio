@@ -249,13 +249,50 @@ def test_connection_failure_never_raises_or_leaks_secret_to_js(tmp_path) -> None
             {"provider_code": "openai", "api_key": sentinel_key}
         )
         generated = bridge.create_campaign_and_generate_plan(_valid_brief())
+        # ACS-GUI-008 (Codex BF-5): the resource-lifecycle exception
+        # (``_resource_scope`` could not open the SQLite connection)
+        # used to fall through to ``self._err()`` for every method
+        # that wasn't ``configure_provider`` -- which builds a
+        # ``CampaignPlanResultUiModel`` dict. The JS caller for
+        # ``generate_campaign_content`` is typed to
+        # ``GenerateContentResultUiModel`` (different key set), and
+        # silently receiving plan-flow fields on a real DB failure
+        # was the acceptance violation. After the fix, the third
+        # method below MUST return the exact
+        # ``GenerateContentResultUiModel`` key set -- no
+        # ``plan_id``/``plan_item_count`` leakage, and the missing
+        # ``generated_count``/``failed_count``/``content_piece_ids``
+        # keys are present (so typed callers can rely on the shape).
+        content = bridge.generate_campaign_content(
+            {"campaign_id": "c-any", "plan_id": "p-any"}
+        )
 
     assert configured["ok"] is False
     assert configured["error_code"] == "INTERNAL_ERROR"
     assert generated["ok"] is False
     assert generated["error_code"] == "INTERNAL_ERROR"
+    assert content["ok"] is False
+    assert content["error_code"] == "INTERNAL_ERROR"
+    # Plan-flow keys must NOT leak into the generate-content result.
+    assert "plan_id" not in content
+    assert "plan_item_count" not in content
+    # Generate-content DTO keys MUST be present (even when zeroed).
+    assert set(content.keys()) == {
+        "ok",
+        "campaign_id",
+        "generated_count",
+        "failed_count",
+        "content_piece_ids",
+        "error_code",
+        "error_message",
+    }
+    assert content["generated_count"] == 0
+    assert content["failed_count"] == 0
+    assert list(content["content_piece_ids"]) == []
+    # Sentinel must not appear in any of the three results.
     assert sentinel_key not in json.dumps(configured)
     assert sentinel_key not in json.dumps(generated)
+    assert sentinel_key not in json.dumps(content)
 
 
 # --- boundary validation (PYWEBVIEW_SECURITY §3) ---
