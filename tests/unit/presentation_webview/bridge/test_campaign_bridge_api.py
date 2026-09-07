@@ -2027,12 +2027,25 @@ def test_generate_content_progress_is_actually_published(tmp_path) -> None:
 def test_cancel_job_actually_stops_the_loop(tmp_path) -> None:
     """ACS-F1-047 acceptance #4: cancel STOPS the per-piece loop.
 
-    Each ``generate`` call sleeps 0.5s, so the closure takes ~2s
+    Each ``generate`` call sleeps 2.0s, so the closure takes ~8s
     for 4 items. The test waits for ``progress_current >= 1``
-    (mid-loop) and then calls ``cancel_job``. The closure's next
-    ``token.raise_if_cancelled()`` (before item 2) raises
-    ``CancellationError`` and the loop exits early -- the job
-    lands in ``CANCELLED``, not ``SUCCEEDED`` with all 4 items.
+    (mid-loop signal -- the FIRST item has just been written, so
+    the closure is between items 1 and 2) and then calls
+    ``cancel_job``. The closure's next ``token.raise_if_cancelled()``
+    raises ``CancellationError`` and the loop exits early -- the
+    job lands in ``CANCELLED``, not ``SUCCEEDED`` with all 4 items.
+
+    ACS-F1-047 (Codex BF-CODEX-2): the terminal ``JobState`` MUST
+    carry the partial outcome -- ``generated_count`` / ``failed_count``
+    / ``content_piece_ids`` MUST reflect the rows that WERE written
+    before the cancel landed, not the default zeros. This is exactly
+    what the test now asserts (``generated_count ==
+    _count_content_pieces``), and is also why the wait condition
+    uses ``progress_current`` (which IS updated on every iteration)
+    rather than ``generated_count`` (which is updated only at the
+    end of the closure, on the terminal-state patch -- a real race
+    window that the previous version of this test happened to
+    avoid by luck).
     """
     bridge = _isolated_bridge(tmp_path)
     _configure_provider(bridge, "OPENAI")
@@ -2062,19 +2075,23 @@ def test_cancel_job_actually_stops_the_loop(tmp_path) -> None:
             {"campaign_id": campaign_id, "plan_id": plan_id}
         )
         job_id = result["job_id"]
-        # Wait for the FIRST AI call to finish (~0.5s) so the closure
-        # is mid-loop on item 2. ``generated_count == 1`` is the
-        # signal that the closure is BETWEEN items, not before the
-        # first or after the last.
+        # Wait for ``progress_current >= 1`` -- the first item has
+        # been written, so the closure is between items 1 and 2.
+        # (DO NOT sync on ``generated_count``; that field is
+        # populated only by the terminal-state patch in the
+        # ``finally`` block, so watching it would race with the
+        # test's own ``_wait_for_job_terminal`` call.)
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
             s = bridge.get_job_status({"job_id": job_id})
-            if s.get("generated_count", 0) >= 1:
+            if s.get("progress_current", 0) >= 1:
                 break
             time.sleep(0.02)
         # Cancel NOW -- the closure is mid-loop. The next
-        # ``raise_if_cancelled()`` will throw and the loop will exit
-        # before the remaining items are attempted.
+        # ``raise_if_cancelled()`` (start of iteration 2, OR the
+        # ``finally`` check at the end of iteration 1) will throw
+        # and the loop will exit before the remaining items are
+        # attempted.
         cancel = bridge.cancel_job({"job_id": job_id})
         assert cancel["ok"] is True
         # Wait for terminal.
@@ -2092,4 +2109,27 @@ def test_cancel_job_actually_stops_the_loop(tmp_path) -> None:
     assert final["generated_count"] < final["progress_total"], (
         f"cancel did NOT stop the loop: generated={final['generated_count']} "
         f"== total={final['progress_total']}"
+    )
+    # ACS-F1-047 (Codex BF-CODEX-2): the terminal DTO MUST carry the
+    # PARTIAL outcome. If the closure had skipped
+    # ``_patch_terminal_state`` on the cancellation path, this
+    # assertion would fail with ``generated_count == 0`` even
+    # though the DB has rows.
+    assert final["generated_count"] == _count_content_pieces(
+        bridge, campaign_id
+    ), (
+        f"terminal generated_count ({final['generated_count']}) must equal "
+        f"the number of pieces actually written to the DB "
+        f"({_count_content_pieces(bridge, campaign_id)}); if these "
+        f"differ, the closure dropped the per-piece accumulators on "
+        f"the cancellation path"
+    )
+    # Belt-and-brace: the per-piece accumulators are STRICTLY between
+    # zero and the total (a fully-iterated loop would also satisfy
+    # this, so combine with the CANCELLED status check above).
+    assert 0 < final["generated_count"] < final["progress_total"], (
+        f"generated_count must be strictly between 0 and "
+        f"progress_total (cancel must have landed mid-loop); got "
+        f"generated_count={final['generated_count']}, "
+        f"progress_total={final['progress_total']}"
     )

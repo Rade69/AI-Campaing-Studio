@@ -823,85 +823,100 @@ class CampaignBridgeApi:
         # even when sibling jobs (of any type) are concurrently
         # RUNNING on the shared executor.
         jid = token.job_id
-        for index, item in enumerate(plan_items):
-            token.raise_if_cancelled()
-            if jid:
-                # Live progress (1-based "current"). "Phase" is the
-                # human-readable message; we keep it short so the
-                # JS button label is not too wide.
-                job_manager.update_progress(
-                    jid,
-                    current=index,  # not yet "tried this one"
-                    total=total,
-                    phase="GENERATE",
-                    message="",
-                )
-            if str(item.id) in existing_item_ids:
-                continue
-            target = _target_for_item(index, list(targets))
-            if target is None:
-                failed_count += 1
-                if first_error is None:
-                    first_error = (
-                        "Nema definisanih targeta u briefu — "
-                        "objave ne mogu biti generisane."
-                    )
-                continue
-            try:
-                piece = generator.execute(
-                    campaign_id, plan_id, item.id, target
-                )
-                generated_ids.append(str(piece.id))
-            except CancellationError:
-                # Re-raise so JobManager transitions to CANCELLED
-                # (not FAILED). The per-piece try/except below must
-                # NOT swallow this -- a cancellation is a control
-                # signal, not a generation failure.
-                raise
-            except Exception as exc:
-                failed_count += 1
-                if first_error is None:
-                    first_error = (
-                        f"AI poziv za stavku {item.id} nije uspio: "
-                        f"{type(exc).__name__}."
-                    )
-                self._bootstrap.logger.error(
-                    "GenerateSocialPost failed for item %s (err=%s)",
-                    item.id, type(exc).__name__,
-                )
-            finally:
-                # Re-check the token AFTER the per-piece work. A
-                # ``cancel_job`` call that landed during
-                # ``generator.execute`` would otherwise be invisible
-                # to us until the START of the next iteration -- by
-                # which time the work may already be done. Raising
-                # here propagates out of the for-loop, into
-                # ``except CancellationError: raise`` above, and
-                # then up to ``JobManager._run`` which transitions
-                # the job to ``CANCELLED``.
+        # ``try/finally`` around the per-piece loop so that
+        # ``_patch_terminal_state`` runs EXACTLY ONCE on BOTH
+        # outcomes:
+        #   - natural end of the loop (everything attempted) ->
+        #     JobManager -> SUCCEEDED
+        #   - ``CancellationError`` raised by ``raise_if_cancelled``
+        #     on any iteration -> JobManager -> CANCELLED
+        # Without the ``finally`` branch the CANCELLED path was
+        # leaving the terminal ``JobState`` on default
+        # ``generated_count=0, content_piece_ids=()`` even though
+        # some pieces had already been written (the per-piece
+        # accumulators were dropped on the floor). ACS-F1-047
+        # (Codex BF-CODEX-2).
+        try:
+            for index, item in enumerate(plan_items):
                 token.raise_if_cancelled()
                 if jid:
+                    # Live progress (1-based "current"). "Phase" is the
+                    # human-readable message; we keep it short so the
+                    # JS button label is not too wide.
                     job_manager.update_progress(
                         jid,
-                        current=index + 1,  # "tried this one"
+                        current=index,  # not yet "tried this one"
                         total=total,
                         phase="GENERATE",
                         message="",
                     )
-
-        # On natural exit (no CancellationError raised above), we
-        # record the final counters onto the JobState. The manager's
-        # own ``_finish(SUCCEEDED)`` will then move the status; the
-        # counters survive because ``_finish`` does not touch them
-        # (we used ``update_progress``-like replace semantics).
-        if jid:
-            _patch_terminal_state(
-                job_manager, jid,
-                generated_count=len(generated_ids),
-                failed_count=failed_count,
-                content_piece_ids=tuple(generated_ids),
-                message=first_error or "",
-            )
+                if str(item.id) in existing_item_ids:
+                    continue
+                target = _target_for_item(index, list(targets))
+                if target is None:
+                    failed_count += 1
+                    if first_error is None:
+                        first_error = (
+                            "Nema definisanih targeta u briefu — "
+                            "objave ne mogu biti generisane."
+                        )
+                    continue
+                try:
+                    piece = generator.execute(
+                        campaign_id, plan_id, item.id, target
+                    )
+                    generated_ids.append(str(piece.id))
+                except CancellationError:
+                    # Re-raise so JobManager transitions to CANCELLED
+                    # (not FAILED). The per-piece try/except below must
+                    # NOT swallow this -- a cancellation is a control
+                    # signal, not a generation failure.
+                    raise
+                except Exception as exc:
+                    failed_count += 1
+                    if first_error is None:
+                        first_error = (
+                            f"AI poziv za stavku {item.id} nije uspio: "
+                            f"{type(exc).__name__}."
+                        )
+                    self._bootstrap.logger.error(
+                        "GenerateSocialPost failed for item %s (err=%s)",
+                        item.id, type(exc).__name__,
+                    )
+                finally:
+                    # Re-check the token AFTER the per-piece work. A
+                    # ``cancel_job`` call that landed during
+                    # ``generator.execute`` would otherwise be invisible
+                    # to us until the START of the next iteration -- by
+                    # which time the work may already be done. Raising
+                    # here propagates out of the for-loop, into
+                    # ``except CancellationError: raise`` above, and
+                    # then up to ``JobManager._run`` which transitions
+                    # the job to ``CANCELLED``.
+                    token.raise_if_cancelled()
+                    if jid:
+                        job_manager.update_progress(
+                            jid,
+                            current=index + 1,  # "tried this one"
+                            total=total,
+                            phase="GENERATE",
+                            message="",
+                        )
+        finally:
+            # On both natural exit AND cancellation, persist the
+            # accumulators (``generated_count`` / ``failed_count`` /
+            # ``content_piece_ids``) onto the JobState. This is the
+            # ONLY way the JS side learns the per-piece outcome on
+            # a CANCELLED job -- without it, the terminal DTO was
+            # always zero even when some pieces had been written.
+            if jid:
+                _patch_terminal_state(
+                    job_manager, jid,
+                    generated_count=len(generated_ids),
+                    failed_count=failed_count,
+                    content_piece_ids=tuple(generated_ids),
+                    message=first_error or "",
+                )
 
     @_with_call_resources
     def get_job_status(self, raw_payload: dict) -> dict:

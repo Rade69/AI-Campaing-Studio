@@ -274,10 +274,30 @@ async function saveAndPlan(button) {
 // The interval is cleared on EVERY terminal transition so a
 // transient IPC failure does not leave ``setInterval`` ticking
 // forever (review focus §3).
+//
+// Re-entrancy: ACS-F1-047 (Codex BF-CODEX-1) found that toggling
+// ``button.disabled = true`` blocked the cancel click on a real
+// HTML button (browsers do NOT fire ``click`` on a disabled
+// button). The re-entrancy guard is now a separate dataset
+// marker (``button.dataset.acsJobActive === '1'``) so the button
+// can stay ``enabled`` during RUNNING (so the user can actually
+// click "Otkaži") WITHOUT triggering a second
+// ``generate_campaign_content`` submit via the page-load-time
+// delegated listener. See the global ``[data-action]`` delegate
+// at the top of this file for the other side of that contract.
 const POLL_INTERVAL_MS = 1200;
+const JOB_ACTIVE_ATTR = 'acsJobActive';
 
 async function generateContent(button) {
-  if (button.disabled) return;
+  // Re-entrancy guard: separate from ``.disabled`` because we now
+  // leave the button enabled during RUNNING (so the cancel click
+  // can fire). The delegated ``[data-action]`` listener at the top
+  // of this file ALSO calls ``generateContent(button)`` on the
+  // same click, so we MUST reject a second submit here even
+  // when the button looks clickable. ``dataset.acsJobActive``
+  // is set the moment a job is successfully submitted and cleared
+  // in ``_renderTerminal``.
+  if (button.dataset[JOB_ACTIVE_ATTR] === '1') return;
   const campaignId = (button.dataset.campaignId || '').trim();
   if (!campaignId) {
     showToast('Nedostaje campaign_id. Ponovo pokreni "Sačuvaj i napravi plan".');
@@ -298,7 +318,12 @@ async function generateContent(button) {
 
   const originalLabel = button.textContent;
   const resultNode = document.querySelector('[data-generate-result]');
-  button.disabled = true;
+  // IMPORTANT: do NOT set ``button.disabled = true`` here. The cancel
+  // gesture depends on the user being able to CLICK the button
+  // during RUNNING; a disabled HTML button emits no click event.
+  // The re-entrancy guard above (dataset marker) is what prevents
+  // a second ``generate_campaign_content`` submit from the
+  // page-load-time delegated listener.
   button.textContent = 'Pokrećem…';
 
   let jobId = null;
@@ -337,7 +362,12 @@ async function generateContent(button) {
       resultNode.textContent = toastMsg;
       resultNode.hidden = false;
     }
-    button.disabled = false;
+    // Clear the re-entrancy marker AND restore the button. The
+    // marker is what stops a second ``generateContent`` call; the
+    // label is the only visible state. We intentionally do NOT
+    // re-disable here -- the next legitimate click (after the
+    // job is done) should be able to re-submit.
+    delete button.dataset[JOB_ACTIVE_ATTR];
     button.textContent = originalLabel;
   }
 
@@ -359,12 +389,18 @@ async function generateContent(button) {
         resultNode.textContent = 'Greška: ' + msg;
         resultNode.hidden = false;
       }
-      button.disabled = false;
       button.textContent = originalLabel;
       return;
     }
+    // 2. The job is now live on the JobManager worker. Set the
+    //    re-entrancy marker so the delegated ``[data-action]``
+    //    listener (which would also call this function on a
+    //    second click) becomes a no-op for the duration of this
+    //    job. The button itself stays enabled so a real user
+    //    click can hit the cancel handler.
+    button.dataset[JOB_ACTIVE_ATTR] = '1';
     jobId = submitResult.job_id;
-    // 2. Start polling for terminal status. One ``setInterval`` is
+    // 3. Start polling for terminal status. One ``setInterval`` is
     //    the single source of truth for both the progress text
     //    and the terminal transition -- the same callback handles
     //    both branches (still running vs terminal) and tears
@@ -388,8 +424,12 @@ async function generateContent(button) {
     // (inside the poll callback) so a final click after
     // SUCCEEDED does NOT re-issue cancel on a finished job.
     const _onClickWhileRunning = () => {
+      // Guard against double-cancel clicks: if the button is already
+      // in the "Otkazujem…" state, do nothing. The label is the
+      // visible signal; ``dataset.acsCancelling`` would also work
+      // but the label is already a single source of truth here.
+      if (button.textContent === 'Otkazujem…') return;
       button.textContent = 'Otkazujem…';
-      button.disabled = true;
       api.cancel_job({ job_id: jobId }).catch((err) => {
         showToast('Greška pri otkazivanju: ' +
           (err && err.message ? err.message : 'nepoznato.'));
@@ -407,7 +447,9 @@ async function generateContent(button) {
         button.removeEventListener('click', _onClickWhileRunning);
         showToast('Greška pri praćenju posla: ' +
           (err && err.message ? err.message : 'nepoznato.'));
-        button.disabled = false;
+        // Clear re-entrancy marker on this path too -- the job
+        // is effectively failed (IPC blip), the user can retry.
+        delete button.dataset[JOB_ACTIVE_ATTR];
         button.textContent = originalLabel;
         return;
       }
@@ -438,7 +480,7 @@ async function generateContent(button) {
       resultNode.textContent = 'Interna greška.';
       resultNode.hidden = false;
     }
-    button.disabled = false;
+    delete button.dataset[JOB_ACTIVE_ATTR];
     button.textContent = originalLabel;
   }
 }
