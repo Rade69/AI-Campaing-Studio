@@ -1107,95 +1107,113 @@ class CampaignBridgeApi:
                     "očekivano APPROVED. Sadržaj još nije generisan.",
                 )
 
-            # -- 3. Visual system (idempotent via in-process map). Resolve a
-            #    provider only when we actually need to create one.
-            adapter = None
-            visual_system = self._get_cached_visual_system(campaign_id, plan_id)
-            if visual_system is None:
-                adapter, adapter_err = self._resolve_ai_adapter()
-                if adapter_err is not None:
-                    return adapter_err
-                try:
-                    visual_system, _ = GenerateVisualSystem(
-                        campaign_repo=self._campaign_repo,
-                        brand_repo=self._brand_repo,
-                        visual_repo=self._visual_repo,
-                        prompt_repo=self._prompt_repo,
-                        ai_port=adapter,
-                        unit_of_work=self._uow,
-                    ).execute(plan_id)
-                except Exception:
-                    self._bootstrap.logger.exception(
-                        "GenerateVisualSystem failed (campaign=%s)", campaign_id
-                    )
-                    return self._export_err(
-                        _ERROR_GENERATION,
-                        "AI generisanje vizuelnog sistema nije uspjelo.",
-                    )
-                self._record_campaign_visual_system(plan_id, visual_system.id)
-
-            # -- 4. Per-post layout specs (only for pieces that still need
-            #    one). Partial failure allowed: one AI/layout error must not
-            #    abort the whole export — ``ExportCampaign`` already skips
-            #    pieces that have no LayoutSpec.
-            for piece in self._content_repo.list_campaign_content(campaign_id):
-                if (
-                    self._visual_repo.get_layout_spec_by_content_piece(piece.id)
-                    is not None
-                ):
-                    continue
-                if piece.payload is None:
-                    # No payload -> no layout can be generated; ExportCampaign
-                    # will skip it as well.
-                    continue
-                if adapter is None:
+            # -- 3-5. The whole export sequence (get/create visual system ->
+            #    layout loop -> ExportCampaign.execute) runs under the SAME
+            #    per-(campaign_id, plan_id) lock as generate_campaign_content.
+            #    BF-2 (Codex): without this, two worker threads writing the
+            #    same ZIP path concurrently interleave ZipExportWriter's
+            #    mode="w" write and corrupt the archive. The lock also makes
+            #    the visual-system idempotency atomic (the read-check-create
+            #    sequence in ``_get_cached_visual_system`` is no longer a
+            #    TOCTOU race, so a concurrent double-click cannot create two
+            #    visual systems for the same plan).
+            with self._lock_for(str(campaign_id), str(plan_id)):
+                adapter = None
+                visual_system = self._get_cached_visual_system(
+                    campaign_id, plan_id
+                )
+                if visual_system is None:
                     adapter, adapter_err = self._resolve_ai_adapter()
                     if adapter_err is not None:
                         return adapter_err
-                try:
-                    PlanPostLayout(
-                        campaign_repo=self._campaign_repo,
-                        content_repo=self._content_repo,
-                        visual_repo=self._visual_repo,
-                        prompt_repo=self._prompt_repo,
-                        ai_port=adapter,
-                        unit_of_work=self._uow,
-                    ).execute(piece.id, visual_system.id, plan_id)
-                except Exception:
-                    self._bootstrap.logger.exception(
-                        "PlanPostLayout failed (piece=%s)", piece.id
+                    try:
+                        visual_system, _ = GenerateVisualSystem(
+                            campaign_repo=self._campaign_repo,
+                            brand_repo=self._brand_repo,
+                            visual_repo=self._visual_repo,
+                            prompt_repo=self._prompt_repo,
+                            ai_port=adapter,
+                            unit_of_work=self._uow,
+                        ).execute(plan_id)
+                    except Exception:
+                        self._bootstrap.logger.exception(
+                            "GenerateVisualSystem failed (campaign=%s)",
+                            campaign_id,
+                        )
+                        return self._export_err(
+                            _ERROR_GENERATION,
+                            "AI generisanje vizuelnog sistema nije uspjelo.",
+                        )
+                    self._record_campaign_visual_system(
+                        plan_id, visual_system.id
                     )
 
-            # -- 5. ExportCampaign (current 7-parameter constructor).
-            exports_dir = self._user_data_dir() / "exports"
-            exports_dir.mkdir(parents=True, exist_ok=True)
-            output_zip_path = exports_dir / f"{campaign_id}.zip"
-            result = ExportCampaign(
-                campaign_repo=self._campaign_repo,
-                content_repo=self._content_repo,
-                visual_repo=self._visual_repo,
-                revision_repo=self._revision_repo,
-                renderer=PillowRenderer(),
-                export_writer=ZipExportWriter(),
-                performance_repo=self._performance_repo,
-            ).execute(
-                campaign_id,
-                plan_id,
-                visual_system.id,
-                str(output_zip_path),
-            )
+                # -- 4. Per-post layout specs (only for pieces that still
+                #    need one). Partial failure allowed: one AI/layout error
+                #    must not abort the whole export — ``ExportCampaign``
+                #    already skips pieces that have no LayoutSpec.
+                for piece in self._content_repo.list_campaign_content(
+                    campaign_id
+                ):
+                    if (
+                        self._visual_repo.get_layout_spec_by_content_piece(
+                            piece.id
+                        )
+                        is not None
+                    ):
+                        continue
+                    if piece.payload is None:
+                        # No payload -> no layout can be generated;
+                        # ExportCampaign will skip it as well.
+                        continue
+                    if adapter is None:
+                        adapter, adapter_err = self._resolve_ai_adapter()
+                        if adapter_err is not None:
+                            return adapter_err
+                    try:
+                        PlanPostLayout(
+                            campaign_repo=self._campaign_repo,
+                            content_repo=self._content_repo,
+                            visual_repo=self._visual_repo,
+                            prompt_repo=self._prompt_repo,
+                            ai_port=adapter,
+                            unit_of_work=self._uow,
+                        ).execute(piece.id, visual_system.id, plan_id)
+                    except Exception:
+                        self._bootstrap.logger.exception(
+                            "PlanPostLayout failed (piece=%s)", piece.id
+                        )
 
-            return asdict(
-                ExportCampaignResultUiModel(
-                    ok=True,
-                    campaign_id=str(campaign_id),
-                    zip_path=str(output_zip_path),
-                    exported_count=len(result.exported_content_piece_ids),
-                    skipped_count=len(result.skipped_content_piece_ids),
-                    error_code=None,
-                    error_message=None,
+                # -- 5. ExportCampaign (current 7-parameter constructor).
+                exports_dir = self._user_data_dir() / "exports"
+                exports_dir.mkdir(parents=True, exist_ok=True)
+                output_zip_path = exports_dir / f"{campaign_id}.zip"
+                result = ExportCampaign(
+                    campaign_repo=self._campaign_repo,
+                    content_repo=self._content_repo,
+                    visual_repo=self._visual_repo,
+                    revision_repo=self._revision_repo,
+                    renderer=PillowRenderer(),
+                    export_writer=ZipExportWriter(),
+                    performance_repo=self._performance_repo,
+                ).execute(
+                    campaign_id,
+                    plan_id,
+                    visual_system.id,
+                    str(output_zip_path),
                 )
-            )
+
+                return asdict(
+                    ExportCampaignResultUiModel(
+                        ok=True,
+                        campaign_id=str(campaign_id),
+                        zip_path=str(output_zip_path),
+                        exported_count=len(result.exported_content_piece_ids),
+                        skipped_count=len(result.skipped_content_piece_ids),
+                        error_code=None,
+                        error_message=None,
+                    )
+                )
         except Exception:
             self._bootstrap.logger.exception("unexpected export bridge error")
             return self._export_err(
@@ -1431,9 +1449,17 @@ class CampaignBridgeApi:
             )
         try:
             adapter = build_text_generation_adapter(provider_code, api_key)
-        except Exception:
-            self._bootstrap.logger.exception(
-                "adapter factory failed for %s", provider_code
+        except Exception as exc:
+            # BF-1 (Codex): the SDK may inline the credential into the
+            # exception message. ``logger.exception`` would log the full
+            # traceback + ``str(exc)`` (secret leak); ``logger.error`` with
+            # only ``type(exc).__name__`` + the safe provider_code logs no
+            # secret text. Same shape as ``configure_provider`` (ACS-GUI-007
+            # BF-3).
+            self._bootstrap.logger.error(
+                "adapter factory failed for %s (%s)",
+                provider_code,
+                type(exc).__name__,
             )
             return None, self._export_err(
                 _ERROR_KEY_MISSING,

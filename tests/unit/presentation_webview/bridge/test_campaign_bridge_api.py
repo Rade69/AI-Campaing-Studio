@@ -2404,3 +2404,156 @@ def test_export_campaign_package_partial_layout_failure_skips_piece(
     assert result["ok"] is True, f"unexpected result: {result}"
     assert result["exported_count"] == 1
     assert result["skipped_count"] == 1
+
+
+def test_export_adapter_factory_failure_does_not_log_secret(tmp_path, caplog) -> None:
+    """BF-1 (Codex): the adapter factory may inline the credential in its
+    exception message. The bridge must log ONLY ``type(exc).__name__`` +
+    the safe provider code — never the traceback / ``str(exc)`` (which would
+    leak the secret)."""
+    import logging
+
+    bridge = _isolated_bridge(tmp_path)
+    sentinel = "sk-SECRET-SENTINEL-GUI009"
+
+    with caplog.at_level(logging.DEBUG), patch.object(
+        bridge, "_resolve_provider", return_value=("OPENAI", sentinel)
+    ), patch(
+        "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
+        side_effect=RuntimeError("adapter rejected credential=" + sentinel),
+    ):
+        adapter, err = bridge._resolve_ai_adapter()
+
+    assert adapter is None
+    assert err is not None
+    assert err["ok"] is False
+    # The secret must not appear in the returned error dict.
+    assert sentinel not in json.dumps(err)
+    # The secret must not appear in any captured log record (formatted msg
+    # OR traceback). Under the pre-fix ``logger.exception`` this would leak.
+    assert sentinel not in caplog.text
+
+
+def test_export_campaign_package_concurrent_same_plan_produces_one_valid_zip(
+    tmp_path,
+) -> None:
+    """BF-2 (Codex): two concurrent exports for the SAME plan must be
+    serialized by the per-plan lock — exactly one VALID ZIP on disk and NO
+    duplicated CampaignVisualSystem row."""
+    import zipfile
+
+    bridge = _isolated_bridge(tmp_path)
+    campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
+    _configure_provider(bridge, "OPENAI")
+
+    # Generate content (approves plan + creates 2 pieces).
+    with patch.object(
+        bridge._bootstrap.secret_store, "get_secret", return_value="sk-test-key"
+    ), patch(
+        "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
+        _fake_ai_factory(_valid_social_payload()),
+    ):
+        gen = bridge.generate_campaign_content(
+            {"campaign_id": campaign_id, "plan_id": plan_id}
+        )
+    assert gen["ok"] is True, gen
+
+    barrier = threading.Barrier(2)
+    results: list[dict] = []
+    errors: list[BaseException] = []
+
+    def _export() -> None:
+        try:
+            # Patch once (global), both threads share the stateless fake
+            # adapter; the Barrier makes them race the per-plan lock.
+            barrier.wait()
+            results.append(
+                bridge.export_campaign_package(
+                    {"campaign_id": campaign_id, "plan_id": plan_id}
+                )
+            )
+        except BaseException as exc:  # pragma: no cover - assertion aid
+            errors.append(exc)
+
+    with patch.object(
+        bridge._bootstrap.secret_store, "get_secret", return_value="sk-test-key"
+    ), patch(
+        "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
+        _export_ai_factory(),
+    ):
+        threads = [Thread(target=_export) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+    assert not errors, f"worker thread raised: {errors!r}"
+    assert len(results) == 2
+    assert all(r["ok"] is True for r in results), results
+
+    zip_path = results[0]["zip_path"]
+    assert zip_path is not None
+    with zipfile.ZipFile(zip_path, mode="r") as zf:
+        assert zf.testzip() is None
+
+    assert _scalar(bridge, "SELECT COUNT(*) FROM campaign_visual_systems") == 1
+
+
+def test_export_campaign_package_plan_from_other_campaign_returns_validation_error(
+    tmp_path,
+) -> None:
+    """BF-3a (Codex): a plan that genuinely belongs to a DIFFERENT campaign
+    must be rejected with VALIDATION_ERROR ('ne pripada kampanji'). Uses two
+    truly independent campaign/plan pairs via ``plan_id``/``item_id_prefix``
+    (the helper previously hardcoded ``plan-1``/``item-1...`` so two calls
+    reused the same plan id — now fixed)."""
+    bridge = _isolated_bridge(tmp_path)
+    campaign_a, plan_a = _seed_brand_and_campaign(bridge)
+    campaign_b, plan_b = _seed_brand_and_campaign(
+        bridge, plan_id="plan-2", item_id_prefix="item-2"
+    )
+
+    # Sanity: the two campaigns and plans really are independent.
+    assert campaign_a != campaign_b
+    assert plan_a != plan_b
+
+    result = bridge.export_campaign_package(
+        {"campaign_id": campaign_a, "plan_id": plan_b}
+    )
+    assert result["ok"] is False
+    assert result["error_code"] == "VALIDATION_ERROR"
+    assert "ne pripada kampanji" in result["error_message"]
+
+
+def test_export_campaign_package_lifecycle_failure_returns_exact_dto_keys(
+    tmp_path,
+) -> None:
+    """BF-3b (Codex): a ``create_connection`` failure during export must be
+    routed by ``_with_call_resources`` to ``_export_err``, returning the EXACT
+    ``ExportCampaignResultUiModel`` key-set (no other DTO leaking) with
+    ``zip_path=None`` on the error branch."""
+    bridge = _isolated_bridge(tmp_path)
+
+    with patch(
+        "ai_campaign_studio.presentation_webview.bridge.create_connection",
+        side_effect=RuntimeError("db open failure"),
+    ):
+        result = bridge.export_campaign_package(
+            {"campaign_id": "c1", "plan_id": "p1"}
+        )
+
+    assert set(result.keys()) == {
+        "ok",
+        "campaign_id",
+        "zip_path",
+        "exported_count",
+        "skipped_count",
+        "error_code",
+        "error_message",
+    }
+    assert result["ok"] is False
+    assert result["error_code"] == "INTERNAL_ERROR"
+    assert result["zip_path"] is None
+    assert result["campaign_id"] is None
+    assert result["exported_count"] is None
+    assert result["skipped_count"] is None
