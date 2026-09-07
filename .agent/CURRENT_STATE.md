@@ -3,7 +3,31 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-046
+**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-047
+(MiniMax) — fix runda 2 potvrđena, push-ovano, PR #12 otvoren, čeka
+Codex.** Fix evidence:
+[agent_reports/2026-09-07-ACS-F1-047-fix-brief-3-evidence.md](../agent_reports/2026-09-07-ACS-F1-047-fix-brief-3-evidence.md).
+Codex brief: [agent_reports/2026-09-07-ACS-F1-047-brief-za-codex.md](../agent_reports/2026-09-07-ACS-F1-047-brief-za-codex.md).
+
+- BF-5 fix (`CancellationToken.job_id` deterministički, umjesto
+  ambiguity-heuristike `_find_current_job_id`, koja je uklonjena) --
+  nezavisno potvrđeno diff-om + **mutation testom**: privremeno vraćen
+  stari `cancellation.py`/`manager.py` dok closure čita `token.job_id`
+  -> novi regression test (`test_two_concurrent_jobs_each_know_their_own_job_id`)
+  STVARNO puca (AttributeError -> job FAILED), potvrđujući da test
+  hvata regresiju, ne prolazi slučajno. Fajlovi odmah vraćeni.
+- N1-N4 (dokstring, zastarjeli komentar, mrtav kod u app.js,
+  retroaktivna OUT_OF_SCOPE_FINDING prijava za `jobs/models.py`+
+  `jobs/cancellation.py`) -- sve popravljeno, provjereno diff-om.
+- Rebase na main (preko ACS-F1-045/046) čist, bez konflikta.
+  Nezavisno reprodukovano nakon rebase-a: 1071 testova, ruff, mypy
+  čisti. CI na PR #12 zeleno.
+- Čeka Codex adversarial rundu (HIGH risk, pun ciklus) prije Human
+  Owner odobrenja.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **ACS-F1-046
 (Crush) — Claude review PASS, push-ovano, PR #11 otvoren, čeka Codex.**
 Evidence: [agent_reports/2026-09-07-ACS-F1-046-kampanje-read-path-evidence.md](../agent_reports/2026-09-07-ACS-F1-046-kampanje-read-path-evidence.md).
 Codex brief: [agent_reports/2026-09-07-ACS-F1-046-brief-za-codex.md](../agent_reports/2026-09-07-ACS-F1-046-brief-za-codex.md).
