@@ -249,52 +249,113 @@ async function saveAndPlan(button) {
 //
 // Wired by the Studio sadržaja screen — the "Generiši sadržaj"
 // button has ``data-action="generate-content"`` and a
-// ``data-campaign-id="<id>"`` attribute. The handler reads the campaign
-// id, calls ``window.pywebview.api.generate_campaign_content``, and
-// renders the result into the ``data-generate-result`` callout in the
-// same card. On ``ok=False`` the user gets the bridge's
-// ``error_message`` as a toast. Re-entrancy: the button is disabled for
-// the duration of the call (typical bridge calls take a few seconds
-// because each piece is a real AI request); a ``finally`` re-enables
-// it so the user can retry the failed pieces.
+// ``data-campaign-id="<id>"`` attribute.
+//
+// ACS-F1-047: the bridge now returns a ``job_id`` IMMEDIATELY
+// instead of waiting for the AI loop. The handler:
+//
+// 1. Submits the job via ``generate_campaign_content`` (sync return).
+// 2. Starts a ``setInterval`` that polls ``get_job_status(job_id)``
+//    every ~1.2s, updating the button label with a live progress
+//    counter ("Generišem 3/12…") and the result callout.
+// 3. Offers a "Otkaži" affordance while the job is RUNNING — calls
+//    ``cancel_job(job_id)``; the manager transitions to CANCELLED
+//    and the next poll reads the partial result.
+// 4. On terminal status (SUCCEEDED / FAILED / CANCELLED) stops
+//    polling, restores the button, and renders the final outcome
+//    (counts + error) into the callout + a final toast.
+//
+// Why a polling loop and not the JobManager event callback
+// subscription: pywebview's ``js_api`` surface is request/response;
+//    the JS side cannot subscribe to Python events directly. The
+//    manager already exposes ``get_state`` exactly for this purpose
+//    (P0.20 contract).
+//
+// The interval is cleared on EVERY terminal transition so a
+// transient IPC failure does not leave ``setInterval`` ticking
+// forever (review focus §3).
+//
+// Re-entrancy: ACS-F1-047 (Codex BF-CODEX-1) found that toggling
+// ``button.disabled = true`` blocked the cancel click on a real
+// HTML button (browsers do NOT fire ``click`` on a disabled
+// button). The re-entrancy guard is now a separate dataset
+// marker (``button.dataset.acsJobActive === '1'``) so the button
+// can stay ``enabled`` during RUNNING (so the user can actually
+// click "Otkaži") WITHOUT triggering a second
+// ``generate_campaign_content`` submit via the page-load-time
+// delegated listener. See the global ``[data-action]`` delegate
+// at the top of this file for the other side of that contract.
+const POLL_INTERVAL_MS = 1200;
+const JOB_ACTIVE_ATTR = 'acsJobActive';
+
 async function generateContent(button) {
-  if (button.disabled) return;
+  // Re-entrancy guard: separate from ``.disabled`` because we now
+  // leave the button enabled during RUNNING (so the cancel click
+  // can fire). The delegated ``[data-action]`` listener at the top
+  // of this file ALSO calls ``generateContent(button)`` on the
+  // same click, so we MUST reject a second submit here even
+  // when the button looks clickable. ``dataset.acsJobActive``
+  // is set the moment a job is successfully submitted and cleared
+  // in ``_renderTerminal``.
+  if (button.dataset[JOB_ACTIVE_ATTR] === '1') return;
   const campaignId = (button.dataset.campaignId || '').trim();
   if (!campaignId) {
     showToast('Nedostaje campaign_id. Ponovo pokreni "Sačuvaj i napravi plan".');
     return;
   }
-  // ACS-GUI-008 (review feedback): the bridge also needs the
-  // ``plan_id`` — the click handler reads it from the same data
-  // attribute (``data-plan-id``) the SSR put on the button. The
-  // bridge refuses to fall back to a SQL lookup; if the attribute
-  // is missing (offline preview path), we surface that explicitly
-  // to the user instead of silently building a half-broken call.
   const planId = (button.dataset.planId || '').trim();
   if (!planId) {
     showToast('Nedostaje plan_id. Ponovo pokreni "Sačuvaj i napravi plan".');
     return;
   }
-  button.disabled = true;
+  const api = window.pywebview && window.pywebview.api;
+  if (!api || typeof api.generate_campaign_content !== 'function' ||
+      typeof api.get_job_status !== 'function' ||
+      typeof api.cancel_job !== 'function') {
+    showToast('Interna greška: bridge nije dostupan. Ponovo pokreni aplikaciju.');
+    return;
+  }
+
+  // ACS-F1-047 (Codex BF-CODEX-3): set the re-entrancy marker
+  // SYNCHRONOUSLY, BEFORE the first ``await``. Two clicks in the
+  // same event-loop tick (before the first ``generate_campaign_content``
+  // round-trip resolves) would otherwise BOTH pass the guard at
+  // line ~300, both submit, and stack two independent pollers
+  // + cancel listeners on the same button. With the marker set
+  // here, the second click sees ``acsJobActive === '1'`` and
+  // returns at the top of the function -- exactly one submit,
+  // exactly one poller, exactly one cancel listener. The sync
+  // error path below (SUPERSEDED plan, JobManager shut down, etc.)
+  // clears the marker on its way out, so a rejected submit does
+  // not permanently lock the button.
+  button.dataset[JOB_ACTIVE_ATTR] = '1';
+
   const originalLabel = button.textContent;
-  button.textContent = 'Generiram objave…';
   const resultNode = document.querySelector('[data-generate-result]');
-  try {
-    const api = window.pywebview && window.pywebview.api;
-    if (!api || typeof api.generate_campaign_content !== 'function') {
-      showToast('Interna greška: bridge nije dostupan. Ponovo pokreni aplikaciju.');
-      return;
+  // IMPORTANT: do NOT set ``button.disabled = true`` here. The cancel
+  // gesture depends on the user being able to CLICK the button
+  // during RUNNING; a disabled HTML button emits no click event.
+  // The re-entrancy marker (set above) is what prevents a second
+  // ``generate_campaign_content`` submit from the page-load-time
+  // delegated listener.
+  button.textContent = 'Pokrećem…';
+
+  let jobId = null;
+  let pollHandle = null;
+  function _stopPolling() {
+    if (pollHandle !== null) {
+      clearInterval(pollHandle);
+      pollHandle = null;
     }
-    const result = await api.generate_campaign_content({
-      campaign_id: campaignId,
-      plan_id: planId,
-    });
-    if (result && result.ok) {
-      const n = result.generated_count;
-      const f = result.failed_count;
-      // Toast + in-page callout so the user sees the count WITHOUT
-      // having to remember the toast (toasts auto-hide in 2.2s).
-      let toastMsg;
+  }
+  function _renderTerminal(state) {
+    _stopPolling();
+    const status = state && state.status;
+    const n = (state && state.generated_count) || 0;
+    const f = (state && state.failed_count) || 0;
+    const total = (state && state.progress_total) || 0;
+    let toastMsg;
+    if (status === 'SUCCEEDED') {
       if (n === 0 && f === 0) {
         toastMsg = 'Sadržaj je već generisan.';
       } else if (f === 0) {
@@ -304,30 +365,139 @@ async function generateContent(button) {
       } else {
         toastMsg = 'Generisano ' + n + ' od ' + (n + f) + ' objava. Za ' + f + ' neuspjelih pokušaj ponovo.';
       }
-      showToast(toastMsg);
-      if (resultNode) {
-        resultNode.textContent = toastMsg;
-        resultNode.hidden = false;
-      }
-    } else {
-      const msg = (result && result.error_message) ? result.error_message : 'Generisanje sadržaja nije uspjelo.';
+    } else if (status === 'CANCELLED') {
+      toastMsg = 'Otkazano. Generisano ' + n + ' od ' + total + '.';
+    } else {  // FAILED or anything unexpected
+      const errMsg = (state && state.error_message) || 'Generisanje sadržaja nije uspjelo.';
+      toastMsg = errMsg;
+    }
+    showToast(toastMsg);
+    if (resultNode) {
+      resultNode.textContent = toastMsg;
+      resultNode.hidden = false;
+    }
+    // Clear the re-entrancy marker AND restore the button. The
+    // marker is what stops a second ``generateContent`` call; the
+    // label is the only visible state. We intentionally do NOT
+    // re-disable here -- the next legitimate click (after the
+    // job is done) should be able to re-submit.
+    delete button.dataset[JOB_ACTIVE_ATTR];
+    button.textContent = originalLabel;
+  }
+
+  try {
+    // 1. Submit the job. The bridge returns synchronously with
+    //    ``ok=True, job_id=...`` after the sync validation phase.
+    const submitResult = await api.generate_campaign_content({
+      campaign_id: campaignId,
+      plan_id: planId,
+    });
+    if (!submitResult || !submitResult.ok) {
+      // Sync-layer failure: the bridge rejected before starting the
+      // job (boundary validation, plan lookup, JobManager shut
+      // down). No job_id to poll. Clear the marker so the user can
+      // retry -- the marker was set SYNCHRONOUSLY above (BF-CODEX-3
+      // fix), so a failed submit does NOT permanently lock the
+      // button.
+      const msg = (submitResult && submitResult.error_message) ||
+        'Generisanje sadržaja nije uspjelo.';
       showToast(msg);
       if (resultNode) {
         resultNode.textContent = 'Greška: ' + msg;
         resultNode.hidden = false;
       }
+      delete button.dataset[JOB_ACTIVE_ATTR];
+      button.textContent = originalLabel;
+      return;
     }
+    // 2. The job is now live on the JobManager worker. The
+    //    re-entrancy marker is already set (synchronously, before
+    //    this await), so the delegated ``[data-action]`` listener
+    //    is already a no-op for the duration of this job. The
+    //    button itself stays enabled so a real user click can hit
+    //    the cancel handler.
+    jobId = submitResult.job_id;
+    // 3. Start polling for terminal status. One ``setInterval`` is
+    //    the single source of truth for both the progress text
+    //    and the terminal transition -- the same callback handles
+    //    both branches (still running vs terminal) and tears
+    //    down the interval + cancel listener on the terminal
+    //    branch. ``_renderTerminal`` does the user-visible work
+    //    (toast + callout + button restore).
+    const _showCancelHint = () => {
+      button.textContent = 'Otkaži (generišem…)';
+    };
+    const _showProgress = (state) => {
+      const cur = (state && state.progress_current) || 0;
+      const tot = (state && state.progress_total) || 0;
+      if (tot > 0) {
+        button.textContent = 'Generišem ' + cur + ' / ' + tot + '…';
+      } else {
+        button.textContent = 'Generiram objave…';
+      }
+    };
+    // Wire the cancel gesture: a second click while RUNNING calls
+    // ``cancel_job``. The handler is removed on terminal exit
+    // (inside the poll callback) so a final click after
+    // SUCCEEDED does NOT re-issue cancel on a finished job.
+    const _onClickWhileRunning = () => {
+      // Guard against double-cancel clicks: if the button is already
+      // in the "Otkazujem…" state, do nothing. The label is the
+      // visible signal; ``dataset.acsCancelling`` would also work
+      // but the label is already a single source of truth here.
+      if (button.textContent === 'Otkazujem…') return;
+      button.textContent = 'Otkazujem…';
+      api.cancel_job({ job_id: jobId }).catch((err) => {
+        showToast('Greška pri otkazivanju: ' +
+          (err && err.message ? err.message : 'nepoznato.'));
+      });
+    };
+    const _pollOnce = async () => {
+      let state;
+      try {
+        state = await api.get_job_status({ job_id: jobId });
+      } catch (err) {
+        // IPC blip: stop polling and surface the error. Leaving
+        // ``setInterval`` running forever is the bug review focus
+        // §3 explicitly calls out.
+        _stopPolling();
+        button.removeEventListener('click', _onClickWhileRunning);
+        showToast('Greška pri praćenju posla: ' +
+          (err && err.message ? err.message : 'nepoznato.'));
+        // Clear re-entrancy marker on this path too -- the job
+        // is effectively failed (IPC blip), the user can retry.
+        delete button.dataset[JOB_ACTIVE_ATTR];
+        button.textContent = originalLabel;
+        return;
+      }
+      if (!state) return;
+      if (state.status === 'RUNNING' || state.status === 'PENDING' ||
+          state.status === 'CANCELLING') {
+        _showProgress(state);
+        return;
+      }
+      // Terminal: SUCCEEDED, FAILED, CANCELLED. Tear down the
+      // interval AND the cancel listener so a stale click after
+      // SUCCEEDED doesn't try to cancel a finished job.
+      _stopPolling();
+      button.removeEventListener('click', _onClickWhileRunning);
+      _renderTerminal(state);
+    };
+    // First paint: show a "cancel" affordance and start polling.
+    _showCancelHint();
+    button.addEventListener('click', _onClickWhileRunning);
+    pollHandle = setInterval(_pollOnce, POLL_INTERVAL_MS);
   } catch (err) {
     // Belt-and-brace: the bridge contractually never raises, but the
-    // IPC layer itself could (network blip, pywebview shutdown). The
-    // catch makes the failure visible instead of silent.
-    showToast('Interna greška pri pozivu: ' + (err && err.message ? err.message : 'nepoznato.'));
+    // IPC layer itself could (network blip, pywebview shutdown).
+    _stopPolling();
+    showToast('Interna greška pri pozivu: ' +
+      (err && err.message ? err.message : 'nepoznato.'));
     if (resultNode) {
       resultNode.textContent = 'Interna greška.';
       resultNode.hidden = false;
     }
-  } finally {
-    button.disabled = false;
+    delete button.dataset[JOB_ACTIVE_ATTR];
     button.textContent = originalLabel;
   }
 }
