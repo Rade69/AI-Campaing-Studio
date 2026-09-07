@@ -31,3 +31,9 @@ artifacts/*
 # Local environment / secrets
 .env
 .env.*
+
+# Agent scratch/probe directories (Codex/Claude adversarial gate runs
+# create these directly in the main checkout; some nested pytest-cache
+# subdirs get Windows ACLs that block deletion from a normal session).
+.tmp_*/
+.tmp_*
