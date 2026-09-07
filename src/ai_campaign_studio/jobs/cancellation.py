@@ -25,9 +25,17 @@ class CancellationToken:
     are safe to call from any thread. It never interrupts a running callable;
     the callable must check ``raise_if_cancelled`` (or ``is_cancel_requested``)
     at cooperative points.
+
+    ACS-F1-047: also carries the job_id this token belongs to, so a
+    job's user-supplied callable can identify its own job deterministically
+    without sharing state with sibling jobs on the same
+    ``JobManager``. ``JobManager.submit`` populates this field before the
+    worker thread starts, so there is no race window where the callable
+    could see a stale or empty id.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, job_id: str = "") -> None:
+        self.job_id = job_id
         self._event = threading.Event()
 
     def request_cancel(self) -> None:

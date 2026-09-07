@@ -86,7 +86,6 @@ from ai_campaign_studio.infrastructure.prompts.yaml_prompt_repository import (
     YamlPromptRepository,
 )
 from ai_campaign_studio.jobs.cancellation import CancellationError
-from ai_campaign_studio.jobs.models import JobStatus
 from ai_campaign_studio.presentation.ui_models import (
     CampaignPlanResultUiModel,
     GenerateContentResultUiModel,
@@ -127,10 +126,9 @@ class _CallResources:
 # BEFORE the wrapped method's own try/except sees them. Without an
 # operation-aware mapper, every non-``configure_provider`` method
 # used to fall through to ``self._err()`` — which builds a
-# ``CampaignPlanResultUiModel`` dict and therefore lacks the
-# generate-content DTO's ``generated_count`` / ``failed_count`` /
-# ``content_piece_ids`` keys. JS callers typed to the right DTO got
-# missing fields on the one failure path that is hardest to recover
+# ``CampaignPlanResultUiModel`` dict, NOT the right DTO for the
+# method. JS callers typed to the wrong DTO got missing or
+# extra fields on the one failure path that is hardest to recover
 # from silently. Fix: each public method declares which DTO it
 # returns, and the decorator dispatches accordingly. New methods
 # MUST add an entry here.
@@ -505,13 +503,15 @@ class CampaignBridgeApi:
         HOTFIX-002, now applied to a different thread boundary.
 
         Partial success and cooperative cancellation are preserved
-        verbatim (BF-3 lock is no longer needed: the closure runs
-        serially per ``(campaign_id, plan_id)`` because
-        ``JobManager`` has a single executor thread for this job
-        type in practice; and if a user clicks twice in quick
-        succession, the second submit gets its own closure and the
-        per-piece idempotency check inside still prevents
-        duplicates).
+        verbatim. The BF-3 per-pair lock is STILL required -- the
+        ``JobManager`` executor runs ``max_workers=4`` parallel
+        threads and gives no guarantee that two concurrent
+        ``generate_campaign_content`` jobs for the SAME
+        ``(campaign_id, plan_id)`` would land on the same worker;
+        without the lock both closures would see an empty
+        ``existing_pieces`` snapshot and BOTH would call
+        ``GenerateSocialPost`` for the same items, producing
+        duplicates.
         """
         # -- 1. Boundary validation (Pydantic-style; we do not trust JS).
         if not isinstance(raw_payload, dict):
@@ -815,22 +815,16 @@ class CampaignBridgeApi:
         generated_ids: list[str] = []
         failed_count = 0
         first_error: str | None = None
-        job_id_holder: list[str] = [""]  # filled on first iteration
+        # ``token.job_id`` is the deterministic channel for the
+        # worker to identify its own job. ``JobManager.submit``
+        # populates it before the future is registered, so by the
+        # time the worker thread runs this closure the value is
+        # already set -- no race, no ``_jobs`` lookup, no ambiguity
+        # even when sibling jobs (of any type) are concurrently
+        # RUNNING on the shared executor.
+        jid = token.job_id
         for index, item in enumerate(plan_items):
             token.raise_if_cancelled()
-            # The first time we run, capture the job_id from the
-            # manager's bookkeeping. This relies on the manager
-            # registering the job in ``_jobs`` BEFORE the worker
-            # thread runs the callable (it does -- see ``submit``).
-            if not job_id_holder[0]:
-                # We can't ask the manager for "our" job id; pass it
-                # in via a hidden closure instead. Workaround: the
-                # closure builder has access to ``self``, so we look
-                # up via ``_pending_job_id_for_caller`` if available
-                # (it isn't on the public API). Easiest path: ask
-                # the manager via a private API.
-                job_id_holder[0] = _find_current_job_id(job_manager)
-            jid = job_id_holder[0]
             if jid:
                 # Live progress (1-based "current"). "Phase" is the
                 # human-readable message; we keep it short so the
@@ -900,7 +894,6 @@ class CampaignBridgeApi:
         # own ``_finish(SUCCEEDED)`` will then move the status; the
         # counters survive because ``_finish`` does not touch them
         # (we used ``update_progress``-like replace semantics).
-        jid = job_id_holder[0]
         if jid:
             _patch_terminal_state(
                 job_manager, jid,
@@ -1390,32 +1383,6 @@ class CampaignBridgeApi:
 
 
 # --- ACS-F1-047 module-level helpers for the job-backed bridge path ---
-
-
-def _find_current_job_id(job_manager) -> str:
-    """Return the ``job_id`` of the job that is currently running on
-    this thread, or ``""`` if none / ambiguous.
-
-    ``JobManager`` does not expose a per-thread lookup, so we
-    approximate it: there is at most one ``RUNNING`` job at a time
-    per thread that the executor hands to ``_run``. We pick the
-    RUNNING job whose ``started_at`` is the most recent -- ties are
-    broken by ``id`` (deterministic) and there should never be a tie
-    in practice because the executor runs one job at a time per
-    worker.
-
-    Returns the empty string if the lookup is ambiguous (no RUNNING
-    job, or more than one). The caller treats the empty string as
-    "no progress reporting on this iteration" and never raises.
-    """
-    with job_manager._lock:  # type: ignore[attr-defined]
-        running = [
-            s for s in job_manager._jobs.values()  # type: ignore[attr-defined]
-            if s.status is JobStatus.RUNNING
-        ]
-    if len(running) != 1:
-        return ""
-    return running[0].id
 
 
 def _patch_terminal_state(

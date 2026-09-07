@@ -61,6 +61,13 @@ class JobManager:
         ``CancellationToken`` is passed as the ``token`` keyword argument so it
         can cooperate with ``cancel`` via ``token.raise_if_cancelled()``.
 
+        ACS-F1-047: ``CancellationToken`` carries its own ``job_id`` (set
+        HERE, before the future is registered). This is the deterministic
+        channel by which the worker closure learns its own job id --
+        looking it up from ``_jobs`` would be ambiguous whenever two or
+        more jobs of any type are concurrently RUNNING on the shared
+        ``JobManager`` executor.
+
         Raises ``RuntimeError`` if the manager has been shut down. In that case
         no ``CREATED`` event is emitted and no job state is recorded.
 
@@ -72,7 +79,11 @@ class JobManager:
         observe ``CREATED`` before ``STARTED`` for the same job.
         """
         job_id = new_id()
-        token = CancellationToken()
+        # Populate the token's ``job_id`` BEFORE registering the future so
+        # the worker can read ``token.job_id`` from the moment the
+        # closure starts on its executor thread. No race: the value is
+        # written by this thread and read by exactly one worker.
+        token = CancellationToken(job_id=job_id)
         state = JobState(id=job_id, job_type=job_type, status=JobStatus.PENDING)
         with self._lock:
             if self._shutdown:

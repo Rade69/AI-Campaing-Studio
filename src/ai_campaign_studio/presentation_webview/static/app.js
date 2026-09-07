@@ -364,13 +364,15 @@ async function generateContent(button) {
       return;
     }
     jobId = submitResult.job_id;
-    // 2. Start polling for terminal status. The first poll is
-    //    immediate so the user sees progress within ~1.2s of the
-    //    click, not after the first interval.
-    let cancelledByUser = false;
+    // 2. Start polling for terminal status. One ``setInterval`` is
+    //    the single source of truth for both the progress text
+    //    and the terminal transition -- the same callback handles
+    //    both branches (still running vs terminal) and tears
+    //    down the interval + cancel listener on the terminal
+    //    branch. ``_renderTerminal`` does the user-visible work
+    //    (toast + callout + button restore).
     const _showCancelHint = () => {
       button.textContent = 'Otkaži (generišem…)';
-      button.dataset.wasCancel = '1';
     };
     const _showProgress = (state) => {
       const cur = (state && state.progress_current) || 0;
@@ -381,82 +383,51 @@ async function generateContent(button) {
         button.textContent = 'Generiram objave…';
       }
     };
+    // Wire the cancel gesture: a second click while RUNNING calls
+    // ``cancel_job``. The handler is removed on terminal exit
+    // (inside the poll callback) so a final click after
+    // SUCCEEDED does NOT re-issue cancel on a finished job.
+    const _onClickWhileRunning = () => {
+      button.textContent = 'Otkazujem…';
+      button.disabled = true;
+      api.cancel_job({ job_id: jobId }).catch((err) => {
+        showToast('Greška pri otkazivanju: ' +
+          (err && err.message ? err.message : 'nepoznato.'));
+      });
+    };
     const _pollOnce = async () => {
+      let state;
       try {
-        const state = await api.get_job_status({ job_id: jobId });
-        if (!state) return;
-        if (state.status === 'RUNNING' || state.status === 'PENDING' ||
-            state.status === 'CANCELLING') {
-          _showProgress(state);
-          return;
-        }
-        // Terminal: SUCCEEDED, FAILED, CANCELLED.
-        _renderTerminal(state);
+        state = await api.get_job_status({ job_id: jobId });
       } catch (err) {
         // IPC blip: stop polling and surface the error. Leaving
         // ``setInterval`` running forever is the bug review focus
         // §3 explicitly calls out.
         _stopPolling();
+        button.removeEventListener('click', _onClickWhileRunning);
         showToast('Greška pri praćenju posla: ' +
           (err && err.message ? err.message : 'nepoznato.'));
         button.disabled = false;
         button.textContent = originalLabel;
+        return;
       }
-    };
-    // First paint: show a "cancel" affordance and start polling.
-    _showCancelHint();
-    pollHandle = setInterval(_pollOnce, POLL_INTERVAL_MS);
-    // Wire the cancel gesture: a second click while RUNNING calls
-    // ``cancel_job``. We swap the handler once and restore it
-    // on terminal exit.
-    const _cancel = async () => {
-      if (!jobId) return;
-      cancelledByUser = true;
-      button.textContent = 'Otkazujem…';
-      button.disabled = true;
-      try {
-        await api.cancel_job({ job_id: jobId });
-      } catch (err) {
-        showToast('Greška pri otkazivanju: ' +
-          (err && err.message ? err.message : 'nepoznato.'));
+      if (!state) return;
+      if (state.status === 'RUNNING' || state.status === 'PENDING' ||
+          state.status === 'CANCELLING') {
+        _showProgress(state);
+        return;
       }
-    };
-    const _onClickWhileRunning = () => {
-      if (cancelledByUser) return;  // already in flight
-      _cancel();
-    };
-    button.addEventListener('click', _onClickWhileRunning);
-    // Reap the cancel handler on terminal exit.
-    const _onTerminal = (state) => {
+      // Terminal: SUCCEEDED, FAILED, CANCELLED. Tear down the
+      // interval AND the cancel listener so a stale click after
+      // SUCCEEDED doesn't try to cancel a finished job.
+      _stopPolling();
       button.removeEventListener('click', _onClickWhileRunning);
       _renderTerminal(state);
     };
-    // Replace the one-shot poll with a wrapper that calls _onTerminal
-    // instead of _renderTerminal so we can clean up the cancel
-    // listener too.
-    const _pollOnceWithCleanup = async () => {
-      try {
-        const state = await api.get_job_status({ job_id: jobId });
-        if (!state) return;
-        if (state.status === 'RUNNING' || state.status === 'PENDING' ||
-            state.status === 'CANCELLING') {
-          _showProgress(state);
-          return;
-        }
-        button.removeEventListener('click', _onClickWhileRunning);
-        _renderTerminal(state);
-      } catch (err) {
-        button.removeEventListener('click', _onClickWhileRunning);
-        _stopPolling();
-        showToast('Greška pri praćenju posla: ' +
-          (err && err.message ? err.message : 'nepoznato.'));
-        button.disabled = false;
-        button.textContent = originalLabel;
-      }
-    };
-    // Swap the interval to use the cleanup-aware version.
-    _stopPolling();
-    pollHandle = setInterval(_pollOnceWithCleanup, POLL_INTERVAL_MS);
+    // First paint: show a "cancel" affordance and start polling.
+    _showCancelHint();
+    button.addEventListener('click', _onClickWhileRunning);
+    pollHandle = setInterval(_pollOnce, POLL_INTERVAL_MS);
   } catch (err) {
     // Belt-and-brace: the bridge contractually never raises, but the
     // IPC layer itself could (network blip, pywebview shutdown).

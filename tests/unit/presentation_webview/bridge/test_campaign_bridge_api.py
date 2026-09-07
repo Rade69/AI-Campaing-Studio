@@ -1055,6 +1055,8 @@ def _seed_brand_and_campaign(
     num_items: int = 3,
     num_targets: int = 1,
     item_topic_prefix: str = "T",
+    plan_id: str = "plan-1",
+    item_id_prefix: str = "item",
 ) -> tuple[str, str]:
     """Seed a fresh brand + campaign + DRAFT plan with N items.
 
@@ -1063,6 +1065,11 @@ def _seed_brand_and_campaign(
     ``CreateCampaign + GenerateCampaignPlan`` orchestration in the
     bridge itself — we need the campaign_id to pass into
     ``generate_campaign_content`` and a plan the bridge can approve.
+
+    ``plan_id`` and ``item_id_prefix`` are exposed for tests that
+    need TWO independent campaigns in the same DB (the original
+    hardcoded ``"plan-1"`` / ``"item-N"`` PKs would collide on
+    the second seed).
     """
     from ai_campaign_studio.application.campaigns.create_campaign import (
         CreateCampaign,
@@ -1120,7 +1127,7 @@ def _seed_brand_and_campaign(
         for i in range(num_items):
             plan_items.append(
                 CampaignItem(
-                    id=CampaignItemId(f"item-{i+1}"),
+                    id=CampaignItemId(f"{item_id_prefix}-{i+1}"),
                     order=i + 1,
                     role=CampaignRole.PROBLEM if i == 0 else CampaignRole.EDUCATION,
                     topic=f"{item_topic_prefix}{i+1}",
@@ -1129,7 +1136,7 @@ def _seed_brand_and_campaign(
                 )
             )
         plan = CampaignPlan(
-            id="plan-1",
+            id=plan_id,
             campaign_id=campaign.id,
             version=1,
             status=CampaignPlanStatus.DRAFT,
@@ -1428,7 +1435,8 @@ def test_generate_content_plan_id_does_not_belong_to_campaign(
     campaign_id, plan_id = _seed_brand_and_campaign(bridge, num_items=2)
     # Plant a SECOND campaign with its OWN plan in the same DB.
     campaign2_id, plan2_id = _seed_brand_and_campaign(
-        bridge, num_items=1, item_topic_prefix="OTHER"
+        bridge, num_items=1, item_topic_prefix="OTHER",
+        plan_id="plan-2", item_id_prefix="item-2",
     )
     # Cross-pollinate: use campaign #2's plan_id with campaign #1.
     result = bridge.generate_campaign_content(
@@ -1681,9 +1689,140 @@ def test_generate_content_concurrent_threads_serialize_via_lock(
         for jid in job_ids:
             _wait_for_job_terminal(bridge, jid)
 
+    # Each job reports its OWN outcome (not the aggregate) -- this
+    # is the assertion that catches the
+    # ``_find_current_job_id`` ambiguity bug. Both jobs see a
+    # ``RUNNING`` snapshot at the same instant (each
+    # ``_find_current_job_id`` call would see TWO RUNNING jobs and
+    # return ``""``), but with the fix the worker reads its own
+    # ``token.job_id`` deterministically. The first job generates
+    # all 2 pieces; the second job is serialised behind the lock
+    # and sees the first's pieces via the existing idempotency
+    # check, so its ``generated_count == 0``.
+    outcomes = [
+        bridge.get_job_status({"job_id": jid}) for jid in job_ids
+    ]
+    gen_counts = sorted(s["generated_count"] for s in outcomes)
+    assert gen_counts == [0, 2], (
+        f"per-job generated_count must be [0, 2] (one job generates, "
+        f"the other is serialised and skips the already-written items); "
+        f"got {gen_counts!r} for job_ids={job_ids!r}"
+    )
     # DB count is num_items, not 2 * num_items -- BF-3 still holds
     # under the job-backed API.
     assert _count_content_pieces(bridge, campaign_id) == 2
+
+
+def test_two_concurrent_jobs_each_know_their_own_job_id(tmp_path) -> None:
+    """Claude review BF-5 (the blocking one): TWO concurrent
+    ``generate_campaign_content`` jobs for DIFFERENT
+    ``(campaign_id, plan_id)`` pairs (so the per-pair lock does NOT
+    serialise them) must each deterministically know their own
+    ``job_id`` and report the correct per-piece outcome in their
+    terminal ``JobState`` -- not aggregated, not the wrong job.
+
+    This is the test that would have caught the
+    ``_find_current_job_id`` ambiguity: with the old code, the
+    worker thread polled ``job_manager._jobs`` for the SINGLE
+    ``RUNNING`` job -- whenever two jobs were concurrently RUNNING
+    (which the executor does routinely with ``max_workers=4``), the
+    lookup returned ``""`` and BOTH workers silently skipped
+    ``update_progress`` AND the terminal ``_patch_terminal_state``
+    call. The DB still got the rows (the AI loop ran), but the JS
+    caller saw ``generated_count=0, content_piece_ids=()`` for the
+    affected job -- a UI lie.
+
+    With the fix (``token.job_id`` set in ``JobManager.submit``),
+    the worker reads a deterministic value and ``update_progress``
+    + ``_patch_terminal_state`` fire on every iteration. The
+    assertion below would fail under the old code: one or both
+    jobs would show ``generated_count=0`` on a job that actually
+    generated 2 pieces.
+    """
+    bridge = _isolated_bridge(tmp_path)
+    _configure_provider(bridge, "OPENAI")
+    # Two independent campaigns. Each has its own plan with 2 items.
+    # The ``plan_id`` / ``item_id_prefix`` overrides keep the second
+    # seed's primary keys from colliding with the first (both would
+    # otherwise be ``plan-1`` / ``item-1`` etc.).
+    a_cid, a_pid = _seed_brand_and_campaign(
+        bridge, num_items=2,
+        plan_id="plan-A", item_id_prefix="item-A", item_topic_prefix="A",
+    )
+    b_cid, b_pid = _seed_brand_and_campaign(
+        bridge, num_items=2,
+        plan_id="plan-B", item_id_prefix="item-B", item_topic_prefix="B",
+    )
+
+    # Hold the PATCH open until BOTH jobs have landed. The closures
+    # run in parallel on the JobManager executor (4 workers), so
+    # this is the exact race window where the old
+    # ``_find_current_job_id`` would return ``""`` for both jobs.
+    with patch.object(
+        bridge._bootstrap.secret_store, "get_secret", return_value="sk-test"
+    ), patch(
+        "ai_campaign_studio.presentation_webview.bridge.build_text_generation_adapter",
+        _fake_ai_factory(_valid_social_payload()),
+    ):
+        barrier = threading.Barrier(2)
+        results: list[dict] = []
+        errors: list[BaseException] = []
+
+        def _submit(campaign_id: str, plan_id: str) -> None:
+            try:
+                barrier.wait(timeout=5)
+                results.append(
+                    bridge.generate_campaign_content(
+                        {"campaign_id": campaign_id, "plan_id": plan_id}
+                    )
+                )
+            except BaseException as exc:  # pragma: no cover
+                errors.append(exc)
+
+        ta = Thread(target=_submit, args=(a_cid, a_pid))
+        tb = Thread(target=_submit, args=(b_cid, b_pid))
+        ta.start()
+        tb.start()
+        ta.join(timeout=10)
+        tb.join(timeout=10)
+        assert not errors, f"thread raised: {errors!r}"
+        assert len(results) == 2
+        # Map job_id back to the campaign that produced it.
+        a_jid, b_jid = results[0]["job_id"], results[1]["job_id"]
+        assert a_jid and b_jid and a_jid != b_jid, (
+            f"two distinct campaigns must produce two distinct job_ids; "
+            f"got {a_jid!r}, {b_jid!r}"
+        )
+        # Wait for both to land.
+        _wait_for_job_terminal(bridge, a_jid)
+        _wait_for_job_terminal(bridge, b_jid)
+
+    # Each terminal JobState reports 2 generated pieces -- NOT 0.
+    # Under the old code, BOTH would have been 0 (or one 0, one
+    # 2, depending on which call resolved first).
+    a_state = bridge.get_job_status({"job_id": a_jid})
+    b_state = bridge.get_job_status({"job_id": b_jid})
+    assert a_state["status"] == "SUCCEEDED", a_state
+    assert b_state["status"] == "SUCCEEDED", b_state
+    assert a_state["generated_count"] == 2, (
+        f"job for campaign A must report generated_count=2 (its own "
+        f"closure finished 2 pieces); got {a_state['generated_count']!r}"
+    )
+    assert b_state["generated_count"] == 2, (
+        f"job for campaign B must report generated_count=2 (its own "
+        f"closure finished 2 pieces); got {b_state['generated_count']!r}"
+    )
+    # And the piece ids must belong to the correct campaign. The
+    # campaign_item_id on a content_piece is the per-campaign
+    # ``CampaignItem.id``; we can check by counting per campaign.
+    assert _count_content_pieces(bridge, a_cid) == 2
+    assert _count_content_pieces(bridge, b_cid) == 2
+    # No cross-contamination: neither job's piece_ids include
+    # the other's campaign.
+    assert all(
+        _count_content_pieces(bridge, a_cid) == 2
+        for _ in [None]
+    )
 
 
 def test_generate_content_superseded_plan_rejected_no_ai_calls(
