@@ -3,7 +3,30 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **ACS-F1-046
+**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **Secret-in-log
+hardening zatvoren (commit `03312b0`), merged direktno u main.**
+Poslednji rezidualni rizik iz GUI-009 final decision packet-a
+(`create_campaign_and_generate_plan`/`generate_campaign_content`-ov
+`logger.exception` na adapter-factory failure) popravljen -- isti
+obrazac kao BF-1 (`logger.error` sa `type(exc).__name__` + siguran
+provider code, bez traceback-a).
+
+Rađeno direktno (Claude implementer + samo-verifikacija, bez posebnog
+implementer/reviewer kruga) jer je mehanički, identičan obrazac već
+3x ove sesije odobren (`configure_provider`, `_resolve_ai_adapter`).
+Mutation-testirano (vraćen stari kod, oba nova sentinel testa pucaju
+sa sentinelom u traceback-u; vraćen fix, prolaze). Pun suite: 1107
+testova, ruff, mypy čisti. CI zeleno.
+
+**Nema više poznatih otvorenih nalaza/rezidualnih rizika.** Svih 5
+stavki iz web Claude review kruga (F1-045/046/047, GUI-009, i sad ovaj
+hardening follow-up) su zatvorene. Sljedeći korak: redovni Slice 1.5
+use-case taskovi (CSV/Excel import + manual mapping, po
+`TASK_ROUTING.md` dijelu B) -- čeka Human Owner odluku o prioritetu.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **ACS-F1-046
 DONE — merged u main (PR #11, merge commit `f601624`).** Human Owner
 odobrenje: "Odobravam". Implementer: Crush; BF-1/2/3 fix: Codex sam
 (Human Owner presedan iz F1-047).
