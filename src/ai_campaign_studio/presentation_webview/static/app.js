@@ -316,14 +316,28 @@ async function generateContent(button) {
     return;
   }
 
+  // ACS-F1-047 (Codex BF-CODEX-3): set the re-entrancy marker
+  // SYNCHRONOUSLY, BEFORE the first ``await``. Two clicks in the
+  // same event-loop tick (before the first ``generate_campaign_content``
+  // round-trip resolves) would otherwise BOTH pass the guard at
+  // line ~300, both submit, and stack two independent pollers
+  // + cancel listeners on the same button. With the marker set
+  // here, the second click sees ``acsJobActive === '1'`` and
+  // returns at the top of the function -- exactly one submit,
+  // exactly one poller, exactly one cancel listener. The sync
+  // error path below (SUPERSEDED plan, JobManager shut down, etc.)
+  // clears the marker on its way out, so a rejected submit does
+  // not permanently lock the button.
+  button.dataset[JOB_ACTIVE_ATTR] = '1';
+
   const originalLabel = button.textContent;
   const resultNode = document.querySelector('[data-generate-result]');
   // IMPORTANT: do NOT set ``button.disabled = true`` here. The cancel
   // gesture depends on the user being able to CLICK the button
   // during RUNNING; a disabled HTML button emits no click event.
-  // The re-entrancy guard above (dataset marker) is what prevents
-  // a second ``generate_campaign_content`` submit from the
-  // page-load-time delegated listener.
+  // The re-entrancy marker (set above) is what prevents a second
+  // ``generate_campaign_content`` submit from the page-load-time
+  // delegated listener.
   button.textContent = 'Pokrećem…';
 
   let jobId = null;
@@ -381,7 +395,10 @@ async function generateContent(button) {
     if (!submitResult || !submitResult.ok) {
       // Sync-layer failure: the bridge rejected before starting the
       // job (boundary validation, plan lookup, JobManager shut
-      // down). No job_id to poll.
+      // down). No job_id to poll. Clear the marker so the user can
+      // retry -- the marker was set SYNCHRONOUSLY above (BF-CODEX-3
+      // fix), so a failed submit does NOT permanently lock the
+      // button.
       const msg = (submitResult && submitResult.error_message) ||
         'Generisanje sadržaja nije uspjelo.';
       showToast(msg);
@@ -389,16 +406,16 @@ async function generateContent(button) {
         resultNode.textContent = 'Greška: ' + msg;
         resultNode.hidden = false;
       }
+      delete button.dataset[JOB_ACTIVE_ATTR];
       button.textContent = originalLabel;
       return;
     }
-    // 2. The job is now live on the JobManager worker. Set the
-    //    re-entrancy marker so the delegated ``[data-action]``
-    //    listener (which would also call this function on a
-    //    second click) becomes a no-op for the duration of this
-    //    job. The button itself stays enabled so a real user
-    //    click can hit the cancel handler.
-    button.dataset[JOB_ACTIVE_ATTR] = '1';
+    // 2. The job is now live on the JobManager worker. The
+    //    re-entrancy marker is already set (synchronously, before
+    //    this await), so the delegated ``[data-action]`` listener
+    //    is already a no-op for the duration of this job. The
+    //    button itself stays enabled so a real user click can hit
+    //    the cancel handler.
     jobId = submitResult.job_id;
     // 3. Start polling for terminal status. One ``setInterval`` is
     //    the single source of truth for both the progress text
