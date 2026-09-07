@@ -31,6 +31,18 @@
       // network; a final ``finally`` re-enables it.
       saveAndPlan(el);
     }
+    if(action==='generate-content') {
+      // ACS-GUI-008: bulk content generation. The button lives on the
+      // Studio sadržaja screen and reads its campaign_id from the
+      // data-campaign-id attribute (the same id the previous step's
+      // navigate-after-success used to put in the URL). On success the
+      // bridge returns ``{ok, generated_count, failed_count, ...}``
+      // and the handler updates a ``data-generate-result`` callout in
+      // the same card (so the user sees "N of M uspjelo" right under
+      // the button) AND shows a toast. ``finally`` always re-enables
+      // the button so the user can retry for failed pieces.
+      generateContent(el);
+    }
   }));
   // Language picker (Podešavanja → Jezik). Each row is a button with
   // ``data-action="lang-pick"`` and ``data-lang="<code>"``. Clicking
@@ -207,8 +219,16 @@ async function saveAndPlan(button) {
       showToast('Plan generisan (' + n + ' stavki). Preusmjeravam…');
       // Give the toast a brief moment to register visually before
       // navigating; the user gets feedback that the click landed.
+      // ACS-GUI-008: also forward ``plan_id`` in the query string so
+      // the next screen (Studio sadržaja) can attach it to the
+      // ``generate_content`` bridge call without needing a fresh
+      // server lookup.
+      const planQs = result.plan_id
+        ? '&plan=' + encodeURIComponent(result.plan_id)
+        : '';
       setTimeout(function() {
-        window.location.href = '../plan_kampanje/index.html?campaign=' + encodeURIComponent(result.campaign_id);
+        window.location.href = '../plan_kampanje/index.html?campaign='
+          + encodeURIComponent(result.campaign_id) + planQs;
       }, 600);
     } else {
       const msg = (result && result.error_message) ? result.error_message : 'Generisanje plana nije uspjelo.';
@@ -224,12 +244,117 @@ async function saveAndPlan(button) {
     button.textContent = originalLabel;
   }
 }
+
+// --- ACS-GUI-008: generate-content bridge call ---
+//
+// Wired by the Studio sadržaja screen — the "Generiši sadržaj"
+// button has ``data-action="generate-content"`` and a
+// ``data-campaign-id="<id>"`` attribute. The handler reads the campaign
+// id, calls ``window.pywebview.api.generate_campaign_content``, and
+// renders the result into the ``data-generate-result`` callout in the
+// same card. On ``ok=False`` the user gets the bridge's
+// ``error_message`` as a toast. Re-entrancy: the button is disabled for
+// the duration of the call (typical bridge calls take a few seconds
+// because each piece is a real AI request); a ``finally`` re-enables
+// it so the user can retry the failed pieces.
+async function generateContent(button) {
+  if (button.disabled) return;
+  const campaignId = (button.dataset.campaignId || '').trim();
+  if (!campaignId) {
+    showToast('Nedostaje campaign_id. Ponovo pokreni "Sačuvaj i napravi plan".');
+    return;
+  }
+  // ACS-GUI-008 (review feedback): the bridge also needs the
+  // ``plan_id`` — the click handler reads it from the same data
+  // attribute (``data-plan-id``) the SSR put on the button. The
+  // bridge refuses to fall back to a SQL lookup; if the attribute
+  // is missing (offline preview path), we surface that explicitly
+  // to the user instead of silently building a half-broken call.
+  const planId = (button.dataset.planId || '').trim();
+  if (!planId) {
+    showToast('Nedostaje plan_id. Ponovo pokreni "Sačuvaj i napravi plan".');
+    return;
+  }
+  button.disabled = true;
+  const originalLabel = button.textContent;
+  button.textContent = 'Generiram objave…';
+  const resultNode = document.querySelector('[data-generate-result]');
+  try {
+    const api = window.pywebview && window.pywebview.api;
+    if (!api || typeof api.generate_campaign_content !== 'function') {
+      showToast('Interna greška: bridge nije dostupan. Ponovo pokreni aplikaciju.');
+      return;
+    }
+    const result = await api.generate_campaign_content({
+      campaign_id: campaignId,
+      plan_id: planId,
+    });
+    if (result && result.ok) {
+      const n = result.generated_count;
+      const f = result.failed_count;
+      // Toast + in-page callout so the user sees the count WITHOUT
+      // having to remember the toast (toasts auto-hide in 2.2s).
+      let toastMsg;
+      if (n === 0 && f === 0) {
+        toastMsg = 'Sadržaj je već generisan.';
+      } else if (f === 0) {
+        toastMsg = 'Sve objave generisane (' + n + ').';
+      } else if (n === 0) {
+        toastMsg = 'Generisanje nije uspjelo ni za jednu objavu (' + f + ' pokušaja).';
+      } else {
+        toastMsg = 'Generisano ' + n + ' od ' + (n + f) + ' objava. Za ' + f + ' neuspjelih pokušaj ponovo.';
+      }
+      showToast(toastMsg);
+      if (resultNode) {
+        resultNode.textContent = toastMsg;
+        resultNode.hidden = false;
+      }
+    } else {
+      const msg = (result && result.error_message) ? result.error_message : 'Generisanje sadržaja nije uspjelo.';
+      showToast(msg);
+      if (resultNode) {
+        resultNode.textContent = 'Greška: ' + msg;
+        resultNode.hidden = false;
+      }
+    }
+  } catch (err) {
+    // Belt-and-brace: the bridge contractually never raises, but the
+    // IPC layer itself could (network blip, pywebview shutdown). The
+    // catch makes the failure visible instead of silent.
+    showToast('Interna greška pri pozivu: ' + (err && err.message ? err.message : 'nepoznato.'));
+    if (resultNode) {
+      resultNode.textContent = 'Interna greška.';
+      resultNode.hidden = false;
+    }
+  } finally {
+    button.disabled = false;
+    button.textContent = originalLabel;
+  }
+}
 })();
 
 (function(){
-  const campaign=new URLSearchParams(location.search).get('campaign');
-  if(!campaign) return;
-  document.querySelectorAll('[data-campaign-only]').forEach(el=>el.hidden=false);
-  document.querySelectorAll('[data-campaign-hide]').forEach(el=>el.hidden=true);
-  document.querySelectorAll('[data-campaign-name]').forEach(el=>el.textContent=campaign);
+  const params=new URLSearchParams(location.search);
+  const campaign=params.get('campaign');
+  const plan=params.get('plan');
+  if(campaign){
+    document.querySelectorAll('[data-campaign-only]').forEach(el=>el.hidden=false);
+    document.querySelectorAll('[data-campaign-hide]').forEach(el=>el.hidden=true);
+    document.querySelectorAll('[data-campaign-name]').forEach(el=>el.textContent=campaign);
+  }
+  // ACS-GUI-008 fix-brief-2 BF-1: the live "Generiši sadržaj" button
+  // is part of the build-time static HTML, but its data attributes +
+  // visibility depend on the RUNTIME URL. When BOTH ``?campaign=`` AND
+  // ``?plan=`` are present, populate the data attributes the bridge
+  // expects (``data-campaign-id``, ``data-plan-id``) and reveal the
+  // button. Otherwise the button stays hidden (the fixture-only
+  // preview path). The two are checked together because the bridge
+  // contract requires both, and exposing a half-wired button would
+  // surface a confusing "Nedostaje plan_id" toast on every click.
+  const btn=document.querySelector('[data-action="generate-content"]');
+  if(btn && campaign && plan){
+    btn.dataset.campaignId=campaign;
+    btn.dataset.planId=plan;
+    btn.hidden=false;
+  }
 })();

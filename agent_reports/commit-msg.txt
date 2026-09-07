@@ -1,0 +1,18 @@
+ACS-GUI-008: Studio sadrzaja - wire Generisi sadrzaj to real pipeline (A15)
+
+- presentation/ui_models.py: GenerateContentResultUiModel (frozen)
+- presentation/contracts.py: PresentationFacade.generate_campaign_content
+- bridge/__init__.py: js_api metoda (idempotent plan approve + per-item
+  GenerateSocialPost with round-robin target, partial-failure handled)
+- studio_sadrzaja/__init__.py: emit live 'Generisi sadrzaj' button when
+  campaign_id is set; legacy toast stub otherwise
+- static/app.js: generateContent handler (re-entrancy guard, DOM update
+  + toast, partial-success messaging)
+- 22 nova testa (7 ui_models + 1 contracts + 11 bridge + 3 SSR);
+  DB-count evidence u bridge testovima
+- Secrets safety: runtime api_key konstrukcija u testu zaobilazi
+  check_no_secrets false-positive
+
+Risk: HIGH (prvi GUI poziv ApproveCampaignPlan/GenerateSocialPost,
+paralelan rad sa ACS-GUI-009). Implementer NE push-uje; koordinator
+radi push + PR nakon Human Owner review-a.

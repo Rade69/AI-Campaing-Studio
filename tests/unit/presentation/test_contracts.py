@@ -19,6 +19,14 @@ _EXPECTED_METHODS = {
     # using them server-side). The contract still says it returns the
     # safe DTO type — no raw secret in the result.
     "configure_provider",
+    # Added in ACS-GUI-008: bulk content generation (Studio sadržaja
+    # → "Generiši sadržaj"). Approves the plan (idempotent) and runs
+    # ``GenerateSocialPost`` once per ``CampaignItem`` with
+    # round-robin target assignment. ``ok=True`` even on partial
+    # success; idempotent on re-click (already-generated pieces are
+    # skipped). Same narrow-surface rule as the other two js_api
+    # methods.
+    "generate_campaign_content",
 }
 
 
@@ -53,6 +61,22 @@ def test_bridge_implements_configure_provider() -> None:
 
     method = getattr(CampaignBridgeApi, "configure_provider", None)
     assert method is not None, "bridge must expose configure_provider"
+    import inspect
+    sig = inspect.signature(method)
+    assert list(sig.parameters) == ["self", "raw_payload"]
+
+
+def test_bridge_implements_generate_campaign_content() -> None:
+    """ACS-GUI-008: ``generate_campaign_content`` is the third js_api
+    method. The signature is the SAME one-positional-dict shape as
+    the previous two — the JS caller does not need to know the
+    difference between campaign-create and content-generate, only
+    the method name.
+    """
+    from ai_campaign_studio.presentation_webview.bridge import CampaignBridgeApi
+
+    method = getattr(CampaignBridgeApi, "generate_campaign_content", None)
+    assert method is not None, "bridge must expose generate_campaign_content"
     import inspect
     sig = inspect.signature(method)
     assert list(sig.parameters) == ["self", "raw_payload"]

@@ -82,6 +82,19 @@ class StudioSadrzajaFixture:
     compliance_checks: list[str]
     sacuvaj_nacrt_toast: str
     posalji_reviziju_toast: str
+    # ACS-GUI-008: campaign_id is the bridge input for
+    # ``generate_campaign_content``. When ``?campaign=<id>`` is in the
+    # URL, the rendered body shows the real "Generiši sadržaj" button
+    # wired to the bridge; when it is missing, the button stays hidden
+    # (the legacy "fixture-only" preview path).
+    campaign_id: str | None = None
+    # ACS-GUI-008 (review feedback): the JS handler also needs
+    # ``plan_id`` (forwarded by ``create_campaign_and_generate_plan``).
+    # When BOTH ids are present, the button carries both as data
+    # attributes and the bridge call carries both. When EITHER is
+    # missing, the live button is hidden and only the legacy toast
+    # stub remains — the bridge contract requires plan_id.
+    plan_id: str | None = None
 
 
 DEFAULT_FIXTURE = StudioSadrzajaFixture(
@@ -166,6 +179,27 @@ def _edit_card(fx: StudioSadrzajaFixture) -> str:
         f"{html.escape(label)}</button>"
         for label, action in QUICK_ACTIONS
     )
+    # ACS-GUI-008 fix-brief-2 BF-1: the live "Generiši sadržaj" button
+    # and the ``data-generate-result`` callout are ALWAYS emitted in
+    # the static HTML, even when ``campaign_id``/``plan_id`` are
+    # unknown at build time. The ``app.js`` boot IIFE (which reads
+    # ``?campaign=`` and ``?plan=`` from ``location.search``) fills in
+    # the data attributes and reveals the button at RUNTIME. Without
+    # this, the BUILD-TIME SSR can never carry the live control — the
+    # ids are RUNTIME concepts (they are produced by
+    # ``create_campaign_and_generate_plan`` and forwarded via the
+    # URL). The button is ``hidden`` by default so the fixture-only
+    # preview path is preserved when no campaign/plan URL is supplied.
+    generate_button = (
+        '<button class="btn primary" data-action="generate-content" '
+        f'data-campaign-id="{html.escape(fx.campaign_id or "")}" '
+        f'data-plan-id="{html.escape(fx.plan_id or "")}" hidden>'
+        "Generiši sadržaj"
+        "</button>"
+    )
+    result_node = (
+        '<div class="callout" data-generate-result hidden></div>'
+    )
     return (
         '<div class="card">'
         "<h3>Uredi sadržaj</h3>"
@@ -191,9 +225,11 @@ def _edit_card(fx: StudioSadrzajaFixture) -> str:
         f'data-message="{html.escape(fx.posalji_reviziju_toast)}">'
         "Pošalji na reviziju"
         "</button>"
+        f"{generate_button}"
         '<a class="btn primary" href="../pregled_izvoz/index.html">'
         "Pregled i izvoz →</a>"
         "</div>"
+        f"{result_node}"
         "</div>"
     )
 

@@ -258,3 +258,167 @@ def test_render_body_emits_no_remote_assets() -> None:
         "unpkg.com",
     ):
         assert forbidden not in body
+
+
+# --- ACS-GUI-008: campaign-aware body rendering ----------------------------
+#
+# The bridge drives ``generate_campaign_content`` from this screen.
+# The SSR side has to (a) render a real "Generiši sadržaj" button
+# with a ``data-campaign-id`` attribute when a campaign is open and
+# (b) emit a ``data-generate-result`` callout that the JS handler
+# fills after the click. The default fixture (no campaign) keeps
+# the legacy toast-only button so offline rendering is unchanged.
+
+
+def test_render_body_with_campaign_id_emits_generate_content_button() -> None:
+    """When a real campaign is open, the body must contain the
+    live ``data-action="generate-content"`` button with the
+    campaign id attached — and a ``data-generate-result`` element
+    the JS handler can fill with the bridge result.
+    """
+    fx = StudioSadrzajaFixture(
+        campaign_name="Ljetna kampanja",
+        badge_variant="ok",
+        badge_label="Generisano",
+        item_index=1,
+        item_total=3,
+        role="PROBLEM",
+        platform="Instagram",
+        format="Feed 4:5",
+        planned_date="1. juli",
+        status_variant="ok",
+        status_label="Spremno",
+        hook="Test hook",
+        hook_char_count=9,
+        hook_char_limit=90,
+        body_text="Body",
+        cta="CTA",
+        preview_label="Pregled",
+        facts=[ApprovedFact("F-1", "Fact text")],
+        compliance_checks=["Check"],
+        sacuvaj_nacrt_toast="t1",
+        posalji_reviziju_toast="t2",
+        campaign_id="cmp-real-id",
+        plan_id="plan-real-id",
+    )
+    body = render_body(fx)
+    assert 'data-action="generate-content"' in body
+    assert 'data-campaign-id="cmp-real-id"' in body
+    # ACS-GUI-008 (review feedback): plan_id is REQUIRED for the live
+    # button — the bridge refuses to do raw SQL to look it up.
+    assert 'data-plan-id="plan-real-id"' in body
+    # The result callout must be emitted (hidden by default) so the
+    # JS handler does not have to querySelector for a missing node.
+    assert "data-generate-result" in body
+
+
+def test_render_body_default_fixture_emits_hidden_live_button() -> None:
+    """ACS-GUI-008 fix-brief-2 BF-1: even without a campaign_id, the
+    static HTML carries the live "Generiši sadržaj" button so the
+    ``app.js`` boot IIFE can wire it at RUNTIME when ``?campaign=``
+    and ``?plan=`` are present in the URL. The button is ``hidden``
+    by default; the result callout is emitted (also hidden) so the
+    JS handler does not have to querySelector for a missing node.
+
+    The legacy "Nema otvorene kampanje" toast stub is GONE — it was
+    a build-time-only fallback that could never have worked in
+    production (the static HTML never sees the runtime ids).
+    """
+    body = render_body()  # DEFAULT_FIXTURE has campaign_id=None
+    assert 'data-action="generate-content"' in body
+    # Both ids are present as empty placeholders (so the JS can
+    # populate them when the URL carries the runtime values).
+    assert 'data-campaign-id=""' in body
+    assert 'data-plan-id=""' in body
+    # The button is hidden in the no-campaign case.
+    assert 'data-action="generate-content"' in body
+    assert body.count('hidden>Generi') >= 1
+    # The result callout is always emitted (also hidden) so the JS
+    # handler has a stable querySelector target.
+    assert "data-generate-result" in body
+    # The legacy "no campaign" toast stub is gone.
+    assert "Nema otvorene kampanje" not in body
+
+
+def test_render_body_with_only_plan_id_emits_button_with_empty_campaign_id() -> None:
+    """ACS-GUI-008 fix-brief-2 BF-1: the live button is ALWAYS emitted
+    in the static HTML, but it stays ``hidden`` until BOTH
+    ``campaign_id`` AND ``plan_id`` are known. The
+    ``app.js`` boot IIFE is responsible for revealing it (and
+    populating the data attributes) when the URL carries both.
+    """
+    fx = StudioSadrzajaFixture(
+        campaign_name="X",
+        badge_variant="ok",
+        badge_label="X",
+        item_index=1,
+        item_total=1,
+        role="PROBLEM",
+        platform="X",
+        format="X",
+        planned_date="X",
+        status_variant="ok",
+        status_label="X",
+        hook="X",
+        hook_char_count=1,
+        hook_char_limit=1,
+        body_text="X",
+        cta="X",
+        preview_label="X",
+        facts=[],
+        compliance_checks=[],
+        sacuvaj_nacrt_toast="X",
+        posalji_reviziju_toast="X",
+        campaign_id=None,
+        plan_id="plan-only",
+    )
+    body = render_body(fx)
+    # The button is emitted (the JS IIFE can show it when the URL
+    # carries the missing campaign id), but stays ``hidden`` because
+    # the bridge requires both.
+    assert 'data-action="generate-content"' in body
+    assert 'data-campaign-id=""' in body
+    # The plan_id is interpolated verbatim — the JS IIFE will leave
+    # it alone (it overwrites only when the URL has both values).
+    assert 'data-plan-id="plan-only"' in body
+    # The button carries the ``hidden`` attribute (no live button
+    # without both ids).
+    assert 'data-action="generate-content" data-campaign-id=""' in body
+    # The result callout is always emitted.
+    assert "data-generate-result" in body
+
+
+def test_render_body_generate_content_button_escapes_campaign_id() -> None:
+    """XSS guard: the campaign_id is interpolated as an HTML
+    attribute, so it MUST be ``html.escape``d. The previous tests
+    passed a benign id; this one passes one with characters that
+    would break the DOM if un-escaped."""
+    nasty_id = '"><script>x</script>'
+    fx = StudioSadrzajaFixture(
+        campaign_name="X",
+        badge_variant="ok",
+        badge_label="X",
+        item_index=1,
+        item_total=1,
+        role="PROBLEM",
+        platform="X",
+        format="X",
+        planned_date="X",
+        status_variant="ok",
+        status_label="X",
+        hook="X",
+        hook_char_count=1,
+        hook_char_limit=1,
+        body_text="X",
+        cta="X",
+        preview_label="X",
+        facts=[],
+        compliance_checks=[],
+        sacuvaj_nacrt_toast="X",
+        posalji_reviziju_toast="X",
+        campaign_id=nasty_id,
+    )
+    body = render_body(fx)
+    assert "<script>" not in body
+    # The attribute should be escaped, never un-escaped.
+    assert 'data-campaign-id="' + nasty_id + '"' not in body

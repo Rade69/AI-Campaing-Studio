@@ -220,3 +220,79 @@ def test_write_all_pages_screens_carry_real_content(tmp_path: Path) -> None:
         assert content_needle in html, (
             f"{key} page missing real content: {content_needle!r}"
         )
+
+
+def test_write_all_pages_studio_sadrzaja_carries_live_generate_button(
+    tmp_path: Path,
+) -> None:
+    """ACS-GUI-008 fix-brief-2 BF-1: the BUILD-TIME static HTML for
+    Studio sadržaja (the file the real pywebview app actually loads)
+    MUST carry the live "Generiši sadržaj" button + the
+    ``data-generate-result`` callout -- even though the
+    ``campaign_id``/``plan_id`` are unknown at build time and only
+    come from the RUNTIME URL.
+
+    Before the fix, the button was emitted conditionally
+    (``fx.campaign_id and fx.plan_id``) -- since ``write_all_pages``
+    never threads a fixture with ids, the production HTML never had
+    the button, the JS IIFE could not wire it, and the user was
+    stuck on a "Nema otvorene kampanje" toast forever.
+
+    After the fix, the static HTML always emits:
+    - the button with empty placeholder data attributes + ``hidden``
+    - the result callout (also ``hidden``)
+
+    The ``app.js`` boot IIFE (which reads ``?campaign=`` AND
+    ``?plan=`` from ``location.search``) is responsible for
+    populating the data attributes and revealing the button at
+    runtime -- which this test confirms is wired (see
+    ``test_app_js_iife_wires_studio_generate_button`` below).
+    """
+    pages = write_all_pages(tmp_path)
+    studio_html = pages["studio_sadrzaja"].read_text(encoding="utf-8")
+
+    # The live button is emitted with placeholder (empty) ids and
+    # starts ``hidden`` -- the JS IIFE is the only thing that reveals it.
+    assert 'data-action="generate-content"' in studio_html
+    assert 'data-campaign-id=""' in studio_html
+    assert 'data-plan-id=""' in studio_html
+    # The button is hidden in the static HTML (no campaign yet).
+    assert 'data-action="generate-content"' in studio_html
+    # The result callout is always emitted (hidden) so the JS
+    # handler has a stable querySelector target.
+    assert "data-generate-result" in studio_html
+    # The legacy "no campaign" toast stub is GONE -- it was the
+    # build-time-only fallback that could never have worked in
+    # production (the static HTML never sees the runtime ids).
+    assert "Nema otvorene kampanje" not in studio_html
+
+
+def test_app_js_iife_wires_studio_generate_button_when_both_ids_in_url(
+    tmp_path: Path,
+) -> None:
+    """ACS-GUI-008 fix-brief-2 BF-1: the ``app.js`` boot IIFE must
+    populate the button's data attributes AND reveal it when BOTH
+    ``?campaign=`` and ``?plan=`` are present in the URL. Without
+    the campaign id alone, the button stays hidden (the bridge
+    contract requires both). This is the runtime side of BF-1; the
+    SSR side is ``test_write_all_pages_studio_sadrzaja_carries_live_generate_button``.
+    """
+    from ai_campaign_studio.presentation_webview.screens import write_all_pages
+
+    pages = write_all_pages(tmp_path)
+    studio_html = pages["studio_sadrzaja"].read_text(encoding="utf-8")
+    app_js = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "src" / "ai_campaign_studio" / "presentation_webview" / "static"
+        / "app.js"
+    )
+    js_text = app_js.read_text(encoding="utf-8")
+    # The IIFE checks for BOTH ?campaign= AND ?plan= before revealing
+    # the button. This guards against showing a half-wired button
+    # that would surface a "Nedostaje plan_id" toast on every click.
+    assert "URLSearchParams" in js_text
+    assert "'plan'" in js_text
+    assert "btn.hidden=false" in js_text
+    # The button is the only ``[data-action="generate-content"]`` in
+    # the static HTML.
+    assert studio_html.count('data-action="generate-content"') == 1
