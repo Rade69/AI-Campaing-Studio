@@ -53,6 +53,15 @@ from ai_campaign_studio.application.performance.build_performance_summaries impo
     build_campaign_performance_summary,
     build_content_performance_summary,
 )
+from ai_campaign_studio.application.performance.confirm_performance_import import (
+    ConfirmPerformanceImport,
+)
+from ai_campaign_studio.application.performance.match_performance_import_batch import (
+    MatchPerformanceImportBatch,
+)
+from ai_campaign_studio.application.performance.preview_performance_mapping import (
+    PreviewPerformanceMapping,
+)
 from ai_campaign_studio.application.posts.generate_social_post import (
     GenerateSocialPost,
 )
@@ -111,6 +120,7 @@ from ai_campaign_studio.presentation.ui_models import (
     CampaignPerformanceResultUiModel,
     CampaignPlanResultUiModel,
     CampaignSummaryUiModel,
+    ConfirmPerformanceImportResultUiModel,
     ContentPerformanceResultUiModel,
     ContentPerformanceRowUiModel,
     DashboardOverviewResultUiModel,
@@ -119,6 +129,9 @@ from ai_campaign_studio.presentation.ui_models import (
     ExportCampaignResultUiModel,
     GenerateContentResultUiModel,
     ListCampaignsResultUiModel,
+    PerformanceCsvColumnUiModel,
+    PerformanceCsvInvalidSampleUiModel,
+    PerformanceCsvPreviewResultUiModel,
     ProviderConfigResultUiModel,
     RawMetricSetUiModel,
 )
@@ -179,6 +192,8 @@ _LIFECYCLE_ERROR_MAPPERS: dict[str, str] = {
     "get_dashboard_overview": "_dashboard_err",
     "get_campaign_performance": "_performance_err",
     "get_campaign_content_performance": "_content_performance_err",
+    "pick_and_preview_performance_csv": "_preview_err",
+    "confirm_performance_import": "_confirm_err",
 }
 # Per-method fallback message used ONLY when the resource-lifecycle
 # fails (we never want to surface the underlying exception text;
@@ -199,6 +214,11 @@ _LIFECYCLE_ERROR_MESSAGES: dict[str, str] = {
         "Učitavanje učinka po objavi nije uspjelo "
         "(interna greška)."
     ),
+    "pick_and_preview_performance_csv": (
+        "Učitavanje CSV pregleda nije uspjelo "
+        "(interna greška)."
+    ),
+    "confirm_performance_import": "Uvoz performansi nije uspio (interna greška).",
 }
 
 
@@ -1672,6 +1692,179 @@ class CampaignBridgeApi:
                 "Učitavanje učinka po objavi nije uspjelo (interna greška).",
             )
 
+    @_with_call_resources
+    def pick_and_preview_performance_csv(
+        self, raw_payload: dict | None = None
+    ) -> dict:
+        """Open a native file dialog and preview ONE CSV performance file
+        (ACS-F1-055).
+
+        First WRITE-path performance js_api method. Opens the OS file picker
+        through ``webview.windows[0].create_file_dialog`` (single-window app),
+        then runs the existing G3 ``PreviewPerformanceMapping`` use-case on the
+        chosen file — persisting NOTHING. A cancelled dialog is a NORMAL
+        outcome (``ok=True, cancelled=True``), not an error. A chosen file
+        that fails to parse maps to ``VALIDATION_ERROR`` without leaking the
+        exception text. ``file_path`` is returned deliberately (the confirm
+        step re-references it without reopening the dialog); it is a path,
+        not a secret. ``webview`` is imported locally so the bridge module
+        stays importable in environments without pywebview (same pattern as
+        ``presentation_webview/__main__.py``).
+        """
+        del raw_payload
+        try:
+            import webview  # type: ignore[import-not-found,import-untyped]
+        except ImportError:
+            return self._preview_err(
+                _ERROR_INTERNAL,
+                "GUI okruženje nije dostupno (interna greška).",
+            )
+        if not getattr(webview, "windows", None):
+            return self._preview_err(
+                _ERROR_INTERNAL,
+                "Nema aktivnog prozora (interna greška).",
+            )
+        try:
+            paths = webview.windows[0].create_file_dialog(
+                webview.OPEN_DIALOG,
+                file_types=("CSV Files (*.csv)", "All files (*.*)"),
+            )
+        except Exception as exc:
+            self._bootstrap.logger.error(
+                "create_file_dialog failed (%s)", type(exc).__name__
+            )
+            return self._preview_err(
+                _ERROR_INTERNAL,
+                "Otvaranje dijaloga nije uspjelo (interna greška).",
+            )
+        if not paths:
+            return asdict(
+                PerformanceCsvPreviewResultUiModel(
+                    ok=True,
+                    cancelled=True,
+                    file_path=None,
+                    columns=(),
+                    total_rows=0,
+                    valid_rows=0,
+                    invalid_rows=0,
+                    invalid_samples=(),
+                    error_code=None,
+                    error_message=None,
+                )
+            )
+        file_path = paths[0]
+        try:
+            preview = PreviewPerformanceMapping().execute(file_path)
+        except Exception as exc:
+            self._bootstrap.logger.error(
+                "preview csv failed (%s)", type(exc).__name__
+            )
+            return self._preview_err(
+                _ERROR_VALIDATION,
+                "Fajl nije moguće učitati kao CSV. Provjeri format i pokušaj ponovo.",
+            )
+        return asdict(
+            PerformanceCsvPreviewResultUiModel(
+                ok=True,
+                cancelled=False,
+                file_path=file_path,
+                columns=tuple(
+                    PerformanceCsvColumnUiModel(
+                        canonical_field=c.canonical_field,
+                        header=c.header,
+                        status=c.status,
+                        candidates=c.candidates,
+                    )
+                    for c in preview.columns
+                ),
+                total_rows=preview.total_rows,
+                valid_rows=preview.valid_rows,
+                invalid_rows=preview.invalid_rows,
+                invalid_samples=tuple(
+                    PerformanceCsvInvalidSampleUiModel(
+                        row_number=s.row_number,
+                        errors=s.errors,
+                    )
+                    for s in preview.invalid_samples
+                ),
+                error_code=None,
+                error_message=None,
+            )
+        )
+
+    @_with_call_resources
+    def confirm_performance_import(self, raw_payload: dict) -> dict:
+        """Persist + match a previously previewed CSV import (ACS-F1-055).
+
+        Second WRITE-path performance js_api method. Re-runs the existing
+        G3 ``ConfirmPerformanceImport`` (with ``column_overrides=None`` — no
+        interactive remapping in v1) then the G4
+        ``MatchPerformanceImportBatch`` for the given campaign, returning both
+        the batch counts and the match counters. Unknown campaign ->
+        ``VALIDATION_ERROR``. Never leaks secret/path/exception text (the
+        ``file_path`` is an INPUT, not part of the response).
+        """
+        if not isinstance(raw_payload, dict):
+            return self._confirm_err(
+                _ERROR_VALIDATION, "Pošiljka iz GUI-ja nije objekat."
+            )
+        file_path_raw = raw_payload.get("file_path")
+        campaign_id_raw = raw_payload.get("campaign_id")
+        platform_code = raw_payload.get("platform_code")
+        if not isinstance(file_path_raw, str) or not file_path_raw.strip():
+            return self._confirm_err(
+                _ERROR_VALIDATION, "file_path je obavezan (string)."
+            )
+        if not isinstance(campaign_id_raw, str) or not campaign_id_raw.strip():
+            return self._confirm_err(
+                _ERROR_VALIDATION, "campaign_id je obavezan (string)."
+            )
+        if platform_code is not None and not isinstance(platform_code, str):
+            return self._confirm_err(
+                _ERROR_VALIDATION,
+                "platform_code mora biti string ili izostavljen.",
+            )
+        campaign_id = CampaignId(campaign_id_raw.strip())
+        normalized_platform = (
+            platform_code.strip()
+            if isinstance(platform_code, str) and platform_code.strip()
+            else None
+        )
+        try:
+            if self._campaign_repo.get_campaign(campaign_id) is None:
+                return self._confirm_err(
+                    _ERROR_VALIDATION, f"Kampanja {campaign_id} ne postoji."
+                )
+            batch = ConfirmPerformanceImport(self._performance_repo).execute(
+                file_path_raw.strip(),
+                column_overrides=None,
+                platform_code=normalized_platform,
+            )
+            match_result = MatchPerformanceImportBatch(
+                self._performance_repo
+            ).execute(batch.id, campaign_id)
+            return asdict(
+                ConfirmPerformanceImportResultUiModel(
+                    ok=True,
+                    batch_id=str(batch.id),
+                    row_count=batch.row_count,
+                    valid_count=batch.matched_count,
+                    invalid_count=batch.unmatched_count,
+                    matched_count=match_result.matched_count,
+                    ambiguous_count=match_result.ambiguous_count,
+                    unmatched_count=match_result.unmatched_count,
+                    skipped_count=match_result.skipped_count,
+                    error_code=None,
+                    error_message=None,
+                )
+            )
+        except Exception:
+            self._bootstrap.logger.exception("confirm_performance_import failed")
+            return self._confirm_err(
+                _ERROR_INTERNAL,
+                "Uvoz performansi nije uspio (interna greška).",
+            )
+
     # --- per-call SQLite resources ---
 
     @contextmanager
@@ -2171,6 +2364,54 @@ class CampaignBridgeApi:
             ContentPerformanceResultUiModel(
                 ok=False,
                 rows=(),
+                error_code=code,
+                error_message=message,
+            )
+        )
+
+    @staticmethod
+    def _preview_err(code: str, message: str) -> dict:
+        """Error result for ``pick_and_preview_performance_csv`` only.
+
+        Uses ``PerformanceCsvPreviewResultUiModel`` so the return dict has
+        the EXACT shape the JS caller expects: ``{ok, cancelled, file_path,
+        columns, total_rows, valid_rows, invalid_rows, invalid_samples,
+        error_code, error_message}`` with empty preview fields.
+        """
+        return asdict(
+            PerformanceCsvPreviewResultUiModel(
+                ok=False,
+                cancelled=False,
+                file_path=None,
+                columns=(),
+                total_rows=0,
+                valid_rows=0,
+                invalid_rows=0,
+                invalid_samples=(),
+                error_code=code,
+                error_message=message,
+            )
+        )
+
+    @staticmethod
+    def _confirm_err(code: str, message: str) -> dict:
+        """Error result for ``confirm_performance_import`` only.
+
+        Uses ``ConfirmPerformanceImportResultUiModel`` so the return dict has
+        the EXACT shape the JS caller expects, with all counts 0 — no other
+        method's DTO keys leak through.
+        """
+        return asdict(
+            ConfirmPerformanceImportResultUiModel(
+                ok=False,
+                batch_id=None,
+                row_count=0,
+                valid_count=0,
+                invalid_count=0,
+                matched_count=0,
+                ambiguous_count=0,
+                unmatched_count=0,
+                skipped_count=0,
                 error_code=code,
                 error_message=message,
             )

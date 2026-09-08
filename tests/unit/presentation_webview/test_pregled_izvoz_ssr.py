@@ -615,3 +615,201 @@ function foreignContext(withApi){
         "foreignApiCalls": 0,
         "foreignUntouched": True,
     }
+
+
+def test_render_body_emits_import_performance_markers() -> None:
+    """ACS-F1-055: the SSR emits the import button + confirm button + the
+    persistent result callout (hidden by default), same pattern as the
+    export/generate result callouts."""
+    body = render_body()
+    assert 'data-action="import-performance-csv"' in body
+    assert "Uvezi CSV" in body
+    assert 'data-action="confirm-performance-import"' in body
+    assert "Potvrdi uvoz" in body
+    assert '<div class="callout" data-perf-import-result hidden></div>' in body
+
+
+def test_app_js_import_performance_csv_xss_and_cross_screen_isolation() -> None:
+    """Execute the committed app.js against a tiny DOM double.
+
+    ACS-F1-055: the import flow is CLICK-triggered (no pywebviewready
+    lifecycle), so this test proves the two things that DO apply here:
+    (1) every CSV-originated string (header names, candidates, invalid-row
+    errors) is HTML-escaped before entering the result callout, and (2) the
+    buttons/result are screen-specific — a foreign screen with a plain
+    ``[data-action]`` button never calls the performance bridge.
+    """
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is unavailable; executable app.js regression skipped")
+
+    app_js_path = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "src" / "ai_campaign_studio" / "presentation_webview" / "static"
+        / "app.js"
+    )
+    harness = r"""
+const fs=require('fs'),vm=require('vm');
+const src=fs.readFileSync(process.argv[1],'utf8');
+function el(initial){
+  return {
+    _text:initial, _html:initial, _hidden:false, _disabled:false,
+    _id:'', style:{}, listeners:{}, dataset:{},
+    addEventListener(n,f){ (this.listeners[n]??=[]).push(f); },
+    set textContent(v){this._text=v;}, get textContent(){return this._text;},
+    set innerHTML(v){this._html=v;}, get innerHTML(){return this._html;},
+    set hidden(v){this._hidden=v;}, get hidden(){return this._hidden;},
+    set disabled(v){this._disabled=v;}, get disabled(){return this._disabled;},
+    set id(v){this._id=v;}, get id(){return this._id;},
+  };
+}
+function baseWindow(){
+  const listeners={};
+  function addEventListener(n,f,opts){
+    (listeners[n]??=[]).push({fn:f, once:!!(opts&&opts.once)});
+  }
+  return {listeners, window:{addEventListener}};
+}
+function baseDocument(actions){
+  const document={
+    querySelectorAll:function(s){
+      if(s==='[data-action]') return actions;
+      return [];
+    },
+    querySelector:function(s){ return null; },
+    getElementById:function(){ return null; },
+    createElement:function(){ return el(''); },
+    body:{ appendChild:function(){} },
+  };
+  return document;
+}
+function importContext(withApi){
+  const {window}=baseWindow();
+  const state={previewCalls:0, confirmCalls:0};
+  const importBtn=el('Uvezi CSV');
+  importBtn.dataset={action:'import-performance-csv'};
+  const confirmBtn=el('Potvrdi uvoz');
+  confirmBtn.dataset={action:'confirm-performance-import'};
+  confirmBtn.hidden=true;
+  const resultNode=el(''); resultNode.hidden=true;
+  const document=baseDocument([importBtn, confirmBtn]);
+  document.querySelector=function(s){
+    if(s==='[data-action="confirm-performance-import"]') return confirmBtn;
+    if(s==='[data-perf-import-result]') return resultNode;
+    return null;
+  };
+  const installApi=()=>{window.pywebview={api:{
+    pick_and_preview_performance_csv: async function(){
+      state.previewCalls+=1;
+      return {ok:true, cancelled:false, file_path:'/tmp/x.csv',
+        total_rows:2, valid_rows:1, invalid_rows:1,
+        columns:[
+          {canonical_field:'reach', header:'<script>x</script>',
+           status:'matched', candidates:['<script>x</script>']},
+        ],
+        invalid_samples:[
+          {row_number:2, errors:['<img src=x onerror=alert(1)> bad']},
+        ]};
+    },
+    confirm_performance_import: async function(payload){
+      state.confirmCalls+=1;
+      state.lastPayload=payload;
+      return {ok:true, batch_id:'b-1', row_count:2, valid_count:2, invalid_count:0,
+        matched_count:1, ambiguous_count:0, unmatched_count:1, skipped_count:0};
+    },
+  }};};
+  if(withApi) installApi();
+  const context={window, document, location:{search:'?campaign=c-1'}, URLSearchParams,
+    setInterval(){return 1;}, clearInterval(){}, setTimeout, clearTimeout, console};
+  vm.createContext(context);
+  return {context, importBtn, confirmBtn, resultNode, state};
+}
+function foreignContext(withApi){
+  const {window}=baseWindow();
+  const state={apiCalls:0};
+  const toastBtn=el('Toast'); toastBtn.dataset={action:'toast', message:'hi'};
+  const h3=el('FOREIGN H3');
+  const document=baseDocument([toastBtn]);
+  document.querySelector=function(s){
+    if(s==='h3') return h3;
+    return null;
+  };
+  const installApi=()=>{window.pywebview={api:{
+    pick_and_preview_performance_csv: async function(){
+      state.apiCalls+=1; return {ok:true,cancelled:true}; },
+    confirm_performance_import: async function(){
+      state.apiCalls+=1; return {ok:true}; },
+  }};};
+  if(withApi) installApi();
+  const context={window, document, location:{search:''}, URLSearchParams,
+    setInterval(){return 1;}, clearInterval(){}, setTimeout, clearTimeout, console};
+  vm.createContext(context);
+  return {context, toastBtn, h3, state};
+}
+(async()=>{
+  const ctx=importContext(true);
+  vm.runInContext(src, ctx.context);
+  // Click "Uvezi CSV" -> preview rendered + confirm button revealed.
+  ctx.importBtn.listeners['click'][0]();
+  await new Promise(r=>setTimeout(r,0));
+  await new Promise(r=>setTimeout(r,0));
+  const previewHtml=ctx.resultNode.innerHTML;
+  const confirmRevealed=ctx.confirmBtn.hidden===false;
+  // Click "Potvrdi uvoz" -> confirm summary rendered.
+  ctx.confirmBtn.listeners['click'][0]();
+  await new Promise(r=>setTimeout(r,0));
+  await new Promise(r=>setTimeout(r,0));
+  const confirmHtml=ctx.resultNode.innerHTML;
+
+  const foreign=foreignContext(true);
+  vm.runInContext(src, foreign.context);
+  foreign.toastBtn.listeners['click'][0]();
+  await new Promise(r=>setTimeout(r,0));
+
+  console.log(JSON.stringify({
+    previewShown: ctx.resultNode.hidden===false,
+    confirmRevealed,
+    previewEscaped: previewHtml.indexOf('&lt;script&gt;')!==-1 &&
+      previewHtml.indexOf('<script>')===-1 &&
+      previewHtml.indexOf('<img')===-1,
+    previewHasStatus: previewHtml.indexOf('reach')!==-1,
+    confirmOk: confirmHtml.indexOf('Uvezeno: 2 redova')!==-1,
+    confirmCampaignId: ctx.state.lastPayload &&
+      ctx.state.lastPayload.campaign_id==='c-1',
+    confirmUsesPendingFile: ctx.state.lastPayload &&
+      ctx.state.lastPayload.file_path==='/tmp/x.csv',
+    previewCalls: ctx.state.previewCalls,
+    confirmCalls: ctx.state.confirmCalls,
+    foreignApiCalls: foreign.state.apiCalls,
+    foreignUntouched: foreign.h3.textContent==='FOREIGN H3' &&
+      foreign.h3.innerHTML==='FOREIGN H3',
+  }));
+})().catch(e=>{console.error(e);process.exitCode=1;});
+"""
+    completed = subprocess.run(
+        [node, "-e", harness, str(app_js_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    result = json.loads(completed.stdout)
+    assert result == {
+        "previewShown": True,
+        "confirmRevealed": True,
+        "previewEscaped": True,
+        "previewHasStatus": True,
+        "confirmOk": True,
+        "confirmCampaignId": True,
+        "confirmUsesPendingFile": True,
+        "previewCalls": 1,
+        "confirmCalls": 1,
+        "foreignApiCalls": 0,
+        "foreignUntouched": True,
+    }

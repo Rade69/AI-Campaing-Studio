@@ -15,11 +15,13 @@ from ai_campaign_studio.presentation.ui_models import (
     BrandOverviewResultUiModel,
     CampaignPerformanceResultUiModel,
     CampaignPlanResultUiModel,
+    ConfirmPerformanceImportResultUiModel,
     ContentPerformanceResultUiModel,
     DashboardOverviewResultUiModel,
     ExportCampaignResultUiModel,
     GenerateContentResultUiModel,
     ListCampaignsResultUiModel,
+    PerformanceCsvPreviewResultUiModel,
     ProviderConfigResultUiModel,
     ProviderStatusUiModel,
 )
@@ -89,3 +91,11 @@ class PresentationFacade(Protocol):
     def get_campaign_content_performance(
         self, raw_payload: dict[str, Any]
     ) -> ContentPerformanceResultUiModel: ...
+
+    def pick_and_preview_performance_csv(
+        self, raw_payload: dict[str, Any] | None = None
+    ) -> PerformanceCsvPreviewResultUiModel: ...
+
+    def confirm_performance_import(
+        self, raw_payload: dict[str, Any]
+    ) -> ConfirmPerformanceImportResultUiModel: ...

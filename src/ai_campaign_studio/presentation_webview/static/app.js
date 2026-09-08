@@ -64,6 +64,16 @@ let appPlanId = null;
       // enabled only after the approve-gate click above.
       exportCampaign(el);
     }
+    if(action==='import-performance-csv') {
+      // ACS-F1-055: "Uvezi CSV" opens the native OS file dialog and
+      // shows the read-only mapping preview.
+      importPerformanceCsv(el);
+    }
+    if(action==='confirm-performance-import') {
+      // ACS-F1-055: "Potvrdi uvoz" persists + matches the file chosen
+      // in the previous step (no second dialog).
+      confirmPerformanceImport(el);
+    }
   }));
   // Language picker (Podešavanja → Jezik). Each row is a button with
   // ``data-action="lang-pick"`` and ``data-lang="<code>"``. Clicking
@@ -589,6 +599,148 @@ async function exportCampaign(button) {
       resultNode.hidden = false;
     }
   }
+}
+
+// --- ACS-F1-055: Import Performance CSV (write path) ---
+//
+// "Uvezi CSV" opens the NATIVE OS file dialog via
+// ``pick_and_preview_performance_csv``, then renders a READ-ONLY mapping
+// preview (per-field status + counts + invalid samples) into the persistent
+// ``data-perf-import-result`` callout. "Potvrdi uvoz" then calls
+// ``confirm_performance_import`` with the ``file_path`` held in a LOCAL
+// variable (``_pendingImportFile``) — the dialog is NOT reopened. The
+// ``campaign_id`` is reused from the shared ``appCampaignId`` (boot IIFE).
+// Every string that originates in the CSV file (header names, candidates,
+// invalid-row errors) goes through ``escapeImportHtml`` — the CSV is a
+// user file, same XSS surface as AI-generated text.
+let _pendingImportFile = null;
+
+function escapeImportHtml(value){
+  return String(value).replace(/[&<>"']/g, function(ch){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+  });
+}
+
+function writeImportResult(html){
+  const node=document.querySelector('[data-perf-import-result]');
+  if(!node) return;
+  node.innerHTML=html;
+  node.hidden=false;
+}
+
+function renderImportPreview(preview){
+  const columns=preview.columns||[];
+  const colRows=columns.map(function(c){
+    const candidates=(c.candidates||[]).map(escapeImportHtml).join(', ');
+    const header=c.header?escapeImportHtml(c.header):'—';
+    return '<tr><td>'+escapeImportHtml(c.canonical_field)+'</td>'+
+      '<td>'+header+'</td>'+
+      '<td>'+escapeImportHtml(c.status)+'</td>'+
+      '<td>'+candidates+'</td></tr>';
+  }).join('');
+  const samples=(preview.invalid_samples||[]).map(function(s){
+    return '<div class="small muted">Red '+escapeImportHtml(String(s.row_number))+
+      ': '+escapeImportHtml((s.errors||[]).join('; '))+'</div>';
+  }).join('');
+  const colsTable=colRows
+    ? '<table><thead><tr><th>Polje</th><th>Header</th><th>Status</th><th>Kandidati</th></tr></thead><tbody>'+colRows+'</tbody></table>'
+    : '';
+  const samplesBlock=samples
+    ? '<p class="small muted">Nevalidni uzorci:</p>'+samples
+    : '';
+  const hint=(preview.invalid_rows>0)
+    ? '<p class="small muted">Ako vidiš ambiguous/unmatched polja, ispravi CSV header i ponovo izaberi fajl.</p>'
+    : '';
+  const html='<p class="small muted">Pregled: '+escapeImportHtml(String(preview.total_rows))+
+    ' redova, '+escapeImportHtml(String(preview.valid_rows))+' validno, '+
+    escapeImportHtml(String(preview.invalid_rows))+' nevalidno.</p>'+
+    colsTable+samplesBlock+hint;
+  writeImportResult(html);
+}
+
+async function importPerformanceCsv(button){
+  if(button.disabled) return;
+  const api=window.pywebview&&window.pywebview.api;
+  if(!api||typeof api.pick_and_preview_performance_csv!=='function'){
+    showToast('Interna greška: bridge nije dostupan. Ponovo pokreni aplikaciju.');
+    return;
+  }
+  button.disabled=true;
+  const originalLabel=button.textContent;
+  button.textContent='Otvaram…';
+  let preview;
+  try{
+    preview=await api.pick_and_preview_performance_csv({});
+  }catch(err){
+    showToast('Interna greška pri pozivu: '+(err&&err.message?err.message:'nepoznato.'));
+    preview=null;
+  }finally{
+    button.disabled=false;
+    button.textContent=originalLabel;
+  }
+  if(!preview) return;
+  if(preview.cancelled) return; // user dismissed the dialog — nothing to do
+  if(preview.ok!==true){
+    const msg=(preview.error_message)||'Uvoz nije uspio.';
+    showToast(msg);
+    writeImportResult('Greška: '+escapeImportHtml(msg));
+    return;
+  }
+  _pendingImportFile=preview.file_path;
+  renderImportPreview(preview);
+  const confirmBtn=document.querySelector('[data-action="confirm-performance-import"]');
+  if(confirmBtn) confirmBtn.hidden=false;
+}
+
+async function confirmPerformanceImport(button){
+  if(button.disabled) return;
+  if(!_pendingImportFile){
+    showToast('Prvo izaberi CSV fajl.');
+    return;
+  }
+  const campaignId=appCampaignId;
+  if(!campaignId){
+    showToast('Nedostaje campaign_id. Ponovo pokreni tok kampanje.');
+    return;
+  }
+  const api=window.pywebview&&window.pywebview.api;
+  if(!api||typeof api.confirm_performance_import!=='function'){
+    showToast('Interna greška: bridge nije dostupan. Ponovo pokreni aplikaciju.');
+    return;
+  }
+  button.disabled=true;
+  const originalLabel=button.textContent;
+  button.textContent='Uvozim…';
+  let result;
+  try{
+    result=await api.confirm_performance_import({
+      file_path:_pendingImportFile,
+      campaign_id:campaignId,
+      platform_code:null,
+    });
+  }catch(err){
+    showToast('Interna greška pri pozivu: '+(err&&err.message?err.message:'nepoznato.'));
+    result=null;
+  }finally{
+    button.disabled=false;
+    button.textContent=originalLabel;
+  }
+  if(!result) return;
+  if(result.ok!==true){
+    const msg=(result.error_message)||'Uvoz nije uspio.';
+    showToast(msg);
+    writeImportResult('Greška: '+escapeImportHtml(msg));
+    return;
+  }
+  const msg='Uvezeno: '+result.row_count+' redova ('+result.valid_count+' validno, '+
+    result.invalid_count+' nevalidno). Poklopljeno: '+result.matched_count+
+    ', ambiguous: '+result.ambiguous_count+', nepoklopljeno: '+result.unmatched_count+
+    ', preskočeno: '+result.skipped_count+'.';
+  showToast(msg);
+  writeImportResult(msg);
+  _pendingImportFile=null;
+  const confirmBtn=document.querySelector('[data-action="confirm-performance-import"]');
+  if(confirmBtn) confirmBtn.hidden=true;
 }
 })();
 
