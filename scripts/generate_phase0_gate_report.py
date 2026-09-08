@@ -85,9 +85,32 @@ def _run_python(repo_root: Path, args: list[str]) -> tuple[bool, str]:
     is_secret_scan = (
         len(args) >= 1 and args[-1].endswith("check_no_secrets.py")
     )
-    env = os.environ.copy() if is_pytest else None
     if is_pytest:
+        # ACS-F1-052: run each nested pytest invocation in an isolated
+        # environment so it does not contend for filesystem resources
+        # (pytest cacheprovider, ``tmp_path`` base, ``TMPDIR``/``TEMP``/
+        # ``TMP``) with the outer pytest process that is running the
+        # gate-report end-to-end test. This eliminates the long-
+        # standing flake where the gate report intermittently failed
+        # under recursive pytest concurrency. The pytest *semantics*
+        # are unchanged: the same suite of tests is run; only the
+        # resource footprint is isolated. ``-p no:cacheprovider``
+        # disables the pytest cache (verified no test uses the
+        # ``cache`` fixture via ``tests/``). ``--basetemp`` redirects
+        # the ``tmp_path`` fixture to the same isolated temp dir.
+        isolated_tmp = Path(tempfile.mkdtemp(prefix="acs-gate-pytest-"))
+        env = os.environ.copy()
         env["ACS_GATE_REPORT_RUNNING"] = "1"
+        env["TMPDIR"] = str(isolated_tmp)
+        env["TEMP"] = str(isolated_tmp)
+        env["TMP"] = str(isolated_tmp)
+        args = [
+            *args,
+            "-p", "no:cacheprovider",
+            "--basetemp", str(isolated_tmp),
+        ]
+    else:
+        env = None
     try:
         completed = subprocess.run(
             [sys.executable, *args],
