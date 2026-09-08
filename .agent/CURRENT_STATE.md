@@ -3,7 +3,34 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-056
+**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-057
+otvoren -- stvaran gap otkriven PRIJE G8 koda, blokira G8.**
+[Task contract](../agent_reports/ACS-F1-057-task-contract.md).
+
+**Nalaz implementera (Pi), nezavisno potvrđen** — `MatchPerformanceImportBatch`
+matchuje CSV redove sa `DistributionInstance`-ima ali NIKAD ne kreira
+`PerformanceSnapshot`; G6 (`build_campaign_performance_summary`/
+`build_content_performance_summary`) čita ISKLJUČIVO preko
+`PerformanceSnapshot`. Poklopljen CSV red nikad ne postaje vidljiv
+derived-metric lancu. G7a/b su ISPRAVNO implementirani i pregledani —
+oni ispravno prikazuju `None` jer snapshot zaista ne postoji.
+
+Odlučeno **D1** (Pi je ponudio D1 vs D2 izbor, čekao odluku prije bilo
+kakvog koda): popuniti gap PRVO (ACS-F1-057, nov izolovan use-case
+`MaterializePerformanceSnapshots` + mala aditivna bridge izmjena), PA
+TEK ONDA nastaviti ACS-F1-056 (G8) KAKO JE ORIGINALNO kontraktovan —
+D2 (redefinisati G8 da preskoči dokazivanje derived metrika) odbačen
+jer bi proglasio Slice 1.5 gotovim bez ikad dokazanog da centralna
+funkcionalnost (brojevi iz stvarno uvezenih podataka) uopšte radi —
+isti obrazac greške koji je opravdao G7-prije-Slice-2 odluku ranije
+danas.
+
+**ACS-F1-056 (G8) kontrakt OSTAJE NEPROMIJENJEN, samo blokiran dok
+ACS-F1-057 ne prođe.**
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-056
 (P1.5-G8 — Integration acceptance) otvoren, POSLJEDNJI Slice 1.5
 gate.** [Task contract](../agent_reports/ACS-F1-056-task-contract.md).
 
