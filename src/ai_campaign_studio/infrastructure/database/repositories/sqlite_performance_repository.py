@@ -114,6 +114,26 @@ class SqlitePerformanceRepository:
         ).fetchall()
         return tuple(self._distribution_instance_from_row(row) for row in rows)
 
+    def list_distribution_instances_by_content_piece(
+        self, content_piece_id: PostId
+    ) -> tuple[DistributionInstance, ...]:
+        rows = self._connection.execute(
+            "SELECT * FROM distribution_instances WHERE content_piece_id = ?"
+            " ORDER BY id",
+            (content_piece_id,),
+        ).fetchall()
+        return tuple(self._distribution_instance_from_row(row) for row in rows)
+
+    def list_distribution_instances_by_platform(
+        self, platform_code: str
+    ) -> tuple[DistributionInstance, ...]:
+        rows = self._connection.execute(
+            "SELECT * FROM distribution_instances WHERE platform_code = ?"
+            " ORDER BY id",
+            (platform_code,),
+        ).fetchall()
+        return tuple(self._distribution_instance_from_row(row) for row in rows)
+
     @staticmethod
     def _distribution_instance_from_row(
         row: sqlite3.Row,
@@ -248,6 +268,25 @@ class SqlitePerformanceRepository:
         ).fetchone()
         if row is None:
             return None
+        return self._performance_snapshot_from_row(row)
+
+    def list_performance_snapshots_by_distribution_instance(
+        self, distribution_instance_id: DistributionInstanceId
+    ) -> tuple[PerformanceSnapshot, ...]:
+        rows = self._connection.execute(
+            "SELECT * FROM performance_snapshots"
+            " WHERE distribution_instance_id = ?"
+            " ORDER BY observed_at",
+            (distribution_instance_id,),
+        ).fetchall()
+        return tuple(
+            self._performance_snapshot_from_row(row) for row in rows
+        )
+
+    @staticmethod
+    def _performance_snapshot_from_row(
+        row: sqlite3.Row,
+    ) -> PerformanceSnapshot:
         return PerformanceSnapshot(
             id=PerformanceSnapshotId(row["id"]),
             distribution_instance_id=DistributionInstanceId(

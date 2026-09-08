@@ -204,10 +204,10 @@ class RevisionRepositoryPort(Protocol):
 class PerformanceRepositoryPort(Protocol):
     """Persistence for the Performance domain (P1.5-G1 entities).
 
-    Deliberately minimal for now — only save/get by each entity's own id.
-    Query-by-related-entity methods (e.g. "all snapshots for one
-    distribution instance") are added later, when a real caller
-    (P1.5-G3/G4/G5/G6) asks for them.
+    Save/get by each entity's own id plus query-by-related-entity methods
+    added when their callers landed: distribution instances per campaign
+    (P1.5-G4 matching), per content piece and per platform (P1.5-G6 read
+    models), and snapshots per distribution instance (P1.5-G6 read models).
     """
 
     def save_distribution_instance(
@@ -220,6 +220,14 @@ class PerformanceRepositoryPort(Protocol):
 
     def list_distribution_instances_by_campaign(
         self, campaign_id: CampaignId
+    ) -> tuple[DistributionInstance, ...]: ...
+
+    def list_distribution_instances_by_content_piece(
+        self, content_piece_id: PostId
+    ) -> tuple[DistributionInstance, ...]: ...
+
+    def list_distribution_instances_by_platform(
+        self, platform_code: str
     ) -> tuple[DistributionInstance, ...]: ...
 
     def save_performance_import_batch(
@@ -237,6 +245,10 @@ class PerformanceRepositoryPort(Protocol):
     def get_performance_snapshot(
         self, snapshot_id: PerformanceSnapshotId
     ) -> PerformanceSnapshot | None: ...
+
+    def list_performance_snapshots_by_distribution_instance(
+        self, distribution_instance_id: DistributionInstanceId
+    ) -> tuple[PerformanceSnapshot, ...]: ...
 
     def save_performance_import_row(
         self, row: PerformanceImportRow

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -175,12 +176,19 @@ def _batch() -> PerformanceImportBatch:
     )
 
 
-def _snapshot(metrics: CanonicalMetricSet | None = None) -> PerformanceSnapshot:
+def _snapshot(
+    snapshot_id: str = "ps-1",
+    distribution_instance_id: str = "di-1",
+    observed_at: datetime = _CREATED_AT,
+    metrics: CanonicalMetricSet | None = None,
+) -> PerformanceSnapshot:
     return PerformanceSnapshot(
-        id=PerformanceSnapshotId("ps-1"),
-        distribution_instance_id=DistributionInstanceId("di-1"),
-        period=MetricPeriod(start=_CREATED_AT, end=_CREATED_AT),
-        observed_at=_CREATED_AT,
+        id=PerformanceSnapshotId(snapshot_id),
+        distribution_instance_id=DistributionInstanceId(
+            distribution_instance_id
+        ),
+        period=MetricPeriod(start=observed_at, end=observed_at),
+        observed_at=observed_at,
         source=PerformanceSource.CSV_IMPORT,
         metrics=metrics if metrics is not None else CanonicalMetricSet(),
         source_batch_id=PerformanceImportBatchId("b-1"),
@@ -284,4 +292,75 @@ def test_distribution_instance_requires_fk_rows(tmp_path: Path) -> None:
     repo = SqlitePerformanceRepository(connection)
     with pytest.raises(sqlite3.IntegrityError):
         repo.save_distribution_instance(_distribution_instance())
+    connection.close()
+
+
+def test_list_snapshots_by_distribution_instance_empty(
+    tmp_path: Path,
+) -> None:
+    connection = _setup_db(tmp_path)
+    _seed_distribution_fk(connection)
+    repo = SqlitePerformanceRepository(connection)
+    repo.save_distribution_instance(_distribution_instance())
+
+    assert (
+        repo.list_performance_snapshots_by_distribution_instance(
+            DistributionInstanceId("di-1")
+        )
+        == ()
+    )
+    connection.close()
+
+
+def test_list_snapshots_by_distribution_instance_orders_by_observed_at(
+    tmp_path: Path,
+) -> None:
+    connection = _setup_db(tmp_path)
+    _seed_distribution_fk(connection)
+    repo = SqlitePerformanceRepository(connection)
+    repo.save_distribution_instance(_distribution_instance())
+    repo.save_performance_import_batch(_batch())
+
+    early = datetime(2026, 1, 1, tzinfo=UTC)
+    mid = datetime(2026, 1, 15, tzinfo=UTC)
+    late = datetime(2026, 2, 1, tzinfo=UTC)
+    repo.save_performance_snapshot(_snapshot("ps-late", observed_at=late))
+    repo.save_performance_snapshot(_snapshot("ps-early", observed_at=early))
+    repo.save_performance_snapshot(_snapshot("ps-mid", observed_at=mid))
+
+    snapshots = repo.list_performance_snapshots_by_distribution_instance(
+        DistributionInstanceId("di-1")
+    )
+    assert [str(s.id) for s in snapshots] == [
+        "ps-early",
+        "ps-mid",
+        "ps-late",
+    ]
+    connection.close()
+
+
+def test_list_snapshots_by_distribution_instance_scoped(
+    tmp_path: Path,
+) -> None:
+    connection = _setup_db(tmp_path)
+    _seed_distribution_fk(connection)
+    repo = SqlitePerformanceRepository(connection)
+    repo.save_distribution_instance(_distribution_instance())
+    repo.save_distribution_instance(
+        replace(_distribution_instance(), id=DistributionInstanceId("di-2"))
+    )
+    repo.save_performance_import_batch(_batch())
+    repo.save_performance_snapshot(_snapshot("ps-1"))
+    repo.save_performance_snapshot(
+        _snapshot("ps-2", distribution_instance_id="di-2")
+    )
+
+    only_1 = repo.list_performance_snapshots_by_distribution_instance(
+        DistributionInstanceId("di-1")
+    )
+    only_2 = repo.list_performance_snapshots_by_distribution_instance(
+        DistributionInstanceId("di-2")
+    )
+    assert [str(s.id) for s in only_1] == ["ps-1"]
+    assert [str(s.id) for s in only_2] == ["ps-2"]
     connection.close()

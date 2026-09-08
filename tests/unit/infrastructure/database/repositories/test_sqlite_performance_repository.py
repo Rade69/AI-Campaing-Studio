@@ -268,3 +268,41 @@ def test_list_distribution_instances_by_campaign_is_isolated(
     assert only_a[0].external_content_id == "ext-a"
     assert only_b[0].external_content_id == "ext-b"
     connection.close()
+
+
+def test_list_distribution_instances_by_content_piece_is_isolated(
+    tmp_path: Path,
+) -> None:
+    repo, connection = _setup_repo(tmp_path)
+    _seed_distribution_instance(connection, repo, tag="a")
+    _seed_distribution_instance(connection, repo, tag="b")
+
+    only_a = repo.list_distribution_instances_by_content_piece(
+        PostId("piece-a")
+    )
+    only_b = repo.list_distribution_instances_by_content_piece(
+        PostId("piece-b")
+    )
+
+    assert [str(d.id) for d in only_a] == ["di-a"]
+    assert [str(d.id) for d in only_b] == ["di-b"]
+    connection.close()
+
+
+def test_list_distribution_instances_by_platform_is_isolated(
+    tmp_path: Path,
+) -> None:
+    repo, connection = _setup_repo(tmp_path)
+    _seed_distribution_instance(
+        connection, repo, tag="a", platform_code="INSTAGRAM"
+    )
+    _seed_distribution_instance(
+        connection, repo, tag="b", platform_code="FACEBOOK"
+    )
+
+    only_ig = repo.list_distribution_instances_by_platform("INSTAGRAM")
+    only_fb = repo.list_distribution_instances_by_platform("FACEBOOK")
+
+    assert [str(d.id) for d in only_ig] == ["di-a"]
+    assert [str(d.id) for d in only_fb] == ["di-b"]
+    connection.close()
