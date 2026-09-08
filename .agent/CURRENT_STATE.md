@@ -3,7 +3,40 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-052
+**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **Codex
+adversarial rezultati za F1-050/F1-051.**
+
+1. **[ACS-F1-050](../agent_reports/ACS-F1-050-task-contract.md) —
+   Codex PASS.** PR [#15](https://github.com/Rade69/AI-Campaing-Studio/pull/15),
+   [Codex izvještaj](../agent_reports/2026-09-08-ACS-F1-050-review-codex.md).
+   Nezavisno potvrdio isto što i Claude: OUT_OF_SCOPE_FINDING prihvaćen
+   (2 dodatne port metode, minimalne/opravdane), sabiranje +
+   None-propagacija ispravni, `derived` isključivo iz
+   `calculate_derived_metrics` (monkeypatch dokaz), currency gap
+   potvrđen i ostavljen van scope-a. **Čeka Human Owner odobrenje.**
+2. **[ACS-F1-051](../agent_reports/ACS-F1-051-task-contract.md) —
+   Codex REJECT (2 test-only nalaza, produkcijski kod potvrđeno
+   ispravan).** PR [#16](https://github.com/Rade69/AI-Campaing-Studio/pull/16),
+   [Codex izvještaj](../agent_reports/2026-09-08-ACS-F1-051-review-codex.md).
+   - **BF-1**: Node/VM harness-ov DOM double za `addEventListener` ne
+     modelira `options` parametar (`{once:true}`) — mutacija koja ga
+     ukloni i dalje prolazi test. Fix: DOM double mora podržati
+     listener options, emitovati `pywebviewready` najmanje dvaput,
+     dokazati tačno JEDAN API poziv/hydration (exactly-once invarijant
+     stvarno zaštićen, ne samo "listener je registrovan").
+   - **BF-2**: nedostaje contractom obavezan trajan real-SQLite
+     integration test sa NAJMANJE dvije kampanje različitih statusa U
+     ISTOJ bazi + tačni KPI counteri. Postojeći testovi imaju odvojene
+     scenarije (jedan DRAFT, jedan EXPORTED), ne dvije kampanje
+     zajedno. Codex-ov PRIVREMENI scenario je potvrdio da kod radi
+     (`active_campaigns=1, recent_count=2` za DRAFT+EXPORTED par), ali
+     nije trajan dokaz u PR-u.
+   - Ne dirati bridge/DTO/domain/repo — oba nalaza su test-only.
+   **Čeka Crush fix rundu, pa kratak Codex re-review.**
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-052
 (fix flaky gate report test) MERGED — PASS, §29.** Implementer:
 MiniMax. PR [#17](https://github.com/Rade69/AI-Campaing-Studio/pull/17)
 squash-merged u `main` (`06b1545`). Stvaran uzrok dijagnostikovan
