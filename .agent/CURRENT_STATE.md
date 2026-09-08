@@ -4,9 +4,24 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-053
-— Codex adversarial PASS_WITH_NOTES (0 blocking).** PR
-[#18](https://github.com/Rade69/AI-Campaing-Studio/pull/18) @ `e63ccea`,
-CI zeleno, MERGEABLE/CLEAN.
+(P1.5-G7a — Campaign Performance summary) MERGED — Human Owner
+odobrio.** Implementer: Pi. PR
+[#18](https://github.com/Rade69/AI-Campaing-Studio/pull/18)
+squash-merged u `main` (`87cd1f3`). Prvi GUI caller
+`build_campaign_performance_summary` (G6): "Učinak kampanje" kartica u
+Pregled i izvoz ekranu (CTR/CPC/CPM/CPA/ROAS/Stopa konverzije +
+impresije/klikovi/potrošnja/broj distribucija). Pun HIGH-risk
+adversarial ciklus bez skraćivanja: Claude PASS → Codex
+PASS_WITH_NOTES (0 blocking, jedna neblokirajuća napomena o dupliranom
+query-param parsing-u ostavljena za budući cleanup) → Human Owner
+odobrio.
+
+**G7a zatvoren. Sljedeći korak: G7b (ContentPiece Performance sekcija,
+novi tab u Studio sadržaja)**, pa G7c (Import Performance + CSV
+mapping dialog), pa P1.5-G8 (Integration acceptance) — vidi raniji
+unos za pun redoslijed.
+
+---
 [Codex izvještaj](../agent_reports/2026-09-08-ACS-F1-053-review-codex.md)
 nezavisno potvrdio isto što i Claude (G6 jedini izvor derived metrika,
 prazna/popunjena/nepostojeća kampanja putanje tačne, mutation-dokaz na
