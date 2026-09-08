@@ -3,7 +3,35 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **Sekvencijalna
+**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-051
+fix runda (BF-1 + BF-2) pushovana (`286e129`), čeka Codex re-review.**
+PR [#16](https://github.com/Rade69/AI-Campaing-Studio/pull/16), CI
+zeleno. Test-only fix (Crush), bridge/DTO/domain/repo netaknuti:
+
+- **BF-1**: Node/VM harness sada modelira `addEventListener`-ov
+  `options` argument (`{fn, once}` po listeneru) preko novog `emit()`
+  helpera koji uklanja `once:true` listenere nakon prvog okidanja.
+  Test emituje `pywebviewready` DVAPUT i dokazuje tačno JEDAN API
+  poziv + prazan listener niz nakon toga.
+- **BF-2**: nov real-SQLite test
+  `test_get_dashboard_overview_multi_campaign_different_statuses` —
+  dvije kampanje (DRAFT + EXPORTED) u ISTOJ bazi, 5 content pieces
+  različitih statusa kroz obje, tačni KPI counteri provjereni.
+
+**Koordinator nezavisno reprodukovao `{once:true}`-uklanjanje
+mutaciju** protiv stvarnog committed `app.js` prije commit-a
+(`lateApiCalls: 2`, `lateListenerCleared: false` → FAIL, potvrđeno,
+vraćeno preko Edit alata). Ciljani suite (327 testova) nezavisno PASS,
+CI zeleno.
+
+**Sljedeći korak: Codex kratak re-review** na PR #16 (HEAD `286e129`)
+— potvrditi da oba nova/izmijenjena testa prolaze na ispravnom kodu i
+padaju na navedenim mutacijama, gate zelen. Nakon PASS: Human Owner
+odobrenje, pa merge.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **Sekvencijalna
 odluka (Human Owner potvrdio): Slice 1.5 (Performance/Analytics) se
 zatvara PRIJE nego što Slice 2 (Website/Brand Ingestion) počinje.**
 
