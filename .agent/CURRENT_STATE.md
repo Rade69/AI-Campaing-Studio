@@ -3,10 +3,33 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **Dva nova
-Task Contract-a otvorena, paralelan par (Human Owner tražio da se
-iskoristi prostor za paralelan rad kad god postoji, bez žrtvovanja
-kvaliteta).**
+**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **Treći
+paralelan Task Contract dodat** (Human Owner podsjetio da imamo i
+MiniMax-a -- iskoristiti sva 3 slota kad god ima stvarnog, disjoint
+posla, ne samo 2).
+
+**[ACS-F1-052](../agent_reports/ACS-F1-052-task-contract.md)** --
+   Dijagnostikovati i popraviti povremeni fail
+   `test_gate_report_against_current_repo_passes`. LOW risk,
+   test/tooling-only (`scripts/generate_phase0_gate_report.py` + jedan
+   test fajl), Claude-only review (§29). Stvaran, dva puta nezavisno
+   potvrđen problem danas (Crush-ovo F1-049 evidence + Codex-ov
+   rereview): nested `pytest -q` unutar gate report skripte (rekurzija
+   sa `ACS_GATE_REPORT_RUNNING` guard-om) povremeno padne pod
+   concurrency-om kad se pokrene kao dio punog suite-a, iako izolovano
+   uvijek prolazi -- duplira runtime svakog punog suite pokretanja i
+   stvara lažne alarme tokom review-a. Implementer mora dijagnostikovati
+   STVARAN uzrok prije fixa (isti "investigate and report" standard
+   kao G5/G6 otvorena pitanja), ne samo pretpostaviti.
+
+`allowed_paths` sva tri taska (F1-050, F1-051, F1-052) su međusobno
+potpuno disjoint -- prvi put ove sedmice da su sve tri paralelne slotove
+iskorišćene odjednom.
+
+Sva tri contracta su na `main` (`c2e4651`), CI zeleno, GitNexus
+osvježen (13.938 nodes/296 clusters/148 flows).
+
+---
 
 1. **[ACS-F1-050](../agent_reports/ACS-F1-050-task-contract.md)** —
    P1.5-G6 Analytics Read Models (`CampaignPerformanceSummary`/
