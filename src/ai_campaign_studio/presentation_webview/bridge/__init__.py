@@ -49,6 +49,9 @@ from ai_campaign_studio.application.campaigns.generate_campaign_plan import (
     GenerateCampaignPlan,
 )
 from ai_campaign_studio.application.export import ExportCampaign
+from ai_campaign_studio.application.performance.build_performance_summaries import (
+    build_campaign_performance_summary,
+)
 from ai_campaign_studio.application.posts.generate_social_post import (
     GenerateSocialPost,
 )
@@ -104,14 +107,17 @@ from ai_campaign_studio.jobs.cancellation import CancellationError
 from ai_campaign_studio.presentation.ui_models import (
     BrandFactUiModel,
     BrandOverviewResultUiModel,
+    CampaignPerformanceResultUiModel,
     CampaignPlanResultUiModel,
     CampaignSummaryUiModel,
     DashboardOverviewResultUiModel,
     DashboardRecentCampaignUiModel,
+    DerivedMetricSetUiModel,
     ExportCampaignResultUiModel,
     GenerateContentResultUiModel,
     ListCampaignsResultUiModel,
     ProviderConfigResultUiModel,
+    RawMetricSetUiModel,
 )
 
 _BRAND_SEED_FILE = "brand-seed.json"
@@ -168,6 +174,7 @@ _LIFECYCLE_ERROR_MAPPERS: dict[str, str] = {
     "list_campaigns": "_list_err",
     "get_brand_overview": "_brand_err",
     "get_dashboard_overview": "_dashboard_err",
+    "get_campaign_performance": "_performance_err",
 }
 # Per-method fallback message used ONLY when the resource-lifecycle
 # fails (we never want to surface the underlying exception text;
@@ -183,6 +190,7 @@ _LIFECYCLE_ERROR_MESSAGES: dict[str, str] = {
     "list_campaigns": "Učitavanje kampanja nije uspjelo (interna greška).",
     "get_brand_overview": "Učitavanje brenda nije uspjelo (interna greška).",
     "get_dashboard_overview": "Učitavanje pregleda nije uspjelo (interna greška).",
+    "get_campaign_performance": "Učitavanje učinka nije uspjelo (interna greška).",
 }
 
 
@@ -1521,6 +1529,64 @@ class CampaignBridgeApi:
                 "Učitavanje pregleda nije uspjelo (interna greška).",
             )
 
+    @_with_call_resources
+    def get_campaign_performance(self, raw_payload: dict) -> dict:
+        """Read the Campaign Performance summary for one campaign (ACS-F1-053).
+
+        Fourth read js_api method. Calls the G6
+        ``build_campaign_performance_summary`` for the given campaign and maps
+        its ``DerivedMetricSet``/``CanonicalMetricSet`` onto presentation DTOs
+        (derived + a raw subset + distribution count). Unknown campaign ->
+        ``VALIDATION_ERROR``; existing campaign with no performance data ->
+        ``ok=True`` with all metrics ``None`` and count 0. Never raises into
+        JS; never leaks secret/path/exception text.
+        """
+        if not isinstance(raw_payload, dict):
+            return self._performance_err(
+                _ERROR_VALIDATION, "Pošiljka iz GUI-ja nije objekat."
+            )
+        campaign_id_raw = raw_payload.get("campaign_id")
+        if not isinstance(campaign_id_raw, str) or not campaign_id_raw.strip():
+            return self._performance_err(
+                _ERROR_VALIDATION, "campaign_id je obavezan (string)."
+            )
+        campaign_id = CampaignId(campaign_id_raw.strip())
+        try:
+            if self._campaign_repo.get_campaign(campaign_id) is None:
+                return self._performance_err(
+                    _ERROR_VALIDATION, f"Kampanja {campaign_id} ne postoji."
+                )
+            summary = build_campaign_performance_summary(
+                self._performance_repo, campaign_id
+            )
+            return asdict(
+                CampaignPerformanceResultUiModel(
+                    ok=True,
+                    derived=DerivedMetricSetUiModel(
+                        ctr=summary.derived.ctr,
+                        cpc=summary.derived.cpc,
+                        cpm=summary.derived.cpm,
+                        cpa=summary.derived.cpa,
+                        roas=summary.derived.roas,
+                        conversion_rate=summary.derived.conversion_rate,
+                    ),
+                    raw=RawMetricSetUiModel(
+                        impressions=summary.raw.impressions,
+                        clicks=summary.raw.clicks,
+                        spend=summary.raw.spend,
+                    ),
+                    distribution_instance_count=summary.distribution_instance_count,
+                    error_code=None,
+                    error_message=None,
+                )
+            )
+        except Exception:
+            self._bootstrap.logger.exception("get_campaign_performance failed")
+            return self._performance_err(
+                _ERROR_INTERNAL,
+                "Učitavanje učinka nije uspjelo (interna greška).",
+            )
+
     # --- per-call SQLite resources ---
 
     @contextmanager
@@ -1983,6 +2049,25 @@ class CampaignBridgeApi:
                 drafts=0,
                 approved=0,
                 recent_campaigns=(),
+                error_code=code,
+                error_message=message,
+            )
+        )
+
+    @staticmethod
+    def _performance_err(code: str, message: str) -> dict:
+        """Error result for ``get_campaign_performance`` only.
+
+        Uses ``CampaignPerformanceResultUiModel`` so the return dict has the
+        EXACT shape the JS caller expects, with ``derived``/``raw`` empty and
+        count 0 — no other method's DTO keys leak through.
+        """
+        return asdict(
+            CampaignPerformanceResultUiModel(
+                ok=False,
+                derived=DerivedMetricSetUiModel(),
+                raw=RawMetricSetUiModel(),
+                distribution_instance_count=0,
                 error_code=code,
                 error_message=message,
             )

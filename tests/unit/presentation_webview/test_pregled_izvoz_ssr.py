@@ -200,3 +200,196 @@ def test_render_body_emits_no_remote_assets() -> None:
         "unpkg.com",
     ):
         assert forbidden not in body
+
+
+def test_render_body_emits_performance_hydration_markers() -> None:
+    """ACS-F1-053: the SSR emits the screen-specific performance markers
+    that app.js targets for real-data hydration."""
+    body = render_body()
+    assert "data-perf-card" in body
+    assert "Učinak kampanje" in body
+    assert "Nema podataka o performansama još." in body
+    for key in (
+        "ctr",
+        "cpc",
+        "cpm",
+        "cpa",
+        "roas",
+        "conversion-rate",
+        "impressions",
+        "clicks",
+        "spend",
+    ):
+        assert f'data-perf-value="{key}"' in body, f"missing marker: {key!r}"
+    assert "data-perf-count" in body
+
+
+def test_app_js_campaign_performance_hydration_lifecycle_isolation() -> None:
+    """Execute the committed app.js against a tiny DOM double.
+
+    ACS-F1-053: applies the F1-046/049/051 lifecycle/isolation precedent to
+    the Campaign Performance card from the first version. Models the
+    ``addEventListener`` ``options`` argument and emits ``pywebviewready``
+    TWICE, proving exactly-once hydration; verifies the immediate fast path;
+    verifies a foreign screen (no ``data-perf-*`` marker) is never touched;
+    verifies metric values go through ``textContent`` and ``None`` -> 'N/A'.
+    """
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is unavailable; executable app.js regression skipped")
+
+    app_js_path = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "src" / "ai_campaign_studio" / "presentation_webview" / "static"
+        / "app.js"
+    )
+    harness = r"""
+const fs=require('fs'),vm=require('vm');
+const src=fs.readFileSync(process.argv[1],'utf8');
+function el(initial){
+  return {
+    _text:initial, _html:initial, _hidden:false,
+    set textContent(v){this._text=v;}, get textContent(){return this._text;},
+    set innerHTML(v){this._html=v;}, get innerHTML(){return this._html;},
+    set hidden(v){this._hidden=v;}, get hidden(){return this._hidden;},
+    dataset:{}
+  };
+}
+function perfValueEl(key){
+  const e=el('—'); e.dataset={perfValue:key}; return e;
+}
+function baseWindow(){
+  const listeners={};
+  function addEventListener(n,f,opts){
+    (listeners[n]??=[]).push({fn:f, once:!!(opts&&opts.once)});
+  }
+  function emit(n){
+    const arr=listeners[n]||[];
+    const remaining=[];
+    for(const e of arr){
+      e.fn();
+      if(!e.once) remaining.push(e);
+    }
+    listeners[n]=remaining;
+  }
+  return {listeners, emit, window:{addEventListener}};
+}
+function perfContext(withApi){
+  const {listeners,window,emit}=baseWindow();
+  const state={apiCalls:0};
+  const card=el('');
+  const note=el('Nema podataka');
+  const values=[
+    perfValueEl('ctr'), perfValueEl('cpc'), perfValueEl('cpm'),
+    perfValueEl('cpa'), perfValueEl('roas'), perfValueEl('conversion-rate'),
+    perfValueEl('impressions'), perfValueEl('clicks'), perfValueEl('spend')
+  ];
+  const countEl=el('—');
+  const document={
+    querySelectorAll:function(s){
+      if(s==='[data-perf-value]') return values;
+      return [];
+    },
+    querySelector:function(s){
+      if(s==='[data-perf-card]') return card;
+      if(s==='[data-perf-count]') return countEl;
+      if(s==='[data-perf-note]') return note;
+      return null;
+    },
+    getElementById(){return null;}
+  };
+  const installApi=()=>{window.pywebview={api:{async get_campaign_performance(){
+    state.apiCalls+=1;
+    return {ok:true, distribution_instance_count:2,
+      derived:{ctr:0.034,cpc:null,cpm:200.0,cpa:null,roas:null,conversion_rate:null},
+      raw:{impressions:1000,clicks:34,spend:null}};
+  }}};};
+  if(withApi) installApi();
+  const context={window, document, location:{search:'?campaign=c-1'}, URLSearchParams,
+    setInterval(){return 1;}, clearInterval(){}, setTimeout, clearTimeout, console};
+  vm.createContext(context);
+  return {context, listeners, emit, state, installApi, values, countEl, note};
+}
+function foreignContext(withApi){
+  const {listeners,window}=baseWindow();
+  const state={apiCalls:0};
+  const h3=el('FOREIGN H3');
+  const document={
+    querySelectorAll:function(){return [];},
+    querySelector:function(s){
+      if(s==='h3') return h3;
+      return null;
+    },
+    getElementById(){return null;}
+  };
+  const installApi=()=>{window.pywebview={api:{async get_campaign_performance(){
+    state.apiCalls+=1;
+    return {ok:true,distribution_instance_count:1,derived:{},raw:{}};
+  }}};};
+  if(withApi) installApi();
+  const context={window, document, location:{search:''}, URLSearchParams,
+    setInterval(){return 1;}, clearInterval(){}, setTimeout, clearTimeout, console};
+  vm.createContext(context);
+  return {context, listeners, state, installApi, h3};
+}
+(async()=>{
+  const late=perfContext(false);
+  vm.runInContext(src, late.context);
+  const readyListeners=(late.listeners.pywebviewready||[]).length;
+  late.installApi();
+  late.emit('pywebviewready');
+  await new Promise(r=>setTimeout(r,0));
+  late.emit('pywebviewready');
+  await new Promise(r=>setTimeout(r,0));
+  const lateApiCalls=late.state.apiCalls;
+  const lateListenerCleared=(late.listeners.pywebviewready||[]).length===0;
+
+  const immediate=perfContext(true);
+  vm.runInContext(src, immediate.context);
+  await new Promise(r=>setTimeout(r,0));
+
+  const foreign=foreignContext(true);
+  vm.runInContext(src, foreign.context);
+  await new Promise(r=>setTimeout(r,0));
+
+  console.log(JSON.stringify({
+    readyListeners,
+    lateApiCalls,
+    lateListenerCleared,
+    lateCtr: late.values[0].textContent==='0.034',
+    lateCpcNA: late.values[1].textContent==='N/A',
+    lateCount: late.countEl.textContent==='2',
+    lateNoteHidden: late.note.hidden===true,
+    immediateHydrated: immediate.values[0].textContent==='0.034',
+    foreignApiCalls: foreign.state.apiCalls,
+    foreignUntouched: foreign.h3.textContent==='FOREIGN H3' &&
+      foreign.h3.innerHTML==='FOREIGN H3',
+  }));
+})().catch(e=>{console.error(e);process.exitCode=1;});
+"""
+    completed = subprocess.run(
+        [node, "-e", harness, str(app_js_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    result = json.loads(completed.stdout)
+    assert result == {
+        "readyListeners": 1,
+        "lateApiCalls": 1,
+        "lateListenerCleared": True,
+        "lateCtr": True,
+        "lateCpcNA": True,
+        "lateCount": True,
+        "lateNoteHidden": True,
+        "immediateHydrated": True,
+        "foreignApiCalls": 0,
+        "foreignUntouched": True,
+    }

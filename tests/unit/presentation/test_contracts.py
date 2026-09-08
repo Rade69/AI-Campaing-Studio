@@ -38,6 +38,8 @@ _EXPECTED_METHODS = {
     "get_brand_overview",
     # Added in ACS-F1-051: Početna dashboard read path.
     "get_dashboard_overview",
+    # Added in ACS-F1-053: Campaign Performance summary (Pregled i izvoz).
+    "get_campaign_performance",
 }
 
 
@@ -149,6 +151,22 @@ def test_bridge_implements_get_dashboard_overview() -> None:
 
     method = getattr(CampaignBridgeApi, "get_dashboard_overview", None)
     assert method is not None, "bridge must expose get_dashboard_overview"
+
+    import inspect
+
+    sig = inspect.signature(method)
+    assert list(sig.parameters) == ["self", "raw_payload"]
+
+
+def test_bridge_implements_get_campaign_performance() -> None:
+    """ACS-F1-053: ``get_campaign_performance`` is the fourth READ js_api
+    method (Pregled i izvoz — Campaign Performance). Takes a REQUIRED
+    one-dict payload carrying ``campaign_id``.
+    """
+    from ai_campaign_studio.presentation_webview.bridge import CampaignBridgeApi
+
+    method = getattr(CampaignBridgeApi, "get_campaign_performance", None)
+    assert method is not None, "bridge must expose get_campaign_performance"
 
     import inspect
 

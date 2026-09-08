@@ -6,10 +6,12 @@ from dataclasses import asdict
 from ai_campaign_studio.presentation.ui_models import (
     BrandFactUiModel,
     BrandOverviewResultUiModel,
+    CampaignPerformanceResultUiModel,
     CampaignPlanResultUiModel,
     CampaignSummaryUiModel,
     DashboardOverviewResultUiModel,
     DashboardRecentCampaignUiModel,
+    DerivedMetricSetUiModel,
     ExportCampaignResultUiModel,
     GenerateContentResultUiModel,
     ListCampaignsResultUiModel,
@@ -17,6 +19,7 @@ from ai_campaign_studio.presentation.ui_models import (
     NotificationUiModel,
     ProviderConfigResultUiModel,
     ProviderStatusUiModel,
+    RawMetricSetUiModel,
 )
 
 
@@ -577,3 +580,49 @@ def test_dashboard_overview_result_carries_no_secret_field() -> None:
     assert "secret" not in result_fields
     assert "secret" not in row_fields
     assert row_fields == {"name", "status"}
+
+
+def test_campaign_performance_result_ui_model_shape() -> None:
+    """ACS-F1-053: the performance DTO is flat-ish and JSON-serializable
+    (derived/raw nested, all optional numbers)."""
+    result = CampaignPerformanceResultUiModel(
+        ok=True,
+        derived=DerivedMetricSetUiModel(ctr=0.034, cpc=5.8824),
+        raw=RawMetricSetUiModel(impressions=1000, clicks=34, spend=200.0),
+        distribution_instance_count=3,
+        error_code=None,
+        error_message=None,
+    )
+    blob = asdict(result)
+    assert blob == {
+        "ok": True,
+        "derived": {
+            "ctr": 0.034,
+            "cpc": 5.8824,
+            "cpm": None,
+            "cpa": None,
+            "roas": None,
+            "conversion_rate": None,
+        },
+        "raw": {
+            "impressions": 1000,
+            "clicks": 34,
+            "spend": 200.0,
+        },
+        "distribution_instance_count": 3,
+        "error_code": None,
+        "error_message": None,
+    }
+    json.dumps(blob)  # JSON-serializable
+
+
+def test_campaign_performance_result_carries_no_secret_field() -> None:
+    """Structural guarantee: no api_key/secret field on the performance DTO."""
+    api_key = "a" + "pi_key"
+    result_fields = {
+        f.name for f in CampaignPerformanceResultUiModel.__dataclass_fields__.values()
+    }
+    assert api_key not in result_fields
+    assert "secret" not in result_fields
+    assert "error_code" in result_fields
+    assert "error_message" in result_fields
