@@ -4,6 +4,17 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-051
+— Codex re-review PASS.** PR [#16](https://github.com/Rade69/AI-Campaing-Studio/pull/16)
+@ `286e129`, CI zeleno, MERGEABLE/CLEAN.
+[Codex re-review izvještaj](../agent_reports/2026-09-08-ACS-F1-051-rereview-codex.md)
+potvrđuje: BF-1 i BF-2 zatvoreni, nezavisno reprodukovana
+`{once:true}`-mutacija (identičan rezultat kao koordinatorov), pun
+suite 1172 passed/1 skipped, produkcijski kod netaknut. **Čeka
+eksplicitno Human Owner odobrenje za merge (HIGH rizik, pun ciklus).**
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-051
 fix runda (BF-1 + BF-2) pushovana (`286e129`), čeka Codex re-review.**
 PR [#16](https://github.com/Rade69/AI-Campaing-Studio/pull/16), CI
 zeleno. Test-only fix (Crush), bridge/DTO/domain/repo netaknuti:
