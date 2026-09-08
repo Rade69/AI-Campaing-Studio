@@ -3,7 +3,33 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-055
+**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-056
+(P1.5-G8 — Integration acceptance) otvoren, POSLJEDNJI Slice 1.5
+gate.** [Task contract](../agent_reports/ACS-F1-056-task-contract.md).
+
+**Istraga PRIJE kontrakta potvrdila da cijeli lanac VEĆ POSTOJI i VEĆ
+RADI** -- `ExportCampaign` već piše `analytics_match_key` u
+manifest.json, `MatchPerformanceImportBatch` već koristi istu formulu
+za matching, `column_aliases_v1.yaml` već prepoznaje
+`analytics_match_key`/`match_key` CSV header. Ovaj task je ČISTO
+test-only sinteza (nula produkcijskog koda, samo novi integration test
+fajl) koji dokazuje da je cijeli G1-G7 lanac stvarno spojen preko
+bridge-a. Deterministički (fake `TextGenerationPort` patch-ovan na
+`AIRequest.purpose` -- verifikovano `"campaign_plan"` vs
+`"post_generation"`), NE zavisi od stvarnog LLM poziva (za razliku od
+ACS-F1-047-ovog live DeepSeek testa koji ima drugu svrhu).
+
+**Klasifikovan MEDIUM/§29, ne HIGH** -- primjena Human Owner-ove opaske
+iz ACS-F1-055 reviewa: sinteza već pregledanih dijelova bez lifecycle
+rizika ide kroz smanjeni review ciklus.
+
+**Nakon PASS-a: Slice 1.5 (Performance/Analytics) zvanično zatvoren,
+Slice 2 (Website Ingestion) može krenuti** po ranijoj Human Owner
+odluci.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-055
 (P1.5-G7c — Import Performance CSV) MERGED — Human Owner odobrio.
 P1.5-G7 (Minimal UI) je POTPUNO ZATVOREN.** Implementer: Pi. PR
 [#20](https://github.com/Rade69/AI-Campaing-Studio/pull/20)
