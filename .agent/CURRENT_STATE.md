@@ -3,7 +3,28 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-07 (coordinator: claude) — **Dva nova Task
+**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-048
+(P1.5-G5 Metric Calculation) MERGED — PASS, §29.** Implementer: Pi.
+PR [#13](https://github.com/Rade69/AI-Campaing-Studio/pull/13) squash-merged
+u `main` (`69178cc`). `DerivedMetricSet` (6 opcionih polja) +
+`calculate_derived_metrics` (čista funkcija, `domain/performance/
+calculator.py`) — CTR/CPC/CPM/CPA/ROAS/Conversion Rate, `_safe_div`
+uniformno pravilo (missing/negative/non-finite/zero-denominator →
+`None`, nikad izuzetak/`inf`/`nan`). Nezavisno verifikovano: formule
+ručno provjerene, diff scope tačno 4 fajla iz `allowed_paths` (nula
+scope creep-a), 36/36 test nezavisno pokrenut i PASS, CI zeleno.
+**Currency-konzistentnost nalaz:** valuta ne postoji NIGDJE u domain
+sloju (potvrđeno grep dokazom); ispravno prijavljeno kao
+`OUT_OF_SCOPE_FINDING` i argumentovano da pripada P1.5-G6 (agregacija
+preko snapshot-a), ne G5 (jedan-na-jedan kalkulator) — **odgođeno za
+G6, koordinator potvrđuje ovu odluku.**
+
+ACS-F1-049 (Brend read-path) ostaje OPEN, čeka Crush-a (vidi ispod,
+nepromijenjeno).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-07 (coordinator: claude) — **Dva nova Task
 Contract-a otvorena, spremna za implementere.** Nakon G10 PASS +
 potvrđenog dokaznog lanca (vidi ispod), sljedeći korak je P1.5-G5
 (Metric Calculation) plus jedan paralelan GUI read-path task.
