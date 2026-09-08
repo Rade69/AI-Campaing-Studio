@@ -3303,3 +3303,191 @@ def test_get_campaign_performance_result_has_no_secrets(
     assert "api_key" not in blob
     assert "secret" not in blob
     assert "Traceback" not in blob
+
+
+def _seed_content_performance(
+    bridge: CampaignBridgeApi, campaign_id: str
+) -> None:
+    """Seed two content pieces for a campaign with DIFFERENT performance
+    states: piece-1 (INSTAGRAM, WITH payload headline + one
+    DistributionInstance/Snapshot) and piece-2 (FACEBOOK, NO payload, NO
+    performance data). Mirrors ``_seed_campaign_performance`` (direct SQL +
+    the real ``SqlitePerformanceRepository``).
+    """
+    from ai_campaign_studio.domain.common.ids import (
+        CampaignId,
+        CampaignItemId,
+        DistributionInstanceId,
+        PerformanceSnapshotId,
+        PostId,
+        RevisionId,
+    )
+    from ai_campaign_studio.domain.performance.entities import (
+        DistributionInstance,
+        PerformanceSnapshot,
+    )
+    from ai_campaign_studio.domain.performance.enums import (
+        DistributionSource,
+        PerformanceSource,
+    )
+    from ai_campaign_studio.domain.performance.metrics import (
+        CanonicalMetricSet,
+        MetricPeriod,
+    )
+
+    created_at = datetime(2026, 1, 1, tzinfo=UTC)
+    observed_at = datetime(2026, 2, 1, tzinfo=UTC)
+    connection = create_connection(bridge._bootstrap.paths.database_path)
+    try:
+        snapshot_id = connection.execute(
+            "SELECT id FROM brand_snapshots LIMIT 1"
+        ).fetchone()[0]
+        iso = created_at.isoformat()
+        _insert_piece = (
+            "INSERT INTO content_pieces (id, campaign_item_id, target_channel,"
+            " target_platform_code, target_format_code, payload_type, status,"
+            " brand_snapshot_id, facts_allowed_json, revision_ids_json,"
+            " created_at, updated_at, payload_json)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        )
+        connection.execute(
+            _insert_piece,
+            ("piece-1", "item-1", "SOCIAL", "INSTAGRAM", "FEED_POST",
+             "SOCIAL_POST", "APPROVED", snapshot_id, "[]", "[]", iso, iso,
+             json.dumps({
+                 "headline": "Naslov jedan",
+                 "caption": "C",
+                 "hook": "H",
+                 "body": "B",
+                 "cta": "Kupite",
+             })),
+        )
+        connection.execute(
+            _insert_piece,
+            ("piece-2", "item-2", "SOCIAL", "FACEBOOK", "FEED_POST",
+             "SOCIAL_POST", "APPROVED", snapshot_id, "[]", "[]", iso, iso,
+             None),
+        )
+        connection.execute(
+            "INSERT INTO revisions (id, entity_type, entity_id, version,"
+            " timestamp, origin, previous_value, new_value, provider, model,"
+            " prompt_version, instruction) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+            " ?, ?)",
+            ("rev-1", "ContentPiece", "piece-1", 1, iso, "AI",
+             "{}", "{}", None, None, None, None),
+        )
+        repo = SqlitePerformanceRepository(connection)
+        repo.save_distribution_instance(
+            DistributionInstance(
+                id=DistributionInstanceId("di-1"),
+                campaign_id=CampaignId(campaign_id),
+                campaign_item_id=CampaignItemId("item-1"),
+                content_piece_id=PostId("piece-1"),
+                content_revision_id=RevisionId("rev-1"),
+                channel_code="SOCIAL",
+                platform_code="INSTAGRAM",
+                format_code="FEED_POST",
+                distribution_source=DistributionSource.EXPORT,
+                created_at=created_at,
+            )
+        )
+        repo.save_performance_snapshot(
+            PerformanceSnapshot(
+                id=PerformanceSnapshotId("ps-1"),
+                distribution_instance_id=DistributionInstanceId("di-1"),
+                period=MetricPeriod(start=created_at, end=observed_at),
+                observed_at=observed_at,
+                source=PerformanceSource.CSV_IMPORT,
+                metrics=CanonicalMetricSet(
+                    impressions=1000,
+                    clicks=34,
+                    conversions=5,
+                    spend=200.0,
+                    revenue=500.0,
+                ),
+            )
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_get_campaign_content_performance_unknown_campaign_validation_error(
+    tmp_path: Path,
+) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    result = bridge.get_campaign_content_performance(
+        {"campaign_id": "nope"}
+    )
+    assert result["ok"] is False
+    assert result["error_code"] == "VALIDATION_ERROR"
+    assert result["rows"] == ()
+
+
+def test_get_campaign_content_performance_no_pieces_returns_empty(
+    tmp_path: Path,
+) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    campaign_id, _plan_id = _seed_brand_and_campaign(bridge)
+    result = bridge.get_campaign_content_performance(
+        {"campaign_id": campaign_id}
+    )
+    assert result["ok"] is True
+    assert result["rows"] == ()
+    assert result["error_code"] is None
+
+
+def test_get_campaign_content_performance_with_pieces_returns_rows(
+    tmp_path: Path,
+) -> None:
+    import pytest
+
+    bridge = _isolated_bridge(tmp_path)
+    campaign_id, _plan_id = _seed_brand_and_campaign(bridge)
+    _seed_content_performance(bridge, campaign_id)
+    result = bridge.get_campaign_content_performance(
+        {"campaign_id": campaign_id}
+    )
+    assert result["ok"] is True
+    assert result["error_code"] is None
+    rows = result["rows"]
+    assert len(rows) == 2
+
+    first = rows[0]
+    assert first["content_piece_id"] == "piece-1"
+    assert first["label"] == "INSTAGRAM/FEED_POST — Naslov jedan"
+    assert first["ctr"] == pytest.approx(34 / 1000)
+    assert first["cpc"] == pytest.approx(200.0 / 34)
+
+    second = rows[1]
+    assert second["content_piece_id"] == "piece-2"
+    # piece without payload -> bare platform/format label, not empty string.
+    assert second["label"] == "FACEBOOK/FEED_POST"
+    assert second["ctr"] is None
+    assert second["cpc"] is None
+
+
+def test_get_campaign_content_performance_non_dict_payload_validation_error(
+    tmp_path: Path,
+) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    result = bridge.get_campaign_content_performance(  # type: ignore[arg-type]
+        "not-a-dict"
+    )
+    assert result["ok"] is False
+    assert result["error_code"] == "VALIDATION_ERROR"
+
+
+def test_get_campaign_content_performance_result_has_no_secrets(
+    tmp_path: Path,
+) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    campaign_id, _plan_id = _seed_brand_and_campaign(bridge)
+    _seed_content_performance(bridge, campaign_id)
+    result = bridge.get_campaign_content_performance(
+        {"campaign_id": campaign_id}
+    )
+    blob = json.dumps(result)
+    assert "api_key" not in blob
+    assert "secret" not in blob
+    assert "Traceback" not in blob

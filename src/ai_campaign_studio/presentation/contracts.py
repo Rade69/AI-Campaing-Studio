@@ -15,6 +15,7 @@ from ai_campaign_studio.presentation.ui_models import (
     BrandOverviewResultUiModel,
     CampaignPerformanceResultUiModel,
     CampaignPlanResultUiModel,
+    ContentPerformanceResultUiModel,
     DashboardOverviewResultUiModel,
     ExportCampaignResultUiModel,
     GenerateContentResultUiModel,
@@ -84,3 +85,7 @@ class PresentationFacade(Protocol):
     def get_campaign_performance(
         self, raw_payload: dict[str, Any]
     ) -> CampaignPerformanceResultUiModel: ...
+
+    def get_campaign_content_performance(
+        self, raw_payload: dict[str, Any]
+    ) -> ContentPerformanceResultUiModel: ...

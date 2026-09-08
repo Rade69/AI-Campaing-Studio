@@ -51,6 +51,7 @@ from ai_campaign_studio.application.campaigns.generate_campaign_plan import (
 from ai_campaign_studio.application.export import ExportCampaign
 from ai_campaign_studio.application.performance.build_performance_summaries import (
     build_campaign_performance_summary,
+    build_content_performance_summary,
 )
 from ai_campaign_studio.application.posts.generate_social_post import (
     GenerateSocialPost,
@@ -79,7 +80,7 @@ from ai_campaign_studio.domain.common.ids import (
     CampaignPlanId,
     VisualSystemId,
 )
-from ai_campaign_studio.domain.content.entities import CampaignTarget
+from ai_campaign_studio.domain.content.entities import CampaignTarget, ContentPiece
 from ai_campaign_studio.domain.content.enums import ContentStatus
 from ai_campaign_studio.domain.facts.policies import is_fact_usable
 from ai_campaign_studio.infrastructure.ai.provider_adapter_factory import (
@@ -110,6 +111,8 @@ from ai_campaign_studio.presentation.ui_models import (
     CampaignPerformanceResultUiModel,
     CampaignPlanResultUiModel,
     CampaignSummaryUiModel,
+    ContentPerformanceResultUiModel,
+    ContentPerformanceRowUiModel,
     DashboardOverviewResultUiModel,
     DashboardRecentCampaignUiModel,
     DerivedMetricSetUiModel,
@@ -175,6 +178,7 @@ _LIFECYCLE_ERROR_MAPPERS: dict[str, str] = {
     "get_brand_overview": "_brand_err",
     "get_dashboard_overview": "_dashboard_err",
     "get_campaign_performance": "_performance_err",
+    "get_campaign_content_performance": "_content_performance_err",
 }
 # Per-method fallback message used ONLY when the resource-lifecycle
 # fails (we never want to surface the underlying exception text;
@@ -191,6 +195,10 @@ _LIFECYCLE_ERROR_MESSAGES: dict[str, str] = {
     "get_brand_overview": "Učitavanje brenda nije uspjelo (interna greška).",
     "get_dashboard_overview": "Učitavanje pregleda nije uspjelo (interna greška).",
     "get_campaign_performance": "Učitavanje učinka nije uspjelo (interna greška).",
+    "get_campaign_content_performance": (
+        "Učitavanje učinka po objavi nije uspjelo "
+        "(interna greška)."
+    ),
 }
 
 
@@ -292,6 +300,23 @@ def _target_for_item(
     if not targets:
         return None
     return targets[index % len(targets)]
+
+
+def _content_piece_label(piece: ContentPiece) -> str:
+    """Human-readable label for one content-piece performance row.
+
+    ``platform_code/format_code`` is always present; the payload headline
+    is appended only when a payload exists. A piece with no payload (not
+    yet generated) falls back to the bare platform/format label — never an
+    empty string. The returned label is free-form user/AI text, so the
+    frontend MUST escape it before inserting it into the DOM (the bridge
+    never escapes here — it returns raw data, same contract as every other
+    read DTO).
+    """
+    base = f"{piece.target.platform_code}/{piece.target.format_code}"
+    if piece.payload is not None:
+        return f"{base} — {piece.payload.headline}"
+    return base
 
 
 class CampaignBridgeApi:
@@ -1587,6 +1612,66 @@ class CampaignBridgeApi:
                 "Učitavanje učinka nije uspjelo (interna greška).",
             )
 
+    @_with_call_resources
+    def get_campaign_content_performance(self, raw_payload: dict) -> dict:
+        """Read per-content-piece performance rows (ACS-F1-054).
+
+        Fifth read js_api method. For the given campaign, lists every
+        ``ContentPiece`` via ``list_campaign_content`` and maps each one to
+        a ``ContentPerformanceRowUiModel`` whose ``ctr``/``cpc`` come ONLY
+        from the G6 ``build_content_performance_summary`` builder (G5/G6
+        chain — no hand-written formula). Unknown campaign ->
+        ``VALIDATION_ERROR``; a campaign with zero content pieces ->
+        ``ok=True`` with an empty ``rows`` tuple (not an error); a piece
+        with no performance data -> ``None`` metrics. Never raises into JS;
+        never leaks secret/path/exception text.
+        """
+        if not isinstance(raw_payload, dict):
+            return self._content_performance_err(
+                _ERROR_VALIDATION, "Pošiljka iz GUI-ja nije objekat."
+            )
+        campaign_id_raw = raw_payload.get("campaign_id")
+        if not isinstance(campaign_id_raw, str) or not campaign_id_raw.strip():
+            return self._content_performance_err(
+                _ERROR_VALIDATION, "campaign_id je obavezan (string)."
+            )
+        campaign_id = CampaignId(campaign_id_raw.strip())
+        try:
+            if self._campaign_repo.get_campaign(campaign_id) is None:
+                return self._content_performance_err(
+                    _ERROR_VALIDATION, f"Kampanja {campaign_id} ne postoji."
+                )
+            pieces = self._content_repo.list_campaign_content(campaign_id)
+            rows_list: list[ContentPerformanceRowUiModel] = []
+            for piece in pieces:
+                summary = build_content_performance_summary(
+                    self._performance_repo, piece.id
+                )
+                rows_list.append(
+                    ContentPerformanceRowUiModel(
+                        content_piece_id=str(piece.id),
+                        label=_content_piece_label(piece),
+                        ctr=summary.derived.ctr,
+                        cpc=summary.derived.cpc,
+                    )
+                )
+            return asdict(
+                ContentPerformanceResultUiModel(
+                    ok=True,
+                    rows=tuple(rows_list),
+                    error_code=None,
+                    error_message=None,
+                )
+            )
+        except Exception:
+            self._bootstrap.logger.exception(
+                "get_campaign_content_performance failed"
+            )
+            return self._content_performance_err(
+                _ERROR_INTERNAL,
+                "Učitavanje učinka po objavi nije uspjelo (interna greška).",
+            )
+
     # --- per-call SQLite resources ---
 
     @contextmanager
@@ -2068,6 +2153,24 @@ class CampaignBridgeApi:
                 derived=DerivedMetricSetUiModel(),
                 raw=RawMetricSetUiModel(),
                 distribution_instance_count=0,
+                error_code=code,
+                error_message=message,
+            )
+        )
+
+    @staticmethod
+    def _content_performance_err(code: str, message: str) -> dict:
+        """Error result for ``get_campaign_content_performance`` only.
+
+        Uses ``ContentPerformanceResultUiModel`` so the return dict has the
+        EXACT shape the JS caller expects: ``{ok, rows, error_code,
+        error_message}`` with an empty ``rows`` tuple — no other method's
+        DTO keys leak through.
+        """
+        return asdict(
+            ContentPerformanceResultUiModel(
+                ok=False,
+                rows=(),
                 error_code=code,
                 error_message=message,
             )
