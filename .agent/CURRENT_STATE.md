@@ -4,6 +4,29 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-055
+— Codex adversarial PASS (0 blocking).** PR
+[#20](https://github.com/Rade69/AI-Campaing-Studio/pull/20) @ `5af518f`,
+CI zeleno, MERGEABLE/CLEAN.
+[Codex izvještaj](../agent_reports/2026-09-08-ACS-F1-055-review-codex.md)
+nezavisno potvrdio isto što i Claude, plus AST call-site dokaz (tačni
+argumenti ka `ConfirmPerformanceImport`/`MatchPerformanceImportBatch`)
+i 4 mutacije (2 više od mojih -- candidate escape, foreign-guard
+redirect na toast akciju). **Čeka eksplicitno Human Owner odobrenje za
+merge.**
+
+**Napomena o risk-tier klasifikaciji** (Human Owner pitanje): ovaj
+task je označen HIGH prvenstveno zbog novosti (prvi write-path, prvi
+`window.create_file_dialog` pristup), NE zbog GUI lifecycle klase
+grešaka koja je opravdala HIGH kod G7a/b (ovaj task je click-triggered,
+nema `pywebviewready` hidrataciju). Review je ispao potpuno čist, uzak
+blast radius (nula domain/application/ports/infrastructure dodira).
+Ubuduće: task koji SAMO ožičava već pregledane use-caseove bez
+lifecycle rizika ide kao MEDIUM/§29, ne HIGH -- primijeniti od G8
+nadalje ako obrazac ostane potvrđen.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-055
 — Claude review PASS, čeka Codex adversarial + Human Owner.**
 Implementer: Pi. PR [#20](https://github.com/Rade69/AI-Campaing-Studio/pull/20)
 @ `5af518f`, CI zeleno.
