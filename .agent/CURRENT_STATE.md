@@ -3,7 +3,27 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-054
+**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **Slice 2
+kanonski plan napisan** —
+[docs/AI_Campaign_Studio_Slice_2_Canonical_Plan.md](../docs/AI_Campaign_Studio_Slice_2_Canonical_Plan.md).
+Sintetizuje tri odvojena dokumenta (OpenCode-ov S2-G1...G9 gate-plan,
+WebshopAudit donor analiza, deep-research security/arhitektura
+izvještaj) u jedan kanonski dokument sa S2-G1...G9 strukturom
+(Task-Contract-kompatibilna) obogaćenom deep-research tehničkim
+detaljima. Dodaje dva nalaza koje nijedan izvorni dokument nije imao:
+stvaran gap u samom predloženom SSRF fixu (literal IP zaobilazi
+`PublicOnlyResolver` preko `TCPConnector.is_ip_address`) i
+neriješenu sync/async arhitektonsku odluku (`JobManager` je
+`ThreadPoolExecutor`/sinhron, predloženi stack je asyncio) koju S2-G1
+mora odlučiti PRIJE koda. **Čisto dokumentacija — NE aktivira Slice 2
+scope.** Slice 2 i dalje čeka P1.5-G7/G8 zatvaranje (Human Owner
+odluka 2026-09-08, potvrđena ponovo istog dana kad je pitanje o
+paralelnom S2-G1 radu postavljeno — korisnik je odabrao samo sintezu
+dokumenata sada, ne i S2-G1 kod).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-054
 (P1.5-G7b, REVIDIRAN) otvoren.** [Task contract](../agent_reports/ACS-F1-054-task-contract.md).
 
 **Stvaran nalaz koji je promijenio G7b scope**: Studio sadržaja ekran
