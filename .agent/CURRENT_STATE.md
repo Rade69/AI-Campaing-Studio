@@ -4,8 +4,38 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-057
-otvoren -- stvaran gap otkriven PRIJE G8 koda, blokira G8.**
-[Task contract](../agent_reports/ACS-F1-057-task-contract.md).
+MERGED (PR #21, squash `898bb8d`) -- gap zatvoren, G8 (ACS-F1-056) sada
+ODBLOKIRAN.** [Task contract](../agent_reports/ACS-F1-057-task-contract.md)
+· [Implementer evidence (Pi)](../agent_reports/2026-09-08-ACS-F1-057-pi.md).
+
+Novi izolovan use-case `MaterializePerformanceSnapshots`
+(`application/performance/materialize_performance_snapshots.py`) + mala
+aditivna izmjena u `confirm_performance_import` bridge metodi: nakon
+`MatchPerformanceImportBatch`, svaki `PerformanceImportRow` sa
+`match_status=="MATCHED"` i praznim `errors` sada materijalizuje TAČNO
+JEDAN `PerformanceSnapshot` (deterministički `snap-<row_id>` ID +
+postojeći SQLite UPSERT = idempotentno, mutation-testirano). MATCHED+
+invalid redovi se broje odvojeno (`skipped_invalid_count`), nikad ne
+ruše batch. `MatchPerformanceImportBatch` netaknut.
+
+**Independent Claude review (§29, MEDIUM, bez Codexa):** kod pročitan
+u cjelini i potvrđen ispravan; mutation test na idempotenciju (privremeno
+zamijenjen deterministički ID sa `uuid4()`-baziranim preko Edit alata,
+test pao kako se očekivalo, restauracija preko Edit alata potvrđena
+čistom) nezavisno reprodukovan; mypy/ruff čisto; GitNexus impact
+potvrđuje `MatchPerformanceImportBatch` stvarno netaknut (LOW, 0
+affected processes). Nezavisan pun test suite run: **1223 passed** +
+jedan reproducibilno FLAKY fail
+(`test_gate_report_against_current_repo_passes`, poznata F1-052 klasa
+flake-a pod opterećenjem odmah nakon punog suite runa -- izolovano
+ponovljen PASS, potvrđeno nepovezan sa F1-057 izmjenama). PR #21 CI
+zeleno, post-merge CI na `main` (run `34262520191`) zeleno. GitNexus
+osvježen (`npx gitnexus analyze`, 14.747 nodes/21.594 edges/170 flows).
+
+**ACS-F1-056 (P1.5-G8, Integration acceptance) je SADA ODBLOKIRAN i
+treba nastaviti TAČNO kako je originalno kontraktovan** — kontraktov
+tekst je namjerno ostao nepromijenjen tokom blokade.
+[Task contract](../agent_reports/ACS-F1-056-task-contract.md).
 
 **Nalaz implementera (Pi), nezavisno potvrđen** — `MatchPerformanceImportBatch`
 matchuje CSV redove sa `DistributionInstance`-ima ali NIKAD ne kreira
