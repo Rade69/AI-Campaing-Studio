@@ -3,7 +3,31 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-050
+**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **Sekvencijalna
+odluka (Human Owner potvrdio): Slice 1.5 (Performance/Analytics) se
+zatvara PRIJE nego što Slice 2 (Website/Brand Ingestion) počinje.**
+
+OpenCode je predložio `docs/AI_Campaign_Studio_Slice_2_Ingestion_Plan.md`
+(10 gate-ova, S2-G1...G9, sve činjenične tvrdnje nezavisno provjerene
+tačne protiv koda) sa preporukom da S2-G1 (domain+ports, contracts
+only) krene odmah paralelno sa Slice 1.5 repom (disjunktan
+`allowed_paths`). Koordinator je preporučio SUPROTNO, bez oslanjanja na
+plan-ov vlastiti prijedlog: Performance/Analytics (G1-G6 gotovi) je
+trenutno NEVIDLJIV korisniku — nema GUI ekrana, dugmeta ni prikaza,
+isti rizik "završeno na papiru, nedokazano u stvarnoj upotrebi" koji
+je G10 već jednom izbjegao (real GUI klik-kroz je otkrio 2 buga koje
+pytest nije uhvatio). Otvaranje Slice 2 sada bi ostavilo DVA
+poduhvata napola završena umjesto jednog zaokruženog. Human Owner
+odobrio ovaj redoslijed.
+
+**Sljedeći korak: P1.5-G7 (Minimal UI) + P1.5-G8 (Integration
+acceptance)** — Faza 1 v1.5 plan §22/§23. Slice 2 G1 čeka dok se ovo
+ne zatvori i dok Human Owner eksplicitno ne potvrdi
+`AI_Campaign_Studio_Slice_2_Ingestion_Plan.md` kao aktivan scope.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-050
 (P1.5-G6 Analytics Read Models) MERGED — Human Owner odobrio.**
 Implementer: Pi. PR [#15](https://github.com/Rade69/AI-Campaing-Studio/pull/15)
 squash-merged u `main` (`80353eb`). Pun HIGH-risk ciklus bez skraćivanja:
