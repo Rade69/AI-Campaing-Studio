@@ -4,10 +4,25 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-049
-(Brend read path) — Codex adversarial REJECT (test-only nalaz), fix
-runda kod Crush-a.** PR
-[#14](https://github.com/Rade69/AI-Campaing-Studio/pull/14),
-[Codex izvještaj](../agent_reports/2026-09-08-ACS-F1-049-review-codex.md).
+(Brend read path) — BF-1 fix pushovan (`1353075`), čeka Codex
+re-review.** PR [#14](https://github.com/Rade69/AI-Campaing-Studio/pull/14),
+CI zeleno. Test-only fix (Crush): `test_app_js_brand_hydration_lifecycle_isolation_and_xss`
+— izvršni Node/VM harness koji pokreće stvaran committovan `app.js`.
+Dokazuje: exactly-once `pywebviewready` listener + late hydration,
+immediate fast path, nula API poziva/netaknut DOM na ne-Brend ekranu,
+`textContent` za ime/publiku + `escapeHtml` za voice/facts.
+
+**Koordinator nezavisno reprodukovao sve 3 Codex-ove mutacije**
+(privremeno mutirao `app.js` u worktree-u, potvrdio FAIL, vratio
+`git checkout --`, potvrdio 0 diff + 315/315 PASS na originalu) PRIJE
+commit-a: bezuslovan `loadBrandOverview()` na parsiranju → FAIL
+(`readyListeners: 0`), `nameEl.innerHTML` umjesto `textContent` → FAIL
+(`nameUsesTextContent/lateHydrated/immediateHydrated: false`). Test
+zaista razlikuje ispravnu implementaciju od poznatih regresija.
+
+**Sljedeći korak: Codex kratak re-review** — test prolazi na
+ispravnom kodu (potvrđeno), pada na sve 3 mutacije (potvrđeno), gate
+zelen (potvrđeno). Nakon Codex PASS: Human Owner odobrenje, pa merge.
 
 **Nalaz BF-1**: `test_app_js_has_brand_hydration_with_escape_and_lifecycle`
 je string-presence test (provjerava da stringovi postoje NEGDJE u
