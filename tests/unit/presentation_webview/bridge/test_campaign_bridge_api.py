@@ -3651,6 +3651,9 @@ def test_confirm_performance_import_valid_flow_no_instances(
     assert result["ambiguous_count"] == 0
     assert result["unmatched_count"] == 2
     assert result["skipped_count"] == 0
+    # Nothing matched -> nothing materialized (ACS-F1-057).
+    assert result["materialized_count"] == 0
+    assert result["skipped_invalid_count"] == 0
 
 
 def test_confirm_performance_import_matches_external_content_id(
@@ -3677,6 +3680,15 @@ def test_confirm_performance_import_matches_external_content_id(
     assert result["ambiguous_count"] == 0
     assert result["unmatched_count"] == 1
     assert result["skipped_count"] == 0
+    # The single MATCHED row is now materialized into a snapshot (ACS-F1-057).
+    assert result["materialized_count"] == 1
+    assert result["skipped_invalid_count"] == 0
+    # ``_seed_campaign_performance`` already wrote 1 snapshot (ps-1); the
+    # materialize step writes exactly 1 more.
+    snapshot_count = _scalar(
+        bridge, "SELECT COUNT(*) FROM performance_snapshots"
+    )
+    assert snapshot_count == 2
 
 
 def test_confirm_performance_import_result_has_no_secrets(

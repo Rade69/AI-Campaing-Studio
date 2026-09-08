@@ -399,13 +399,16 @@ class PerformanceCsvPreviewResultUiModel:
 
 @dataclass(frozen=True)
 class ConfirmPerformanceImportResultUiModel:
-    """Result of ``confirm_performance_import`` (ACS-F1-055).
+    """Result of ``confirm_performance_import`` (ACS-F1-055, ACS-F1-057).
 
     ``row_count``/``valid_count``/``invalid_count`` come from the persisted
     ``PerformanceImportBatch`` (valid = ``matched_count``, invalid =
     ``unmatched_count`` per the G3 temporary semantics); the four match
-    counters come from the G4 ``MatchPerformanceImportBatch`` result.
-    Never carries secret/path/exception text.
+    counters come from the G4 ``MatchPerformanceImportBatch`` result;
+    ``materialized_count``/``skipped_invalid_count`` come from the
+    ACS-F1-057 ``MaterializePerformanceSnapshots`` step (how many matched +
+    valid rows became ``PerformanceSnapshot`` rows, and how many matched but
+    invalid rows were skipped). Never carries secret/path/exception text.
     """
 
     ok: bool
@@ -417,5 +420,7 @@ class ConfirmPerformanceImportResultUiModel:
     ambiguous_count: int
     unmatched_count: int
     skipped_count: int
+    materialized_count: int
+    skipped_invalid_count: int
     error_code: str | None
     error_message: str | None

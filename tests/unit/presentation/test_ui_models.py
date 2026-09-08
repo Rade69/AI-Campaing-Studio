@@ -844,7 +844,8 @@ def test_performance_csv_preview_carries_no_secret_field() -> None:
 
 
 def test_confirm_performance_import_result_shape() -> None:
-    """ACS-F1-055: confirm carries batch + match counters, JSON-safe."""
+    """ACS-F1-055/057: confirm carries batch + match + materialize
+    counters, JSON-safe."""
     result = ConfirmPerformanceImportResultUiModel(
         ok=True,
         batch_id="batch-1",
@@ -855,6 +856,8 @@ def test_confirm_performance_import_result_shape() -> None:
         ambiguous_count=0,
         unmatched_count=1,
         skipped_count=0,
+        materialized_count=1,
+        skipped_invalid_count=0,
         error_code=None,
         error_message=None,
     )
@@ -869,6 +872,8 @@ def test_confirm_performance_import_result_shape() -> None:
         "ambiguous_count": 0,
         "unmatched_count": 1,
         "skipped_count": 0,
+        "materialized_count": 1,
+        "skipped_invalid_count": 0,
         "error_code": None,
         "error_message": None,
     }
