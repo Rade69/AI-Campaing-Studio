@@ -787,3 +787,67 @@ async function exportCampaign(button) {
     window.addEventListener('pywebviewready', loadBrandOverview, {once:true});
   }
 })();
+
+// --- ACS-F1-051: Početna (Dashboard) — read-path hydration ---
+//
+// Same pattern as Kampanje (ACS-F1-046) and Brend (ACS-F1-049). SSR renders
+// the fixture at build time; at runtime we replace the 4 KPI counters and the
+// "Nedavne kampanje" list with REAL data from ``get_dashboard_overview``. The
+// page-specific markers (``data-pocetna-*``) prevent this from touching another
+// screen. KPI values are numbers -> ``textContent``; recent campaign names and
+// statuses go through ``escapeHtml``. ``pywebviewready`` + immediate fast path.
+(function(){
+  const recentList=document.querySelector('[data-pocetna-recent]');
+  if(!recentList) return;
+
+  function escapeHtml(value){
+    return String(value).replace(/[&<>"']/g, function(ch){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+    });
+  }
+
+  async function loadDashboardOverview(){
+    const api=window.pywebview && window.pywebview.api;
+    if(!api || typeof api.get_dashboard_overview !== 'function'){
+      return; // offline/debug preview: keep the SSR fixture
+    }
+    let result;
+    try{
+      result=await api.get_dashboard_overview({});
+    }catch(err){
+      return;
+    }
+    if(!result || result.ok !== true){
+      return;
+    }
+
+    const kpiMap={
+      active: result.active_campaigns,
+      planned: result.posts_planned,
+      drafts: result.drafts,
+      approved: result.approved,
+    };
+    document.querySelectorAll('[data-pocetna-kpi-value]').forEach(function(el){
+      const key=el.dataset.pocetnaKpiValue;
+      if(kpiMap[key] !== undefined){
+        el.textContent=String(kpiMap[key]);
+      }
+    });
+
+    if(result.recent_campaigns && result.recent_campaigns.length){
+      recentList.innerHTML=result.recent_campaigns.map(function(c){
+        return '<div class="row"><b>'+escapeHtml(c.name)+'</b>'+
+          '<span class="badge">'+escapeHtml(c.status)+'</span></div>';
+      }).join('');
+    }else{
+      recentList.innerHTML='<div class="muted small">Nema kampanja.</div>';
+    }
+  }
+
+  const api=window.pywebview && window.pywebview.api;
+  if(api && typeof api.get_dashboard_overview === 'function'){
+    loadDashboardOverview();
+  }else{
+    window.addEventListener('pywebviewready', loadDashboardOverview, {once:true});
+  }
+})();

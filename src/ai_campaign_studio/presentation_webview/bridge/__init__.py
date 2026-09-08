@@ -61,7 +61,10 @@ from ai_campaign_studio.bootstrap import create_bootstrap
 from ai_campaign_studio.config.paths import AppPaths
 from ai_campaign_studio.config.settings import AppSettings
 from ai_campaign_studio.domain.campaign.entities import CampaignBrief
-from ai_campaign_studio.domain.campaign.enums import CampaignPlanStatus
+from ai_campaign_studio.domain.campaign.enums import (
+    CampaignPlanStatus,
+    CampaignStatus,
+)
 from ai_campaign_studio.domain.common.errors import (
     EntityNotFound,
     InvariantViolation,
@@ -74,6 +77,7 @@ from ai_campaign_studio.domain.common.ids import (
     VisualSystemId,
 )
 from ai_campaign_studio.domain.content.entities import CampaignTarget
+from ai_campaign_studio.domain.content.enums import ContentStatus
 from ai_campaign_studio.domain.facts.policies import is_fact_usable
 from ai_campaign_studio.infrastructure.ai.provider_adapter_factory import (
     _PROVIDER_PRIORITY,
@@ -102,6 +106,8 @@ from ai_campaign_studio.presentation.ui_models import (
     BrandOverviewResultUiModel,
     CampaignPlanResultUiModel,
     CampaignSummaryUiModel,
+    DashboardOverviewResultUiModel,
+    DashboardRecentCampaignUiModel,
     ExportCampaignResultUiModel,
     GenerateContentResultUiModel,
     ListCampaignsResultUiModel,
@@ -161,6 +167,7 @@ _LIFECYCLE_ERROR_MAPPERS: dict[str, str] = {
     "export_campaign_package": "_export_err",
     "list_campaigns": "_list_err",
     "get_brand_overview": "_brand_err",
+    "get_dashboard_overview": "_dashboard_err",
 }
 # Per-method fallback message used ONLY when the resource-lifecycle
 # fails (we never want to surface the underlying exception text;
@@ -175,6 +182,7 @@ _LIFECYCLE_ERROR_MESSAGES: dict[str, str] = {
     "export_campaign_package": "Izvoz nije uspio (interna greška).",
     "list_campaigns": "Učitavanje kampanja nije uspjelo (interna greška).",
     "get_brand_overview": "Učitavanje brenda nije uspjelo (interna greška).",
+    "get_dashboard_overview": "Učitavanje pregleda nije uspjelo (interna greška).",
 }
 
 
@@ -1451,6 +1459,68 @@ class CampaignBridgeApi:
                 "Učitavanje brenda nije uspjelo (interna greška).",
             )
 
+    @_with_call_resources
+    def get_dashboard_overview(self, raw_payload: dict | None = None) -> dict:
+        """Read the Početna dashboard KPIs + recent campaigns (ACS-F1-051).
+
+        Third read js_api method. Aggregates the 4 KPI counters across ALL
+        campaigns (active = status != EXPORTED; posts planned/drafts/approved
+        count ``ContentPiece`` rows by ``ContentStatus``) and returns the most
+        recent campaigns (newest first, capped at 5). ``activity`` is NOT
+        returned (no domain activity-log concept — that SSR panel stays
+        fixture-only). Empty DB -> ``ok=True`` with all counters 0. Never
+        raises into JS; never leaks secret/path/exception text.
+        """
+        del raw_payload
+        try:
+            campaigns = self._campaign_repo.list_campaigns()
+            active = 0
+            planned = 0
+            drafts = 0
+            approved = 0
+            recent: list[DashboardRecentCampaignUiModel] = []
+            for campaign in campaigns:
+                # "Active" = any campaign not yet EXPORTED (the single
+                # terminal state in CampaignStatus).
+                if campaign.status is not CampaignStatus.EXPORTED:
+                    active += 1
+                for piece in self._content_repo.list_campaign_content(
+                    campaign.id
+                ):
+                    if piece.status is ContentStatus.PLANNED:
+                        planned += 1
+                    elif piece.status is ContentStatus.DRAFT:
+                        drafts += 1
+                    elif piece.status is ContentStatus.APPROVED:
+                        approved += 1
+                brief = self._campaign_repo.get_brief(campaign.brief_id)
+                name = brief.offer if brief is not None else str(campaign.id)
+                recent.append(
+                    DashboardRecentCampaignUiModel(
+                        name=name,
+                        status=campaign.status.value,
+                    )
+                )
+
+            return asdict(
+                DashboardOverviewResultUiModel(
+                    ok=True,
+                    active_campaigns=active,
+                    posts_planned=planned,
+                    drafts=drafts,
+                    approved=approved,
+                    recent_campaigns=tuple(recent[:5]),
+                    error_code=None,
+                    error_message=None,
+                )
+            )
+        except Exception:
+            self._bootstrap.logger.exception("get_dashboard_overview failed")
+            return self._dashboard_err(
+                _ERROR_INTERNAL,
+                "Učitavanje pregleda nije uspjelo (interna greška).",
+            )
+
     # --- per-call SQLite resources ---
 
     @contextmanager
@@ -1891,6 +1961,28 @@ class CampaignBridgeApi:
                 primary_audience=None,
                 voice=(),
                 facts=(),
+                error_code=code,
+                error_message=message,
+            )
+        )
+
+    @staticmethod
+    def _dashboard_err(code: str, message: str) -> dict:
+        """Error result for ``get_dashboard_overview`` only.
+
+        Uses ``DashboardOverviewResultUiModel`` so the return dict has the
+        EXACT shape the JS caller expects: ``{ok, active_campaigns,
+        posts_planned, drafts, approved, recent_campaigns, error_code,
+        error_message}`` and nothing else.
+        """
+        return asdict(
+            DashboardOverviewResultUiModel(
+                ok=False,
+                active_campaigns=0,
+                posts_planned=0,
+                drafts=0,
+                approved=0,
+                recent_campaigns=(),
                 error_code=code,
                 error_message=message,
             )

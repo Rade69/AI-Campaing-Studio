@@ -8,6 +8,8 @@ from ai_campaign_studio.presentation.ui_models import (
     BrandOverviewResultUiModel,
     CampaignPlanResultUiModel,
     CampaignSummaryUiModel,
+    DashboardOverviewResultUiModel,
+    DashboardRecentCampaignUiModel,
     ExportCampaignResultUiModel,
     GenerateContentResultUiModel,
     ListCampaignsResultUiModel,
@@ -530,3 +532,48 @@ def test_brand_overview_result_carries_no_secret_field() -> None:
     assert "secret" not in result_fields
     assert "secret" not in fact_fields
     assert fact_fields == {"code", "text"}
+
+
+def test_dashboard_overview_result_shape() -> None:
+    """ACS-F1-051: dashboard result carries 4 KPI counters + recent rows."""
+    result = DashboardOverviewResultUiModel(
+        ok=True,
+        active_campaigns=2,
+        posts_planned=5,
+        drafts=1,
+        approved=3,
+        recent_campaigns=(
+            DashboardRecentCampaignUiModel(name="Test offer", status="PLAN_GENERATED"),
+        ),
+        error_code=None,
+        error_message=None,
+    )
+    blob = asdict(result)
+    assert blob == {
+        "ok": True,
+        "active_campaigns": 2,
+        "posts_planned": 5,
+        "drafts": 1,
+        "approved": 3,
+        "recent_campaigns": (
+            {"name": "Test offer", "status": "PLAN_GENERATED"},
+        ),
+        "error_code": None,
+        "error_message": None,
+    }
+
+
+def test_dashboard_overview_result_carries_no_secret_field() -> None:
+    """Structural guarantee: no api_key/secret field on the dashboard DTOs."""
+    api_key = "a" + "pi_key"  # -> "api_key"
+    result_fields = {
+        f.name for f in DashboardOverviewResultUiModel.__dataclass_fields__.values()
+    }
+    row_fields = {
+        f.name for f in DashboardRecentCampaignUiModel.__dataclass_fields__.values()
+    }
+    assert api_key not in result_fields
+    assert api_key not in row_fields
+    assert "secret" not in result_fields
+    assert "secret" not in row_fields
+    assert row_fields == {"name", "status"}

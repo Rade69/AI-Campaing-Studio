@@ -218,3 +218,37 @@ class BrandOverviewResultUiModel:
     facts: tuple[BrandFactUiModel, ...]
     error_code: str | None
     error_message: str | None
+
+
+@dataclass(frozen=True)
+class DashboardRecentCampaignUiModel:
+    """One "Nedavne kampanje" row on the Početna dashboard (ACS-F1-051).
+
+    ``name`` is the campaign brief's ``offer`` (same offer-as-name pattern as
+    ``CampaignSummaryUiModel``); ``status`` is the raw ``CampaignStatus.value``
+    string (consistent with the Kampanje list, which shows the raw status).
+    """
+
+    name: str
+    status: str
+
+
+@dataclass(frozen=True)
+class DashboardOverviewResultUiModel:
+    """Result of a ``get_dashboard_overview`` call (ACS-F1-051).
+
+    Aggregates the 4 KPI counters across ALL campaigns and returns the most
+    recent campaigns (newest first, capped at 5 — no pagination in this MVP).
+    ``activity`` is deliberately NOT included (no domain activity-log concept
+    — that panel stays fixture-only). Never carries secret/path/exception
+    text.
+    """
+
+    ok: bool
+    active_campaigns: int
+    posts_planned: int
+    drafts: int
+    approved: int
+    recent_campaigns: tuple[DashboardRecentCampaignUiModel, ...]
+    error_code: str | None
+    error_message: str | None

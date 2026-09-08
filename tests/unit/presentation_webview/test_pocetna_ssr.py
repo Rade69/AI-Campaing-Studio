@@ -188,3 +188,163 @@ def test_render_shell_has_no_lang_toggle() -> None:
     )
     assert "lang-toggle" not in page
     assert "class=\"pill\"" not in page
+
+
+def test_render_body_emits_pocetna_hydration_markers() -> None:
+    """ACS-F1-051: the SSR emits the screen-specific markers that app.js
+    targets for real-data hydration."""
+    body = render_body()
+    assert "data-pocetna-recent" in body
+    for key in ("active", "planned", "drafts", "approved"):
+        assert f'data-pocetna-kpi-value="{key}"' in body, (
+            f"missing KPI marker: {key!r}"
+        )
+
+
+def test_app_js_dashboard_hydration_lifecycle_isolation_and_xss() -> None:
+    """Execute the committed shared JS against a tiny DOM double.
+
+    Regression coverage for the Codex ACS-F1-046/049 lifecycle/isolation/XSS
+    precedents, applied to Početna from the first version: late pywebview
+    injection hydrates on ``pywebviewready`` EXACTLY once; the immediate fast
+    path hydrates when the API is present; a foreign screen (no
+    ``data-pocetna-*`` marker) is never touched; KPI values use ``textContent``
+    and recent campaign name/status go through ``escapeHtml``.
+
+    The assertions fail on the bad variants: (1) an unconditional call at
+    parse time, (2) a generic selector reaching a foreign screen, (3) raw
+    ``innerHTML`` interpolation.
+    """
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is unavailable; executable app.js regression skipped")
+
+    from pathlib import Path
+
+    app_js_path = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "src" / "ai_campaign_studio" / "presentation_webview" / "static"
+        / "app.js"
+    )
+    harness = r"""
+const fs=require('fs'),vm=require('vm');
+const src=fs.readFileSync(process.argv[1],'utf8');
+function el(initial){
+  return {
+    _text:initial, _html:initial,
+    set textContent(v){this._text=v;}, get textContent(){return this._text;},
+    set innerHTML(v){this._html=v;}, get innerHTML(){return this._html;}
+  };
+}
+function kpiEl(key){
+  const e=el('0'); e.dataset={pocetnaKpiValue:key}; return e;
+}
+function baseDocument(querySelector,querySelectorAll){
+  return {
+    querySelectorAll:querySelectorAll||function(){return [];},
+    querySelector,
+    getElementById(){return null;}
+  };
+}
+function baseWindow(){
+  const listeners={};
+  return {listeners, window:{addEventListener(n,f){(listeners[n]??=[]).push(f);}}};
+}
+function pocetnaContext(withApi){
+  const {listeners,window}=baseWindow();
+  const state={apiCalls:0};
+  const recentList=el('SSR RECENT');
+  const kpis=[kpiEl('active'),kpiEl('planned'),kpiEl('drafts'),kpiEl('approved')];
+  const document=baseDocument(function(s){
+    if(s==='[data-pocetna-recent]') return recentList;
+    return null;
+  }, function(s){
+    if(s==='[data-pocetna-kpi-value]') return kpis;
+    return [];
+  });
+  const installApi=()=>{window.pywebview={api:{async get_dashboard_overview(){
+    state.apiCalls+=1;
+    return {ok:true, active_campaigns:4, posts_planned:18, drafts:6, approved:12,
+      recent_campaigns:[{name:'<img src=x>', status:'<script>x</script>'}]};
+  }}};};
+  if(withApi) installApi();
+  const context={window, document, location:{search:''}, URLSearchParams,
+    setInterval(){return 1;}, clearInterval(){}, setTimeout, clearTimeout, console};
+  vm.createContext(context);
+  return {context, listeners, state, installApi, recentList, kpis};
+}
+function foreignContext(withApi){
+  const {listeners,window}=baseWindow();
+  const state={apiCalls:0};
+  const h3=el('FOREIGN H3');
+  const document=baseDocument(function(s){
+    if(s==='[data-pocetna-recent]') return null;
+    if(s==='h3') return h3;
+    return null;
+  });
+  const installApi=()=>{window.pywebview={api:{async get_dashboard_overview(){
+    state.apiCalls+=1;
+    return {ok:true,active_campaigns:1,posts_planned:0,
+      drafts:0,approved:0,recent_campaigns:[]};
+  }}};};
+  if(withApi) installApi();
+  const context={window, document, location:{search:''}, URLSearchParams,
+    setInterval(){return 1;}, clearInterval(){}, setTimeout, clearTimeout, console};
+  vm.createContext(context);
+  return {context, listeners, state, installApi, h3};
+}
+(async()=>{
+  const late=pocetnaContext(false);
+  vm.runInContext(src, late.context);
+  const readyListeners=(late.listeners.pywebviewready||[]).length;
+  late.installApi();
+  for(const fn of late.listeners.pywebviewready||[]) await fn();
+  await new Promise(r=>setTimeout(r,0));
+
+  const immediate=pocetnaContext(true);
+  vm.runInContext(src, immediate.context);
+  await new Promise(r=>setTimeout(r,0));
+
+  const foreign=foreignContext(true);
+  vm.runInContext(src, foreign.context);
+  await new Promise(r=>setTimeout(r,0));
+
+  console.log(JSON.stringify({
+    readyListeners,
+    lateHydrated: late.recentList.innerHTML.includes('&lt;img src=x&gt;'),
+    lateKpiActive: late.kpis[0].textContent==='4',
+    immediateHydrated: immediate.recentList.innerHTML.includes('&lt;img src=x&gt;'),
+    foreignApiCalls: foreign.state.apiCalls,
+    foreignUntouched: foreign.h3.textContent==='FOREIGN H3' &&
+      foreign.h3.innerHTML==='FOREIGN H3',
+    nameEscaped: late.recentList.innerHTML.includes('&lt;img src=x&gt;') &&
+      !/<img/.test(late.recentList.innerHTML),
+    statusEscaped: late.recentList.innerHTML.includes('&lt;script&gt;') &&
+      !/<script/.test(late.recentList.innerHTML),
+  }));
+})().catch(e=>{console.error(e);process.exitCode=1;});
+"""
+    completed = subprocess.run(
+        [node, "-e", harness, str(app_js_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    result = json.loads(completed.stdout)
+    assert result == {
+        "readyListeners": 1,
+        "lateHydrated": True,
+        "lateKpiActive": True,
+        "immediateHydrated": True,
+        "foreignApiCalls": 0,
+        "foreignUntouched": True,
+        "nameEscaped": True,
+        "statusEscaped": True,
+    }
