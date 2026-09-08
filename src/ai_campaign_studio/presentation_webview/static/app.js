@@ -718,3 +718,72 @@ async function exportCampaign(button) {
     window.addEventListener('pywebviewready', loadCampaigns, {once:true});
   }
 })();
+
+// --- ACS-F1-049: Brend screen — read-path hydration ---
+//
+// Same pattern as the Kampanje hydration (ACS-F1-046): SSR renders the
+// fixture at build time, and at runtime we replace the brand-info and
+// approved-facts panels with REAL data from ``get_brand_overview``. The
+// page-specific markers (``data-brend-*``) prevent this from ever touching
+// another screen. ``pywebviewready`` + immediate fast path so the data
+// arrives after the async bridge injection.
+(function(){
+  const nameEl=document.querySelector('[data-brend-name]');
+  if(!nameEl) return;
+
+  function escapeHtml(value){
+    return String(value).replace(/[&<>"']/g, function(ch){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+    });
+  }
+
+  async function loadBrandOverview(){
+    const api=window.pywebview && window.pywebview.api;
+    if(!api || typeof api.get_brand_overview !== 'function'){
+      return; // offline/debug preview: keep the SSR fixture
+    }
+    let result;
+    try{
+      result=await api.get_brand_overview({});
+    }catch(err){
+      return;
+    }
+    if(!result || result.ok !== true){
+      return;
+    }
+
+    // brand name + audience via ``textContent`` (inherently XSS-safe).
+    if(result.brand_name){
+      nameEl.textContent=result.brand_name;
+    }
+    const audienceEl=document.querySelector('[data-brend-audience]');
+    if(audienceEl && result.primary_audience){
+      audienceEl.textContent=result.primary_audience;
+    }
+    // voice + facts are HTML lists: escape every interpolated value.
+    const voiceEl=document.querySelector('[data-brend-voice]');
+    if(voiceEl && result.voice && result.voice.length){
+      voiceEl.innerHTML=result.voice.map(function(v){
+        return '<span class="badge info">'+escapeHtml(v)+'</span>';
+      }).join('');
+    }
+    const factsEl=document.querySelector('[data-brend-facts]');
+    if(factsEl && result.facts){
+      if(result.facts.length===0){
+        factsEl.innerHTML='<div class="muted">Nema odobrenih činjenica.</div>';
+      }else{
+        factsEl.innerHTML=result.facts.map(function(f){
+          return '<div class="fact"><b>'+escapeHtml(f.code)+'</b> — '+
+            escapeHtml(f.text)+'</div>';
+        }).join('');
+      }
+    }
+  }
+
+  const api=window.pywebview && window.pywebview.api;
+  if(api && typeof api.get_brand_overview === 'function'){
+    loadBrandOverview();
+  }else{
+    window.addEventListener('pywebviewready', loadBrandOverview, {once:true});
+  }
+})();

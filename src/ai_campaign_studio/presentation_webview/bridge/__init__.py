@@ -74,6 +74,7 @@ from ai_campaign_studio.domain.common.ids import (
     VisualSystemId,
 )
 from ai_campaign_studio.domain.content.entities import CampaignTarget
+from ai_campaign_studio.domain.facts.policies import is_fact_usable
 from ai_campaign_studio.infrastructure.ai.provider_adapter_factory import (
     _PROVIDER_PRIORITY,
     build_text_generation_adapter,
@@ -97,6 +98,8 @@ from ai_campaign_studio.infrastructure.prompts.yaml_prompt_repository import (
 from ai_campaign_studio.infrastructure.rendering import PillowRenderer
 from ai_campaign_studio.jobs.cancellation import CancellationError
 from ai_campaign_studio.presentation.ui_models import (
+    BrandFactUiModel,
+    BrandOverviewResultUiModel,
     CampaignPlanResultUiModel,
     CampaignSummaryUiModel,
     ExportCampaignResultUiModel,
@@ -157,6 +160,7 @@ _LIFECYCLE_ERROR_MAPPERS: dict[str, str] = {
     "cancel_job": "_job_status_err",
     "export_campaign_package": "_export_err",
     "list_campaigns": "_list_err",
+    "get_brand_overview": "_brand_err",
 }
 # Per-method fallback message used ONLY when the resource-lifecycle
 # fails (we never want to surface the underlying exception text;
@@ -170,6 +174,7 @@ _LIFECYCLE_ERROR_MESSAGES: dict[str, str] = {
     "cancel_job": "Otkazivanje posla nije uspjelo (interna greška).",
     "export_campaign_package": "Izvoz nije uspio (interna greška).",
     "list_campaigns": "Učitavanje kampanja nije uspjelo (interna greška).",
+    "get_brand_overview": "Učitavanje brenda nije uspjelo (interna greška).",
 }
 
 
@@ -1388,6 +1393,64 @@ class CampaignBridgeApi:
                 "Učitavanje kampanja nije uspjelo (interna greška).",
             )
 
+    @_with_call_resources
+    def get_brand_overview(self, raw_payload: dict | None = None) -> dict:
+        """Read the single demo brand for the Brend screen (ACS-F1-049).
+
+        Second read js_api method (after ``list_campaigns``). Resolves the
+        demo brand/snapshot via ``_ensure_brand()`` (idempotent seed), then
+        returns the brand name, primary audience, voice (formality + tone)
+        and the usable approved facts. ``description`` is NOT returned
+        (``BrandSnapshot`` has no brand-description field — the SSR fixture's
+        description stays as-is). Never raises into JS; never leaks secret/
+        path/exception text.
+        """
+        del raw_payload
+        try:
+            brand_id, snapshot_id = self._ensure_brand()
+            brand = self._brand_repo.get_brand(brand_id)
+            snapshot = self._brand_repo.get_snapshot(snapshot_id)
+            if brand is None or snapshot is None:
+                return self._brand_err(
+                    _ERROR_INTERNAL,
+                    "Brend nije pronađen u bazi (interna greška).",
+                )
+
+            primary_audience = ""
+            if snapshot.audiences:
+                audience = snapshot.audiences[0]
+                primary_audience = (
+                    f"{audience.name} — {audience.description}"
+                    if audience.description
+                    else audience.name
+                )
+
+            voice = (snapshot.voice.formality, *snapshot.voice.tone)
+
+            facts = tuple(
+                BrandFactUiModel(code=f.logical_fact_id, text=f.content)
+                for f in self._fact_repo.list_snapshot_facts(snapshot_id)
+                if is_fact_usable(f)
+            )
+
+            return asdict(
+                BrandOverviewResultUiModel(
+                    ok=True,
+                    brand_name=brand.name,
+                    primary_audience=primary_audience,
+                    voice=voice,
+                    facts=facts,
+                    error_code=None,
+                    error_message=None,
+                )
+            )
+        except Exception:
+            self._bootstrap.logger.exception("get_brand_overview failed")
+            return self._brand_err(
+                _ERROR_INTERNAL,
+                "Učitavanje brenda nije uspjelo (interna greška).",
+            )
+
     # --- per-call SQLite resources ---
 
     @contextmanager
@@ -1807,6 +1870,27 @@ class CampaignBridgeApi:
             ListCampaignsResultUiModel(
                 ok=False,
                 campaigns=(),
+                error_code=code,
+                error_message=message,
+            )
+        )
+
+    @staticmethod
+    def _brand_err(code: str, message: str) -> dict:
+        """Error result for ``get_brand_overview`` only.
+
+        Uses ``BrandOverviewResultUiModel`` (NOT ``_err()`` /
+        ``_list_err()``) so the return dict has the EXACT shape the JS
+        caller expects: ``{ok, brand_name, primary_audience, voice, facts,
+        error_code, error_message}`` and nothing else.
+        """
+        return asdict(
+            BrandOverviewResultUiModel(
+                ok=False,
+                brand_name=None,
+                primary_audience=None,
+                voice=(),
+                facts=(),
                 error_code=code,
                 error_message=message,
             )

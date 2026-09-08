@@ -12,6 +12,7 @@ from typing import Any, Protocol
 from ai_campaign_studio.localization.enums import AppLocale
 from ai_campaign_studio.presentation.state import AppRuntimeState
 from ai_campaign_studio.presentation.ui_models import (
+    BrandOverviewResultUiModel,
     CampaignPlanResultUiModel,
     ExportCampaignResultUiModel,
     GenerateContentResultUiModel,
@@ -69,3 +70,7 @@ class PresentationFacade(Protocol):
     def list_campaigns(
         self, raw_payload: dict[str, Any] | None = None
     ) -> ListCampaignsResultUiModel: ...
+
+    def get_brand_overview(
+        self, raw_payload: dict[str, Any] | None = None
+    ) -> BrandOverviewResultUiModel: ...

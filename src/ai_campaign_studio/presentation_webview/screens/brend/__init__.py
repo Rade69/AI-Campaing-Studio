@@ -171,15 +171,16 @@ def render_body(fixture: BrendFixture | None = None) -> str:
         # Panel 1 (default-active): Osnovni podaci — brand info kartica
         + '<div data-tab-panel id="panel-osnovni">'
         '<div class="card">'
-        f"<h3>{html.escape(fx.brand.name)}</h3>"
+        f'<h3 data-brend-name>{html.escape(fx.brand.name)}</h3>'
         '<div class="field"><label>Opis brenda</label>'
         f'<div class="callout">{html.escape(fx.brand.description)}</div>'
         "</div>"
         '<div class="field"><label>Primarna publika</label>'
-        f"<div>{html.escape(fx.brand.primary_audience)}</div>"
+        f'<div data-brend-audience>{html.escape(fx.brand.primary_audience)}</div>'
         "</div>"
         '<div class="field"><label>Glas brenda</label>'
-        f'<div class="statusline">{_voice_badges(fx.brand.voice)}</div>'
+        '<div class="statusline" data-brend-voice>'
+        f"{_voice_badges(fx.brand.voice)}</div>"
         "</div>"
         "</div>"
         "</div>"
@@ -187,7 +188,7 @@ def render_body(fixture: BrendFixture | None = None) -> str:
         + '<div data-tab-panel id="panel-cinjenice" hidden>'
         '<div class="card">'
         "<h3>Odobrene činjenice</h3>"
-        f"{fact_html}"
+        f'<div data-brend-facts>{fact_html}</div>'
         '<div class="actions">'
         '<button class="btn" data-action="toast" '
         'data-message="Lista činjenica — kasnije vodi u facts workspace.">'
