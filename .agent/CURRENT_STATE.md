@@ -3,10 +3,55 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **Treći
-paralelan Task Contract dodat** (Human Owner podsjetio da imamo i
-MiniMax-a -- iskoristiti sva 3 slota kad god ima stvarnog, disjoint
-posla, ne samo 2).
+**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-050 i
+ACS-F1-051 — Claude review PASS na oba, čekaju Codex adversarial +
+Human Owner.**
+
+1. **[ACS-F1-050](../agent_reports/ACS-F1-050-task-contract.md)** —
+   P1.5-G6 Analytics Read Models. Implementer: Pi. PR
+   [#15](https://github.com/Rade69/AI-Campaing-Studio/pull/15). Nova
+   port metoda (`list_performance_snapshots_by_distribution_instance`)
+   + **prihvaćen OUT_OF_SCOPE_FINDING** (2 dodatne aditivne query
+   metode, `list_distribution_instances_by_content_piece`/`_by_platform`
+   — nužne za Content/Platform summary, isti obrazac kao postojeće
+   metode, GitNexus impact nezavisno potvrdio 0 affected processes).
+   Agregaciona semantika (sabiranje + None-propagacija) i currency-gap
+   potvrda dokumentovani. Nezavisno verifikovano: kod pročitan
+   liniju-po-liniju, mutation-test na "derived isključivo iz
+   calculate_derived_metrics" invarijantu (ručna formula → 5 testova
+   FAIL → restore → PASS), GitNexus impact nezavisno reprodukovan
+   (identičan Pi-jevom nalazu), pun suite nezavisno pokrenut 2x (1159/2
+   failed pa 1160/1 skipped — oba objašnjena pred-postojeća/
+   nedeterministička problema, ne regresija: DeepSeek live-test
+   nondeterminizam + poznat gate-report flake, potonji je predmet
+   ACS-F1-052).
+2. **[ACS-F1-051](../agent_reports/ACS-F1-051-task-contract.md)** —
+   Početna dashboard read path. Implementer: Crush. PR
+   [#16](https://github.com/Rade69/AI-Campaing-Studio/pull/16) (branch
+   rebase-ovan na `deade0b` prije push-a, čist diff — 11 fajlova).
+   **Prvi read-path task koji NIJE dobio Codex REJECT na string-test
+   grešku** — kontrakt je od početka mandatovao izvršni Node/VM test
+   (F1-049 lekcija), implementer ga je ugradio od prve verzije.
+   Nezavisno verifikovano: kod pročitan liniju-po-liniju, oba
+   kontraktom navedena mutation dokaza (bezuslovan poziv, izostavljen
+   `escapeHtml`) nezavisno reprodukovana protiv STVARNOG committed
+   `app.js` (potvrđeno FAIL na oba, restore, PASS), pun ciljani suite
+   326 testova PASS, CI zeleno.
+
+**Napomena (transparentnost, ne greška implementera):** tokom
+F1-051 reviewa koordinator je greškom pokrenuo `git checkout --` na
+`app.js` u worktree-u SA Crush-ovim nekomitovanim radom (kršeći
+sopstveno zapamćeno pravilo "no git checkout on uncommitted
+worktree") i time privremeno obrisao Crush-ovu Početna hidrataciju iz
+radnog stabla. Odmah uočeno i ispravljeno rekonstrukcijom iz
+prethodno uhvaćenog `git diff` output-a (byte-za-byte potvrđeno
+identično), bez gubitka stvarnog rada — dalja dva mutation testa
+urađena bezbjedno preko Edit alata, ne `git checkout --`.
+
+`allowed_paths` oba taska ostaju disjoint od paralelnog trećeg
+(ACS-F1-052, MiniMax, još u toku).
+
+---
 
 **[ACS-F1-052](../agent_reports/ACS-F1-052-task-contract.md)** --
    Dijagnostikovati i popraviti povremeni fail
