@@ -851,3 +851,74 @@ async function exportCampaign(button) {
     window.addEventListener('pywebviewready', loadDashboardOverview, {once:true});
   }
 })();
+
+// --- ACS-F1-053: Pregled i izvoz — "Učinak kampanje" kartica ---
+//
+// Hidratuje kampanja-performance karticu STVARNIM podacima iz
+// ``get_campaign_performance``. Ekran-specifični ``data-perf-*`` markeri
+// (nikad generički selector) spriječavaju dodir drugih ekrana; ``campaign_id``
+// dolazi iz ``?campaign=`` URL parametra (isti ``URLSearchParams`` obrazac kao
+// boot IIFE na vrhu fajla). Brojevi idu kroz ``textContent``; ``None`` ->
+// 'N/A' (nikad prazan string). ``pywebviewready`` + immediate fast path.
+(function(){
+  const card=document.querySelector('[data-perf-card]');
+  if(!card) return;
+  const campaign=new URLSearchParams(location.search).get('campaign');
+  if(!campaign) return;
+
+  function fmt(v){
+    if(v===null || v===undefined) return 'N/A';
+    return String(v);
+  }
+
+  async function loadCampaignPerformance(){
+    const api=window.pywebview && window.pywebview.api;
+    if(!api || typeof api.get_campaign_performance !== 'function'){
+      return; // offline/debug preview: keep the SSR fixture
+    }
+    let result;
+    try{
+      result=await api.get_campaign_performance({campaign_id: campaign});
+    }catch(err){
+      return;
+    }
+    if(!result || result.ok !== true){
+      return;
+    }
+
+    const derived=result.derived || {};
+    const raw=result.raw || {};
+    const map={
+      ctr: derived.ctr,
+      cpc: derived.cpc,
+      cpm: derived.cpm,
+      cpa: derived.cpa,
+      roas: derived.roas,
+      'conversion-rate': derived.conversion_rate,
+      impressions: raw.impressions,
+      clicks: raw.clicks,
+      spend: raw.spend,
+    };
+    document.querySelectorAll('[data-perf-value]').forEach(function(el){
+      const key=el.dataset.perfValue;
+      if(Object.prototype.hasOwnProperty.call(map, key)){
+        el.textContent=fmt(map[key]);
+      }
+    });
+    const countEl=document.querySelector('[data-perf-count]');
+    if(countEl){
+      countEl.textContent=String(result.distribution_instance_count);
+    }
+    if(result.distribution_instance_count > 0){
+      const note=document.querySelector('[data-perf-note]');
+      if(note) note.hidden=true;
+    }
+  }
+
+  const api=window.pywebview && window.pywebview.api;
+  if(api && typeof api.get_campaign_performance === 'function'){
+    loadCampaignPerformance();
+  }else{
+    window.addEventListener('pywebviewready', loadCampaignPerformance, {once:true});
+  }
+})();

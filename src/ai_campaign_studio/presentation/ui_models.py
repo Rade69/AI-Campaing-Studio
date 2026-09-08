@@ -252,3 +252,56 @@ class DashboardOverviewResultUiModel:
     recent_campaigns: tuple[DashboardRecentCampaignUiModel, ...]
     error_code: str | None
     error_message: str | None
+
+
+@dataclass(frozen=True)
+class DerivedMetricSetUiModel:
+    """The 6 derived performance metrics (P1.5-G6/G7a).
+
+    Presentation copy of the domain ``DerivedMetricSet`` values — the
+    presentation layer does not import domain types, so the bridge maps
+    ``DerivedMetricSet`` onto these primitives. CTR and Conversion Rate are
+    RATIOS (0.034 == 3.4%), matching the G5 contract.
+    """
+
+    ctr: float | None = None
+    cpc: float | None = None
+    cpm: float | None = None
+    cpa: float | None = None
+    roas: float | None = None
+    conversion_rate: float | None = None
+
+
+@dataclass(frozen=True)
+class RawMetricSetUiModel:
+    """Relevant raw metric subset shown alongside derived metrics (G7a).
+
+    ``impressions``/``clicks``/``spend`` are the three inputs the G7a UI
+    surfaces as context for the derived CTR/CPC/CPM numbers; the remaining
+    ``CanonicalMetricSet`` fields are deliberately omitted from this MVP.
+    """
+
+    impressions: int | None = None
+    clicks: int | None = None
+    spend: float | None = None
+
+
+@dataclass(frozen=True)
+class CampaignPerformanceResultUiModel:
+    """Result of a ``get_campaign_performance`` call (ACS-F1-053).
+
+    Aggregated performance for one campaign, computed by the G6
+    ``build_campaign_performance_summary``. ``derived`` carries the G5
+    ``DerivedMetricSet`` result; ``raw`` a relevant subset of the summed
+    ``CanonicalMetricSet``; ``distribution_instance_count`` is the number of
+    distribution instances for the campaign. A campaign with no performance
+    data returns ``ok=True`` with all metrics ``None`` and count 0 (not an
+    error). Never carries secret/path/exception text.
+    """
+
+    ok: bool
+    derived: DerivedMetricSetUiModel
+    raw: RawMetricSetUiModel
+    distribution_instance_count: int
+    error_code: str | None
+    error_message: str | None

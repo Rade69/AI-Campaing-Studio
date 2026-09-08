@@ -52,6 +52,7 @@ class PregledIzvozFixture:
     export_intro: str  # G10 scope callout above the export rows
     odobri_toast: str
     izvezi_toast: str
+    performance_note: str = "Nema podataka o performansama još."
 
 
 DEFAULT_FIXTURE = PregledIzvozFixture(
@@ -100,6 +101,7 @@ DEFAULT_FIXTURE = PregledIzvozFixture(
     izvezi_toast=(
         "Izvoz ZIP paketa — pokreće render i pakovanje sadržaja."
     ),
+    performance_note="Nema podataka o performansama još.",
 )
 
 
@@ -163,6 +165,33 @@ def render_body(fixture: PregledIzvozFixture | None = None) -> str:
         "</button>"
         "</div>"
         '<div class="callout" data-export-result hidden></div>'
+        "</div>"
+        "</div>"
+        '<div class="grid g2" style="margin-top:18px">'
+        '<div class="card" data-perf-card>'
+        "<h3>Učinak kampanje</h3>"
+        f'<p class="muted small" data-perf-note>'
+        f"{html.escape(fx.performance_note)}</p>"
+        '<div class="row"><span>CTR</span>'
+        '<span data-perf-value="ctr">—</span></div>'
+        '<div class="row"><span>CPC</span>'
+        '<span data-perf-value="cpc">—</span></div>'
+        '<div class="row"><span>CPM</span>'
+        '<span data-perf-value="cpm">—</span></div>'
+        '<div class="row"><span>CPA</span>'
+        '<span data-perf-value="cpa">—</span></div>'
+        '<div class="row"><span>ROAS</span>'
+        '<span data-perf-value="roas">—</span></div>'
+        '<div class="row"><span>Stopa konverzije</span>'
+        '<span data-perf-value="conversion-rate">—</span></div>'
+        '<div class="row"><span>Impresije</span>'
+        '<span data-perf-value="impressions">—</span></div>'
+        '<div class="row"><span>Klikovi</span>'
+        '<span data-perf-value="clicks">—</span></div>'
+        '<div class="row"><span>Potrošnja</span>'
+        '<span data-perf-value="spend">—</span></div>'
+        '<div class="row"><span>Distribucije</span>'
+        '<span data-perf-count>—</span></div>'
         "</div>"
         "</div>"
     )

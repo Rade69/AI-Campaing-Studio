@@ -28,6 +28,7 @@ from ai_campaign_studio.infrastructure.database.connection import create_connect
 from ai_campaign_studio.infrastructure.database.migrations import run_migrations
 from ai_campaign_studio.infrastructure.database.repositories import (
     SqliteCampaignRepository,
+    SqlitePerformanceRepository,
     SqliteProviderConfigRepository,
 )
 from ai_campaign_studio.infrastructure.database.unit_of_work import (
@@ -3134,3 +3135,171 @@ def test_get_dashboard_overview_multi_campaign_different_statuses(
     assert len(result["recent_campaigns"]) == 2
     statuses = {r["status"] for r in result["recent_campaigns"]}
     assert statuses == {"DRAFT", "EXPORTED"}
+
+
+def _seed_campaign_performance(
+    bridge: CampaignBridgeApi, campaign_id: str
+) -> None:
+    """Seed one DistributionInstance + PerformanceSnapshot for a campaign.
+
+    ``_seed_brand_and_campaign`` creates brand/campaign/plan/items but no
+    content pieces or revisions — a ``DistributionInstance`` needs both (FK
+    chain). Seed them directly, then persist the instance + one snapshot via
+    the real ``SqlitePerformanceRepository`` (same style as the G6 tests).
+    """
+    from ai_campaign_studio.domain.common.ids import (
+        CampaignId,
+        CampaignItemId,
+        DistributionInstanceId,
+        PerformanceSnapshotId,
+        PostId,
+        RevisionId,
+    )
+    from ai_campaign_studio.domain.performance.entities import (
+        DistributionInstance,
+        PerformanceSnapshot,
+    )
+    from ai_campaign_studio.domain.performance.enums import (
+        DistributionSource,
+        PerformanceSource,
+    )
+    from ai_campaign_studio.domain.performance.metrics import (
+        CanonicalMetricSet,
+        MetricPeriod,
+    )
+
+    created_at = datetime(2026, 1, 1, tzinfo=UTC)
+    observed_at = datetime(2026, 2, 1, tzinfo=UTC)
+    connection = create_connection(bridge._bootstrap.paths.database_path)
+    try:
+        snapshot_id = connection.execute(
+            "SELECT id FROM brand_snapshots LIMIT 1"
+        ).fetchone()[0]
+        iso = created_at.isoformat()
+        connection.execute(
+            "INSERT INTO content_pieces (id, campaign_item_id, target_channel,"
+            " target_platform_code, target_format_code, payload_type, status,"
+            " brand_snapshot_id, facts_allowed_json, revision_ids_json,"
+            " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("piece-1", "item-1", "SOCIAL", "INSTAGRAM", "FEED_POST",
+             "SOCIAL_POST", "APPROVED", snapshot_id, "[]", "[]", iso, iso),
+        )
+        connection.execute(
+            "INSERT INTO revisions (id, entity_type, entity_id, version,"
+            " timestamp, origin, previous_value, new_value, provider, model,"
+            " prompt_version, instruction) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+            " ?, ?)",
+            ("rev-1", "ContentPiece", "piece-1", 1, iso, "AI",
+             "{}", "{}", None, None, None, None),
+        )
+        repo = SqlitePerformanceRepository(connection)
+        repo.save_distribution_instance(
+            DistributionInstance(
+                id=DistributionInstanceId("di-1"),
+                campaign_id=CampaignId(campaign_id),
+                campaign_item_id=CampaignItemId("item-1"),
+                content_piece_id=PostId("piece-1"),
+                content_revision_id=RevisionId("rev-1"),
+                channel_code="SOCIAL",
+                platform_code="INSTAGRAM",
+                format_code="FEED_POST",
+                distribution_source=DistributionSource.EXPORT,
+                created_at=created_at,
+            )
+        )
+        repo.save_performance_snapshot(
+            PerformanceSnapshot(
+                id=PerformanceSnapshotId("ps-1"),
+                distribution_instance_id=DistributionInstanceId("di-1"),
+                period=MetricPeriod(start=created_at, end=observed_at),
+                observed_at=observed_at,
+                source=PerformanceSource.CSV_IMPORT,
+                metrics=CanonicalMetricSet(
+                    impressions=1000,
+                    clicks=34,
+                    conversions=5,
+                    spend=200.0,
+                    revenue=500.0,
+                ),
+            )
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_get_campaign_performance_unknown_campaign_validation_error(
+    tmp_path: Path,
+) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    result = bridge.get_campaign_performance({"campaign_id": "nope"})
+    assert result["ok"] is False
+    assert result["error_code"] == "VALIDATION_ERROR"
+    assert result["distribution_instance_count"] == 0
+    assert result["derived"]["ctr"] is None
+
+
+def test_get_campaign_performance_no_data_returns_ok_with_none(
+    tmp_path: Path,
+) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    campaign_id, _plan_id = _seed_brand_and_campaign(bridge)
+    result = bridge.get_campaign_performance({"campaign_id": campaign_id})
+    assert result["ok"] is True
+    assert result["distribution_instance_count"] == 0
+    assert result["derived"]["ctr"] is None
+    assert result["derived"]["cpc"] is None
+    assert result["derived"]["cpm"] is None
+    assert result["derived"]["cpa"] is None
+    assert result["derived"]["roas"] is None
+    assert result["derived"]["conversion_rate"] is None
+    assert result["raw"]["impressions"] is None
+    assert result["raw"]["clicks"] is None
+    assert result["raw"]["spend"] is None
+    assert result["error_code"] is None
+
+
+def test_get_campaign_performance_with_data_returns_aggregates(
+    tmp_path: Path,
+) -> None:
+    import pytest
+
+    bridge = _isolated_bridge(tmp_path)
+    campaign_id, _plan_id = _seed_brand_and_campaign(bridge)
+    _seed_campaign_performance(bridge, campaign_id)
+    result = bridge.get_campaign_performance({"campaign_id": campaign_id})
+    assert result["ok"] is True
+    assert result["distribution_instance_count"] == 1
+    assert result["derived"]["ctr"] == pytest.approx(34 / 1000)
+    assert result["derived"]["cpc"] == pytest.approx(200.0 / 34)
+    assert result["derived"]["cpm"] == pytest.approx(200.0 / 1000 * 1000)
+    assert result["derived"]["cpa"] == pytest.approx(200.0 / 5)
+    assert result["derived"]["roas"] == pytest.approx(500.0 / 200.0)
+    assert result["derived"]["conversion_rate"] == pytest.approx(5 / 34)
+    assert result["raw"]["impressions"] == 1000
+    assert result["raw"]["clicks"] == 34
+    assert result["raw"]["spend"] == 200.0
+
+
+def test_get_campaign_performance_non_dict_payload_validation_error(
+    tmp_path: Path,
+) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    result = bridge.get_campaign_performance(  # type: ignore[arg-type]
+        "not-a-dict"
+    )
+    assert result["ok"] is False
+    assert result["error_code"] == "VALIDATION_ERROR"
+
+
+def test_get_campaign_performance_result_has_no_secrets(
+    tmp_path: Path,
+) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    campaign_id, _plan_id = _seed_brand_and_campaign(bridge)
+    _seed_campaign_performance(bridge, campaign_id)
+    result = bridge.get_campaign_performance({"campaign_id": campaign_id})
+    blob = json.dumps(result)
+    assert "api_key" not in blob
+    assert "secret" not in blob
+    assert "Traceback" not in blob
