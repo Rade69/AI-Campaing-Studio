@@ -3,7 +3,30 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **Slice 2
+**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-054
+— Claude review PASS, čeka Codex adversarial + Human Owner.**
+Implementer: Pi. PR [#19](https://github.com/Rade69/AI-Campaing-Studio/pull/19)
+@ `20d4be8`, CI zeleno, MERGEABLE.
+
+Peta READ js_api metoda (`get_campaign_content_performance`) — tabela
+content-piece-level performance-a u postojećoj G7a kartici, koristi
+`list_campaign_content` + `build_content_performance_summary` (G6),
+nula duplih formula. `campaign_id` STVARNO reuse-ovan iz shared
+`appCampaignId` (Codex F1-053 napomena primijenjena, ne ponovljena
+treći put — nezavisno potvrđeno čitanjem koda i izvršavanjem stvarnog
+`app.js` u test harnessu koji provjerava upravo taj shared var).
+Izvršni Node/VM test OD PRVE VERZIJE. Nezavisno verifikovano: kod
+pročitan liniju-po-liniju, DVA mutation testa (`{once:true}` uklonjen →
+FAIL, `escapeHtml(label)` uklonjen → FAIL, oba restore → PASS), diff
+scope tačno 10 fajlova iz `allowed_paths` + evidence, mypy/ruff čisto,
+ciljani suite (353) i pun suite (1199, 0 fail, gate-report flake se
+NIJE ponovio ovaj put) nezavisno PASS.
+
+**Sljedeći korak: Codex adversarial review na PR #19.**
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **Slice 2
 kanonski plan napisan** —
 [docs/AI_Campaign_Studio_Slice_2_Canonical_Plan.md](../docs/AI_Campaign_Studio_Slice_2_Canonical_Plan.md).
 Sintetizuje tri odvojena dokumenta (OpenCode-ov S2-G1...G9 gate-plan,
