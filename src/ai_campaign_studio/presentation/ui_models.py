@@ -341,3 +341,81 @@ class ContentPerformanceResultUiModel:
     rows: tuple[ContentPerformanceRowUiModel, ...]
     error_code: str | None
     error_message: str | None
+
+
+@dataclass(frozen=True)
+class PerformanceCsvColumnUiModel:
+    """Mapping status of ONE canonical field in the CSV preview (ACS-F1-055).
+
+    ``header`` is the single CSV header that matched (or ``None`` for
+    ambiguous/unmatched); ``candidates`` is every CSV header aliasing the
+    field; ``status`` is the raw G3 mapping status
+    ("matched"/"ambiguous"/"unmatched"). ``header``/``candidates`` are
+    verbatim CSV text — the frontend MUST escape them (XSS).
+    """
+
+    canonical_field: str
+    header: str | None
+    status: str
+    candidates: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PerformanceCsvInvalidSampleUiModel:
+    """One invalid CSV row sample with its readable errors (ACS-F1-055).
+
+    ``errors`` strings embed the offending CSV cell values — verbatim
+    user-file text, MUST be escaped by the frontend.
+    """
+
+    row_number: int
+    errors: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PerformanceCsvPreviewResultUiModel:
+    """Result of ``pick_and_preview_performance_csv`` (ACS-F1-055).
+
+    ``cancelled=True`` is a normal "user dismissed the native dialog"
+    outcome (``ok=True``, NOT an error) with every other field empty.
+    On a real preview, ``file_path`` is the chosen CSV path (a path, not a
+    secret — deliberately returned so the confirm step can reference it
+    without reopening the dialog) and the mapping summary follows.
+    Never carries secret/path/exception text beyond the chosen
+    ``file_path``.
+    """
+
+    ok: bool
+    cancelled: bool
+    file_path: str | None
+    columns: tuple[PerformanceCsvColumnUiModel, ...]
+    total_rows: int
+    valid_rows: int
+    invalid_rows: int
+    invalid_samples: tuple[PerformanceCsvInvalidSampleUiModel, ...]
+    error_code: str | None
+    error_message: str | None
+
+
+@dataclass(frozen=True)
+class ConfirmPerformanceImportResultUiModel:
+    """Result of ``confirm_performance_import`` (ACS-F1-055).
+
+    ``row_count``/``valid_count``/``invalid_count`` come from the persisted
+    ``PerformanceImportBatch`` (valid = ``matched_count``, invalid =
+    ``unmatched_count`` per the G3 temporary semantics); the four match
+    counters come from the G4 ``MatchPerformanceImportBatch`` result.
+    Never carries secret/path/exception text.
+    """
+
+    ok: bool
+    batch_id: str | None
+    row_count: int
+    valid_count: int
+    invalid_count: int
+    matched_count: int
+    ambiguous_count: int
+    unmatched_count: int
+    skipped_count: int
+    error_code: str | None
+    error_message: str | None

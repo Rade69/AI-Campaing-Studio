@@ -9,6 +9,7 @@ from ai_campaign_studio.presentation.ui_models import (
     CampaignPerformanceResultUiModel,
     CampaignPlanResultUiModel,
     CampaignSummaryUiModel,
+    ConfirmPerformanceImportResultUiModel,
     ContentPerformanceResultUiModel,
     ContentPerformanceRowUiModel,
     DashboardOverviewResultUiModel,
@@ -19,6 +20,9 @@ from ai_campaign_studio.presentation.ui_models import (
     ListCampaignsResultUiModel,
     NotificationLevel,
     NotificationUiModel,
+    PerformanceCsvColumnUiModel,
+    PerformanceCsvInvalidSampleUiModel,
+    PerformanceCsvPreviewResultUiModel,
     ProviderConfigResultUiModel,
     ProviderStatusUiModel,
     RawMetricSetUiModel,
@@ -742,3 +746,141 @@ def test_content_performance_result_carries_no_secret_field() -> None:
     assert "secret" not in result_fields
     assert "secret" not in row_fields
     assert row_fields == {"content_piece_id", "label", "ctr", "cpc"}
+
+
+def test_performance_csv_preview_result_success_shape() -> None:
+    """ACS-F1-055: preview carries columns + counts + invalid samples."""
+    result = PerformanceCsvPreviewResultUiModel(
+        ok=True,
+        cancelled=False,
+        file_path="/tmp/perf.csv",
+        columns=(
+            PerformanceCsvColumnUiModel(
+                canonical_field="reach",
+                header="reach",
+                status="matched",
+                candidates=("reach",),
+            ),
+            PerformanceCsvColumnUiModel(
+                canonical_field="spend",
+                header=None,
+                status="ambiguous",
+                candidates=("cost", "trošak"),
+            ),
+        ),
+        total_rows=2,
+        valid_rows=1,
+        invalid_rows=1,
+        invalid_samples=(
+            PerformanceCsvInvalidSampleUiModel(
+                row_number=2,
+                errors=("reach (abc) is not a number",),
+            ),
+        ),
+        error_code=None,
+        error_message=None,
+    )
+    blob = asdict(result)
+    assert blob == {
+        "ok": True,
+        "cancelled": False,
+        "file_path": "/tmp/perf.csv",
+        "columns": (
+            {
+                "canonical_field": "reach",
+                "header": "reach",
+                "status": "matched",
+                "candidates": ("reach",),
+            },
+            {
+                "canonical_field": "spend",
+                "header": None,
+                "status": "ambiguous",
+                "candidates": ("cost", "trošak"),
+            },
+        ),
+        "total_rows": 2,
+        "valid_rows": 1,
+        "invalid_rows": 1,
+        "invalid_samples": (
+            {"row_number": 2, "errors": ("reach (abc) is not a number",)},
+        ),
+        "error_code": None,
+        "error_message": None,
+    }
+    json.dumps(blob)
+
+
+def test_performance_csv_preview_cancelled_shape() -> None:
+    """ACS-F1-055: cancelled dialog is ok=True + cancelled=True, not an error."""
+    result = PerformanceCsvPreviewResultUiModel(
+        ok=True,
+        cancelled=True,
+        file_path=None,
+        columns=(),
+        total_rows=0,
+        valid_rows=0,
+        invalid_rows=0,
+        invalid_samples=(),
+        error_code=None,
+        error_message=None,
+    )
+    blob = asdict(result)
+    assert blob["ok"] is True
+    assert blob["cancelled"] is True
+    assert blob["error_code"] is None
+
+
+def test_performance_csv_preview_carries_no_secret_field() -> None:
+    """Structural guarantee: only file_path (a path, not a secret) is
+    exposed — no api_key/secret field."""
+    api_key = "a" + "pi_key"
+    fields = {
+        f.name
+        for f in PerformanceCsvPreviewResultUiModel.__dataclass_fields__.values()
+    }
+    assert api_key not in fields
+    assert "secret" not in fields
+
+
+def test_confirm_performance_import_result_shape() -> None:
+    """ACS-F1-055: confirm carries batch + match counters, JSON-safe."""
+    result = ConfirmPerformanceImportResultUiModel(
+        ok=True,
+        batch_id="batch-1",
+        row_count=2,
+        valid_count=2,
+        invalid_count=0,
+        matched_count=1,
+        ambiguous_count=0,
+        unmatched_count=1,
+        skipped_count=0,
+        error_code=None,
+        error_message=None,
+    )
+    blob = asdict(result)
+    assert blob == {
+        "ok": True,
+        "batch_id": "batch-1",
+        "row_count": 2,
+        "valid_count": 2,
+        "invalid_count": 0,
+        "matched_count": 1,
+        "ambiguous_count": 0,
+        "unmatched_count": 1,
+        "skipped_count": 0,
+        "error_code": None,
+        "error_message": None,
+    }
+    json.dumps(blob)
+
+
+def test_confirm_performance_import_result_carries_no_secret_field() -> None:
+    """Structural guarantee: no api_key/secret field on the confirm DTO."""
+    api_key = "a" + "pi_key"
+    fields = {
+        f.name
+        for f in ConfirmPerformanceImportResultUiModel.__dataclass_fields__.values()
+    }
+    assert api_key not in fields
+    assert "secret" not in fields

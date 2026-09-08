@@ -244,6 +244,14 @@ def render_body(fixture: PregledIzvozFixture | None = None) -> str:
         '<span data-perf-value="spend">—</span></div>'
         '<div class="row"><span>Distribucije</span>'
         '<span data-perf-count>—</span></div>'
+        '<div class="actions" style="margin-top:12px">'
+        '<button class="btn" data-action="import-performance-csv">'
+        "Uvezi CSV"
+        "</button>"
+        '<button class="btn primary" data-action="confirm-performance-import" '
+        "hidden>Potvrdi uvoz</button>"
+        "</div>"
+        '<div class="callout" data-perf-import-result hidden></div>'
         "</div>"
         '<div class="card" data-content-perf-card>'
         "<h3>Učinak po objavi</h3>"

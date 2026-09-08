@@ -43,6 +43,10 @@ _EXPECTED_METHODS = {
     # Added in ACS-F1-054: per-content-piece performance table
     # (Pregled i izvoz — "Učinak po objavi").
     "get_campaign_content_performance",
+    # Added in ACS-F1-055: native CSV pick + mapping preview (write path).
+    "pick_and_preview_performance_csv",
+    # Added in ACS-F1-055: persist + match a previewed CSV import.
+    "confirm_performance_import",
 }
 
 
@@ -190,6 +194,41 @@ def test_bridge_implements_get_campaign_content_performance() -> None:
     assert method is not None, (
         "bridge must expose get_campaign_content_performance"
     )
+
+    import inspect
+
+    sig = inspect.signature(method)
+    assert list(sig.parameters) == ["self", "raw_payload"]
+
+
+def test_bridge_implements_pick_and_preview_performance_csv() -> None:
+    """ACS-F1-055: ``pick_and_preview_performance_csv`` opens the native
+    dialog + previews a CSV. ``raw_payload`` is optional (app.js calls
+    with no args).
+    """
+    from ai_campaign_studio.presentation_webview.bridge import CampaignBridgeApi
+
+    method = getattr(
+        CampaignBridgeApi, "pick_and_preview_performance_csv", None
+    )
+    assert method is not None, (
+        "bridge must expose pick_and_preview_performance_csv"
+    )
+
+    import inspect
+
+    sig = inspect.signature(method)
+    assert list(sig.parameters) == ["self", "raw_payload"]
+
+
+def test_bridge_implements_confirm_performance_import() -> None:
+    """ACS-F1-055: ``confirm_performance_import`` persists + matches a
+    previewed CSV. Takes a REQUIRED one-dict payload.
+    """
+    from ai_campaign_studio.presentation_webview.bridge import CampaignBridgeApi
+
+    method = getattr(CampaignBridgeApi, "confirm_performance_import", None)
+    assert method is not None, "bridge must expose confirm_performance_import"
 
     import inspect
 

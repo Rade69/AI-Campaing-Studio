@@ -489,3 +489,19 @@ def test_write_all_pages_pregled_izvoz_carries_content_performance_markers(
     assert "Učinak po objavi" in pregled_html
     assert "INSTAGRAM/FEED_POST" in pregled_html
     assert "FACEBOOK/FEED_POST" in pregled_html
+
+
+def test_write_all_pages_pregled_izvoz_carries_import_performance_markers(
+    tmp_path: Path,
+) -> None:
+    """ACS-F1-055: the build-time Pregled i izvoz static HTML carries the
+    import button + confirm button + result callout so app.js can wire the
+    click-triggered import flow at runtime."""
+    pages = write_all_pages(tmp_path)
+    pregled_html = pages["pregled_izvoz"].read_text(encoding="utf-8")
+
+    assert 'data-action="import-performance-csv"' in pregled_html
+    assert 'data-action="confirm-performance-import"' in pregled_html
+    assert 'data-perf-import-result' in pregled_html
+    assert "Uvezi CSV" in pregled_html
+    assert "Potvrdi uvoz" in pregled_html

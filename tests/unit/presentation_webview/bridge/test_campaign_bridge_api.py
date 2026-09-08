@@ -3491,3 +3491,207 @@ def test_get_campaign_content_performance_result_has_no_secrets(
     assert "api_key" not in blob
     assert "secret" not in blob
     assert "Traceback" not in blob
+
+
+def _write_csv(tmp_path: Path, content: str) -> str:
+    """Write a CSV fixture into tmp_path (same style as the G3 tests)."""
+    path = tmp_path / "perf.csv"
+    path.write_text(content, encoding="utf-8")
+    return str(path)
+
+
+def _fake_webview(dialog_result):
+    """Return a fake ``webview`` module whose single window's
+    ``create_file_dialog`` returns ``dialog_result`` (never opens a real
+    OS dialog in CI)."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        OPEN_DIALOG=10,
+        windows=[
+            SimpleNamespace(
+                create_file_dialog=lambda *args, **kwargs: dialog_result
+            )
+        ],
+    )
+
+
+def _set_external_content_id(
+    bridge: CampaignBridgeApi, di_id: str, external_content_id: str
+) -> None:
+    connection = create_connection(bridge._bootstrap.paths.database_path)
+    try:
+        connection.execute(
+            "UPDATE distribution_instances SET external_content_id = ? WHERE id = ?",
+            (external_content_id, di_id),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_pick_and_preview_performance_csv_cancelled_dialog(
+    tmp_path: Path,
+) -> None:
+    import sys
+    from unittest.mock import patch
+
+    bridge = _isolated_bridge(tmp_path)
+    with patch.dict(sys.modules, {"webview": _fake_webview(None)}):
+        result = bridge.pick_and_preview_performance_csv()
+    assert result["ok"] is True
+    assert result["cancelled"] is True
+    assert result["file_path"] is None
+    assert result["error_code"] is None
+
+
+def test_pick_and_preview_performance_csv_empty_dialog_paths(
+    tmp_path: Path,
+) -> None:
+    import sys
+    from unittest.mock import patch
+
+    bridge = _isolated_bridge(tmp_path)
+    with patch.dict(sys.modules, {"webview": _fake_webview([])}):
+        result = bridge.pick_and_preview_performance_csv()
+    assert result["ok"] is True
+    assert result["cancelled"] is True
+
+
+def test_pick_and_preview_performance_csv_valid_file(tmp_path: Path) -> None:
+    import sys
+    from unittest.mock import patch
+
+    bridge = _isolated_bridge(tmp_path)
+    csv_path = _write_csv(
+        tmp_path,
+        "period_start,period_end,reach,cost,trošak\n"
+        "2026-01-01,2026-01-31,100,10.5,20.0\n",
+    )
+    with patch.dict(sys.modules, {"webview": _fake_webview([csv_path])}):
+        result = bridge.pick_and_preview_performance_csv()
+    assert result["ok"] is True
+    assert result["cancelled"] is False
+    assert result["file_path"] == csv_path
+    assert result["total_rows"] == 1
+    assert result["valid_rows"] == 1
+    assert result["invalid_rows"] == 0
+
+    columns = {c["canonical_field"]: c for c in result["columns"]}
+    assert columns["reach"]["status"] == "matched"
+    assert columns["reach"]["header"] == "reach"
+    spend = columns["spend"]
+    assert spend["status"] == "ambiguous"
+    assert spend["header"] is None
+    assert set(spend["candidates"]) == {"cost", "trošak"}
+    # A field with no matching header in the CSV is "unmatched".
+    assert columns["clicks"]["status"] == "unmatched"
+
+
+def test_pick_and_preview_performance_csv_unparseable_file(
+    tmp_path: Path,
+) -> None:
+    import sys
+    from unittest.mock import patch
+
+    bridge = _isolated_bridge(tmp_path)
+    bad_path = tmp_path / "not_csv.bin"
+    bad_path.write_bytes(b"\xff\xfe\x00\x01binary")
+    with patch.dict(sys.modules, {"webview": _fake_webview([str(bad_path)])}):
+        result = bridge.pick_and_preview_performance_csv()
+    assert result["ok"] is False
+    assert result["error_code"] == "VALIDATION_ERROR"
+    assert result["file_path"] is None
+
+
+def test_confirm_performance_import_unknown_campaign_validation_error(
+    tmp_path: Path,
+) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    csv_path = _write_csv(
+        tmp_path,
+        "period_start,period_end,reach\n2026-01-01,2026-01-31,100\n",
+    )
+    result = bridge.confirm_performance_import(
+        {"file_path": csv_path, "campaign_id": "nope", "platform_code": None}
+    )
+    assert result["ok"] is False
+    assert result["error_code"] == "VALIDATION_ERROR"
+
+
+def test_confirm_performance_import_non_dict_payload(tmp_path: Path) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    result = bridge.confirm_performance_import("not-a-dict")  # type: ignore[arg-type]
+    assert result["ok"] is False
+    assert result["error_code"] == "VALIDATION_ERROR"
+
+
+def test_confirm_performance_import_valid_flow_no_instances(
+    tmp_path: Path,
+) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    campaign_id, _plan_id = _seed_brand_and_campaign(bridge)
+    csv_path = _write_csv(
+        tmp_path,
+        "period_start,period_end,reach,external_content_id\n"
+        "2026-01-01,2026-01-31,100,ext-1\n"
+        "2026-02-01,2026-02-28,200,ext-2\n",
+    )
+    result = bridge.confirm_performance_import(
+        {"file_path": csv_path, "campaign_id": campaign_id, "platform_code": None}
+    )
+    assert result["ok"] is True
+    assert result["error_code"] is None
+    assert result["batch_id"] is not None
+    assert result["row_count"] == 2
+    assert result["valid_count"] == 2
+    assert result["invalid_count"] == 0
+    # No DistributionInstance in the campaign -> both external ids unmatched.
+    assert result["matched_count"] == 0
+    assert result["ambiguous_count"] == 0
+    assert result["unmatched_count"] == 2
+    assert result["skipped_count"] == 0
+
+
+def test_confirm_performance_import_matches_external_content_id(
+    tmp_path: Path,
+) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    campaign_id, _plan_id = _seed_brand_and_campaign(bridge)
+    _seed_campaign_performance(bridge, campaign_id)
+    _set_external_content_id(bridge, "di-1", "ext-1")
+    csv_path = _write_csv(
+        tmp_path,
+        "period_start,period_end,reach,external_content_id\n"
+        "2026-01-01,2026-01-31,100,ext-1\n"
+        "2026-02-01,2026-02-28,200,ext-2\n",
+    )
+    result = bridge.confirm_performance_import(
+        {"file_path": csv_path, "campaign_id": campaign_id, "platform_code": None}
+    )
+    assert result["ok"] is True
+    assert result["row_count"] == 2
+    assert result["valid_count"] == 2
+    assert result["invalid_count"] == 0
+    assert result["matched_count"] == 1
+    assert result["ambiguous_count"] == 0
+    assert result["unmatched_count"] == 1
+    assert result["skipped_count"] == 0
+
+
+def test_confirm_performance_import_result_has_no_secrets(
+    tmp_path: Path,
+) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    campaign_id, _plan_id = _seed_brand_and_campaign(bridge)
+    csv_path = _write_csv(
+        tmp_path,
+        "period_start,period_end,reach\n2026-01-01,2026-01-31,100\n",
+    )
+    result = bridge.confirm_performance_import(
+        {"file_path": csv_path, "campaign_id": campaign_id, "platform_code": None}
+    )
+    blob = json.dumps(result)
+    assert "api_key" not in blob
+    assert "secret" not in blob
+    assert "Traceback" not in blob
