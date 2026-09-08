@@ -3,7 +3,42 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-048
+**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-049
+(Brend read path) — Claude review PASS, čeka Codex adversarial +
+Human Owner.** Implementer: Crush. PR
+[#14](https://github.com/Rade69/AI-Campaing-Studio/pull/14) otvoren
+(branch rebase-ovan na `c7d5d40` prije push-a, čist diff — 11 fajlova,
+sve u `allowed_paths`), CI zeleno.
+
+Novi read `js_api` metod `get_brand_overview()` — jednobrand MVP,
+poziva postojeći `_ensure_brand()` + `get_brand`/`get_snapshot`/
+`list_snapshot_facts` (NIJEDNA repo metoda nije mijenjana). `app.js`
+hidratacija primjenjuje F1-046 BF-1/BF-2 lekcije OD PRVE VERZIJE
+(immediate fast path + `pywebviewready` fallback, ekran-specifičan
+`data-brend-*` marker guard). Nezavisno verifikovano (Claude, ne samo
+implementer evidence): kod pročitan liniju-po-liniju, formula
+`voice=(formality, *tone)` i `Audience.name/description` mapiranja
+potvrđena protiv stvarnog domain modela, `logger.exception` na
+`get_brand_overview` nema secret-leak rizik (potvrđeno da je
+connection-open failure put kroz `_with_call_resources` koji
+EKSPLICITNO ne loguje exception tekst — isti BF-5 obrazac), mypy/ruff
+nezavisno pokrenut i čist, pun suite nezavisno pokrenut 2x (1122
+passed/3 skipped na staroj bazi, 1146 passed/1 skipped na
+rebase-ovanoj) — 0 regresija. `test_gate_report_against_current_repo_passes`
+"flaky" tvrdnja iz evidence-a NEZAVISNO POTVRĐENA (prolazi izolovano,
+poznat pre-existing recursive-subprocess problem, nevezan za ovaj
+task).
+
+**Sljedeći korak: Codex adversarial review na PR #14**, fokus po
+kontraktu — pywebview lifecycle race (BF-1 klasa), cross-screen
+izolacija (BF-2 klasa, string-assertion testovi su minimum iz
+kontrakta, ne VM-executed dokaz — Codex treba potvrditi dublje ako
+smatra potrebnim), XSS escape stvaran test, `is_fact_usable`
+filtriranje stvarno primijenjeno.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-048
 (P1.5-G5 Metric Calculation) MERGED — PASS, §29.** Implementer: Pi.
 PR [#13](https://github.com/Rade69/AI-Campaing-Studio/pull/13) squash-merged
 u `main` (`69178cc`). `DerivedMetricSet` (6 opcionih polja) +
