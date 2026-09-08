@@ -2747,3 +2747,130 @@ def test_list_campaigns_lifecycle_failure_returns_safe_exact_dto(
     }
     assert sentinel not in json.dumps(result)
     assert sentinel not in caplog.text
+
+
+# --- ACS-F1-049: get_brand_overview (Brend read path) -----------------------
+
+
+def test_get_brand_overview_returns_real_brand_and_facts(tmp_path) -> None:
+    """The demo brand (seeded via ``_ensure_brand``) returns its real name,
+    primary audience, voice and the 3 APPROVED facts from brightsmile.json."""
+    bridge = _isolated_bridge(tmp_path)
+    result = bridge.get_brand_overview({})
+
+    assert result["ok"] is True, result
+    assert isinstance(result["brand_name"], str) and result["brand_name"]
+    assert "BrightSmile" in result["brand_name"]
+    assert isinstance(result["primary_audience"], str) and result["primary_audience"]
+    assert isinstance(result["voice"], tuple) and len(result["voice"]) > 0
+    # brightsmile.json has exactly 3 usable facts.
+    assert len(result["facts"]) == 3
+    for fact in result["facts"]:
+        assert set(fact.keys()) == {"code", "text"}
+        assert fact["code"]
+        assert fact["text"]
+    codes = {f["code"] for f in result["facts"]}
+    assert codes == {"fact-location", "fact-implants", "fact-team"}
+
+
+def test_get_brand_overview_filters_non_approved_facts(tmp_path) -> None:
+    """A fact that is NOT ``is_fact_usable`` (SUPERSEDED) must be filtered
+    out even though it is linked to the snapshot."""
+    from datetime import UTC, datetime
+
+    from ai_campaign_studio.domain.common.ids import FactId
+    from ai_campaign_studio.domain.facts.entities import (
+        ApprovedFact,
+        SourceReference,
+    )
+    from ai_campaign_studio.domain.facts.enums import FactStatus
+    from ai_campaign_studio.infrastructure.database.repositories import (
+        SqliteFactRepository,
+    )
+
+    bridge = _isolated_bridge(tmp_path)
+    with bridge._resource_scope():
+        _brand_id, snapshot_id = bridge._ensure_brand()
+
+    connection = create_connection(bridge._bootstrap.paths.database_path)
+    try:
+        SqliteFactRepository(connection).save_fact(
+            ApprovedFact(
+                id=FactId("fact-superseded"),
+                logical_fact_id="fact-superseded",
+                version=1,
+                content="REJECTED fact content",
+                source_ref=SourceReference(
+                    source_type="fixture", uri="fixture://x"
+                ),
+                status=FactStatus.SUPERSEDED,
+                created_at=datetime.now(UTC),
+            )
+        )
+        # Link it to the snapshot so ``list_snapshot_facts`` WOULD return it.
+        connection.execute(
+            "INSERT INTO brand_snapshot_facts (snapshot_id, fact_id, position)"
+            " VALUES (?, ?, ?)",
+            (str(snapshot_id), "fact-superseded", 99),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    result = bridge.get_brand_overview({})
+    assert result["ok"] is True
+    codes = [f["code"] for f in result["facts"]]
+    assert "fact-superseded" not in codes
+    assert len(codes) == 3
+
+
+def test_get_brand_overview_is_json_serializable_and_no_secret_leak(
+    tmp_path,
+) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    result = bridge.get_brand_overview({})
+    blob = json.dumps(result)  # must not raise
+    for forbidden in ("api_key", "secret", "password", "token", "database_path"):
+        assert forbidden not in blob
+
+
+def test_get_brand_overview_works_from_fresh_worker_thread(tmp_path) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    result = _call_on_fresh_thread(bridge.get_brand_overview, {})
+    assert result["ok"] is True
+    assert result["facts"]
+
+
+def test_get_brand_overview_lifecycle_failure_returns_safe_exact_dto(
+    tmp_path, caplog
+) -> None:
+    """A connection-open failure must return the EXACT BrandOverviewResultUiModel
+    key-set (no other DTO leaking) and must not leak the exception text."""
+    import logging
+
+    bridge = _isolated_bridge(tmp_path)
+    sentinel = "SQL=C:/private/brands.db SECRET-LIKE-DETAIL"
+
+    with caplog.at_level(logging.ERROR), patch(
+        "ai_campaign_studio.presentation_webview.bridge.create_connection",
+        side_effect=RuntimeError(sentinel),
+    ):
+        result = bridge.get_brand_overview({})
+
+    assert set(result) == {
+        "ok",
+        "brand_name",
+        "primary_audience",
+        "voice",
+        "facts",
+        "error_code",
+        "error_message",
+    }
+    assert result["ok"] is False
+    assert result["brand_name"] is None
+    assert result["primary_audience"] is None
+    assert result["voice"] == ()
+    assert result["facts"] == ()
+    assert result["error_code"] == "INTERNAL_ERROR"
+    assert sentinel not in json.dumps(result)
+    assert sentinel not in caplog.text

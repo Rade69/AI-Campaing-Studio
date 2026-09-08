@@ -4,6 +4,8 @@ import json
 from dataclasses import asdict
 
 from ai_campaign_studio.presentation.ui_models import (
+    BrandFactUiModel,
+    BrandOverviewResultUiModel,
     CampaignPlanResultUiModel,
     CampaignSummaryUiModel,
     ExportCampaignResultUiModel,
@@ -488,3 +490,43 @@ def test_list_campaigns_result_carries_no_secret_field() -> None:
     assert api_key not in result_fields
     assert "secret" not in summary_fields
     assert "secret" not in result_fields
+
+
+def test_brand_overview_result_success_shape() -> None:
+    """ACS-F1-049: Brend read result carries brand name, audience, voice and
+    a tuple of BrandFactUiModel rows."""
+    result = BrandOverviewResultUiModel(
+        ok=True,
+        brand_name="BrightSmile Dental",
+        primary_audience="Adults — 25-45",
+        voice=("friendly", "warm"),
+        facts=(BrandFactUiModel(code="fact-location", text="U centru grada."),),
+        error_code=None,
+        error_message=None,
+    )
+    blob = asdict(result)
+    assert blob == {
+        "ok": True,
+        "brand_name": "BrightSmile Dental",
+        "primary_audience": "Adults — 25-45",
+        "voice": ("friendly", "warm"),
+        "facts": ({"code": "fact-location", "text": "U centru grada."},),
+        "error_code": None,
+        "error_message": None,
+    }
+
+
+def test_brand_overview_result_carries_no_secret_field() -> None:
+    """Structural guarantee: no api_key/secret field on the brand DTOs."""
+    api_key = "a" + "pi_key"  # -> "api_key"
+    result_fields = {
+        f.name for f in BrandOverviewResultUiModel.__dataclass_fields__.values()
+    }
+    fact_fields = {
+        f.name for f in BrandFactUiModel.__dataclass_fields__.values()
+    }
+    assert api_key not in result_fields
+    assert api_key not in fact_fields
+    assert "secret" not in result_fields
+    assert "secret" not in fact_fields
+    assert fact_fields == {"code", "text"}

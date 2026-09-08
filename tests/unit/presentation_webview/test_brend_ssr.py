@@ -253,3 +253,48 @@ def test_render_body_refresh_uses_toast_stub() -> None:
     assert 'data-action="toast"' in body
     # The refresh message from the fixture should appear (escaped).
     assert "Kasnije: pokreni ingestion/review tok." in body
+
+
+def test_render_body_emits_brand_hydration_markers() -> None:
+    """ACS-F1-049: the SSR emits the screen-specific markers that app.js
+    targets for real-data hydration (never a generic selector)."""
+    body = render_body()
+    for marker in (
+        'data-brend-name',
+        'data-brend-audience',
+        'data-brend-voice',
+        'data-brend-facts',
+    ):
+        assert marker in body, f"missing hydration marker: {marker!r}"
+
+
+def test_app_js_has_brand_hydration_with_escape_and_lifecycle() -> None:
+    """ACS-F1-049: app.js hydrates the Brend screen via a screen-specific
+    marker, escapes interpolated values, and uses the immediate fast path +
+    ``pywebviewready`` fallback (NOT an unconditional call at parse time)."""
+    from pathlib import Path
+
+    app_js = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "src" / "ai_campaign_studio" / "presentation_webview" / "static"
+        / "app.js"
+    )
+    js_text = app_js.read_text(encoding="utf-8")
+
+    # Screen-specific marker (never a generic selector like table.card).
+    assert "data-brend-name" in js_text
+    assert "data-brend-audience" in js_text
+    assert "data-brend-voice" in js_text
+    assert "data-brend-facts" in js_text
+
+    # escapeHtml maps the dangerous chars and is used on interpolated values.
+    assert "escapeHtml" in js_text
+    assert "&lt;" in js_text and "&gt;" in js_text and "&amp;" in js_text
+    assert "escapeHtml(f.code)" in js_text
+    assert "escapeHtml(f.text)" in js_text
+    assert "escapeHtml(v)" in js_text
+
+    # Read bridge method wired + lifecycle pattern (fast path + pywebviewready).
+    assert "get_brand_overview" in js_text
+    assert "pywebviewready" in js_text
+    assert "loadBrandOverview" in js_text

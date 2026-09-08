@@ -34,6 +34,8 @@ _EXPECTED_METHODS = {
     # ``raw_payload`` is optional (app.js may call with no args), but
     # still one-dict-shaped when provided, consistent with the others.
     "list_campaigns",
+    # Added in ACS-F1-049: Brend read path (single demo brand).
+    "get_brand_overview",
 }
 
 
@@ -115,6 +117,21 @@ def test_bridge_implements_list_campaigns() -> None:
 
     method = getattr(CampaignBridgeApi, "list_campaigns", None)
     assert method is not None, "bridge must expose list_campaigns"
+
+    import inspect
+
+    sig = inspect.signature(method)
+    assert list(sig.parameters) == ["self", "raw_payload"]
+
+
+def test_bridge_implements_get_brand_overview() -> None:
+    """ACS-F1-049: ``get_brand_overview`` is the second READ js_api method
+    (Brend screen). Same optional one-dict shape as ``list_campaigns``.
+    """
+    from ai_campaign_studio.presentation_webview.bridge import CampaignBridgeApi
+
+    method = getattr(CampaignBridgeApi, "get_brand_overview", None)
+    assert method is not None, "bridge must expose get_brand_overview"
 
     import inspect
 

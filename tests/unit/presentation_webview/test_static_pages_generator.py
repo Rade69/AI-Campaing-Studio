@@ -426,3 +426,24 @@ console.log(JSON.stringify({step2: step2[0], step3: step3[0], step4: step4[0]}))
     assert result["step4"] == (
         "../pregled_izvoz/index.html?campaign=c-123&plan=p-456"
     )
+
+
+def test_write_all_pages_brend_carries_hydration_markers(tmp_path: Path) -> None:
+    """ACS-F1-049: the build-time Brend static HTML carries the
+    screen-specific hydration markers (``data-brend-*``) so app.js can
+    hydrate real data at runtime, while still rendering the SSR fixture
+    (offline fallback)."""
+    pages = write_all_pages(tmp_path)
+    brend_html = pages["brend"].read_text(encoding="utf-8")
+
+    for marker in (
+        "data-brend-name",
+        "data-brend-audience",
+        "data-brend-voice",
+        "data-brend-facts",
+    ):
+        assert marker in brend_html, f"missing brend marker: {marker!r}"
+
+    # The SSR fixture content is still present (offline fallback).
+    assert "BrightSmile Oral Care" in brend_html
+    assert "F-001" in brend_html

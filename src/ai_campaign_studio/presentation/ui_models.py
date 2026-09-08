@@ -185,3 +185,36 @@ class ListCampaignsResultUiModel:
     campaigns: tuple[CampaignSummaryUiModel, ...]
     error_code: str | None
     error_message: str | None
+
+
+@dataclass(frozen=True)
+class BrandFactUiModel:
+    """One approved fact shown on the Brend screen (ACS-F1-049).
+
+    ``code`` is the fact's ``logical_fact_id``; ``text`` is the fact
+    ``content``. Only ``is_fact_usable`` facts are emitted (see the bridge).
+    """
+
+    code: str
+    text: str
+
+
+@dataclass(frozen=True)
+class BrandOverviewResultUiModel:
+    """Result of a ``get_brand_overview`` call (ACS-F1-049).
+
+    Single-brand MVP: the bridge resolves the demo brand via
+    ``_ensure_brand()`` and returns its name, primary audience (first
+    ``Audience``), voice (``BrandVoice.formality`` + ``tone``) and the list
+    of usable approved facts. ``description`` is deliberately NOT included
+    (``BrandSnapshot`` has no brand-description field — that stays
+    fixture-only in the SSR). Never carries secret/path/exception text.
+    """
+
+    ok: bool
+    brand_name: str | None
+    primary_audience: str | None
+    voice: tuple[str, ...]
+    facts: tuple[BrandFactUiModel, ...]
+    error_code: str | None
+    error_message: str | None
