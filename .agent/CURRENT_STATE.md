@@ -3,7 +3,28 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-050 i
+**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-052
+(fix flaky gate report test) MERGED — PASS, §29.** Implementer:
+MiniMax. PR [#17](https://github.com/Rade69/AI-Campaing-Studio/pull/17)
+squash-merged u `main` (`06b1545`). Stvaran uzrok dijagnostikovan
+(subprocess concurrency na dijeljenim pytest resursima — cache,
+`tmp_path` basetemp, `TMPDIR`/`TEMP`/`TMP` — kad se gate report-ov
+nested `pytest -q` sudari sa outer pytest procesom koji ga pokreće),
+popravljeno izolacijom (unique temp dir po pozivu, `-p
+no:cacheprovider`, `--basetemp`) bez promjene gate report semantike.
+Mutation-style dokaz: 4 paralelna `pytest -q` na starom kodu → 2/4
+fail; na fix-u → 4/4 pass, potvrđeno ponovljeno (4x paralelno + 3x
+serijski, 0 flake-ova). Nezavisno verifikovano: diff pročitan (samo 1
+produkcijski fajl), `cache` fixture ne koristi se nigdje u testovima
+(grep potvrđen), ruff čist, test suite 49/49 PASS dvaput (pre i
+poslije rebase-a).
+
+Sva tri paralelna taska iz ove runde (F1-050/051/052) sada su ili
+merge-ovana (052) ili čekaju Codex (050, 051) — vidi ispod za detalje.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-050 i
 ACS-F1-051 — Claude review PASS na oba, čekaju Codex adversarial +
 Human Owner.**
 
