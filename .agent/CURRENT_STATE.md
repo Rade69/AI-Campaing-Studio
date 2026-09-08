@@ -4,6 +4,31 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-049
+(Brend read path) MERGED — Human Owner odobrio.** Implementer: Crush.
+PR [#14](https://github.com/Rade69/AI-Campaing-Studio/pull/14)
+squash-merged u `main` (`2b5310d`). Drugi GUI read-path ekran (poslije
+F1-046 Kampanje): `get_brand_overview()` čita jedan-brand MVP preko
+postojećeg `_ensure_brand()` + `get_brand`/`get_snapshot`/
+`list_snapshot_facts` (nula repo izmjena), `app.js` hidratacija sa
+`data-brend-*` markerima.
+
+Pun HIGH-risk adversarial ciklus proveden bez skraćivanja: Claude
+review PASS → **Codex REJECT** (test-only nalaz — string-presence test
+ne dokazuje BF-1/BF-2/XSS ponašanje, iako je sam kod bio ispravan po
+Codex-ovom vlastitom Node/VM harnessu) → Crush dodao izvršni
+`test_app_js_brand_hydration_lifecycle_isolation_and_xss` (koordinator
+nezavisno reprodukovao sve 3 mutacije prije commit-a) → **Codex
+re-review PASS** → Human Owner eksplicitno odobrio. I F1-048 i F1-049
+iz ove paralelne dvojke su sada zatvoreni.
+
+ACS-F1-046 obrazac (read js_api metod + `app.js` hidratacija +
+SSR fixture offline fallback) je sada dokazan DVA PUTA na dva različita
+ekrana — spreman za ponovnu upotrebu na trećem ekranu kad se ukaže
+potreba, sa BF-1/BF-2 lekcijama već ugrađenim od prve verzije.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-049
 (Brend read path) — Codex re-review PASS. Čeka Human Owner
 odobrenje za merge (HIGH rizik, pun ciklus).** PR
 [#14](https://github.com/Rade69/AI-Campaing-Studio/pull/14) @ `1353075`,
