@@ -298,3 +298,164 @@ def test_app_js_has_brand_hydration_with_escape_and_lifecycle() -> None:
     assert "get_brand_overview" in js_text
     assert "pywebviewready" in js_text
     assert "loadBrandOverview" in js_text
+
+
+def test_app_js_brand_hydration_lifecycle_isolation_and_xss() -> None:
+    """Execute the committed shared JS against a tiny DOM double.
+
+    Regression coverage for the Codex ACS-F1-046 BF-1/BF-2 precedents,
+    applied to Brend from the first version:
+
+    - late pywebview injection hydrates on ``pywebviewready`` EXACTLY once;
+    - the immediate fast path hydrates when the API is already present;
+    - a non-Brend screen (no ``data-brend-*`` marker) is never touched and the
+      bridge method is never called;
+    - name/audience go through ``textContent`` (XSS-safe) while voice/fact
+      code/fact text go through ``escapeHtml``.
+
+    The assertions fail on all three bad variants Codex described: (1) an
+    unconditional call at parse time, (2) a generic selector that reaches a
+    foreign screen, (3) raw ``innerHTML`` interpolation without escaping.
+    """
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is unavailable; executable app.js regression skipped")
+
+    from pathlib import Path
+
+    app_js_path = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "src" / "ai_campaign_studio" / "presentation_webview" / "static"
+        / "app.js"
+    )
+    harness = r"""
+const fs=require('fs'),vm=require('vm');
+const src=fs.readFileSync(process.argv[1],'utf8');
+function el(initial){
+  return {
+    _text:initial, _html:initial,
+    set textContent(v){this._text=v;}, get textContent(){return this._text;},
+    set innerHTML(v){this._html=v;}, get innerHTML(){return this._html;}
+  };
+}
+function baseDocument(querySelector){
+  return {
+    querySelectorAll(){return [];},
+    querySelector,
+    getElementById(){return null;}
+  };
+}
+function baseWindow(){
+  const listeners={};
+  return {listeners, window:{addEventListener(n,f){(listeners[n]??=[]).push(f);}}};
+}
+function brendContext(withApi){
+  const {listeners,window}=baseWindow();
+  const state={apiCalls:0};
+  const nameEl=el('SSR NAME'), audienceEl=el('SSR AUDIENCE'),
+        voiceEl=el('SSR VOICE'), factsEl=el('SSR FACTS');
+  const document=baseDocument(function(s){
+    if(s==='[data-brend-name]') return nameEl;
+    if(s==='[data-brend-audience]') return audienceEl;
+    if(s==='[data-brend-voice]') return voiceEl;
+    if(s==='[data-brend-facts]') return factsEl;
+    return null;
+  });
+  const installApi=()=>{window.pywebview={api:{async get_brand_overview(){
+    state.apiCalls+=1;
+    return {ok:true,
+      brand_name:'<img>',
+      primary_audience:'<script>',
+      voice:['<b>warm</b>','friendly'],
+      facts:[{code:'<i>F-1</i>', text:'<svg>'}]};
+  }}};};
+  if(withApi) installApi();
+  const context={window, document, location:{search:''}, URLSearchParams,
+    setInterval(){return 1;}, clearInterval(){}, setTimeout, clearTimeout, console};
+  vm.createContext(context);
+  return {context, listeners, state, installApi, nameEl, audienceEl, voiceEl, factsEl};
+}
+function foreignContext(withApi){
+  const {listeners,window}=baseWindow();
+  const state={apiCalls:0};
+  // A foreign screen has a generic <h3> (which a bad generic selector would
+  // hit) but NO data-brend-* marker.
+  const h3=el('FOREIGN H3');
+  const document=baseDocument(function(s){
+    if(s==='[data-brend-name]') return null;
+    if(s==='h3') return h3;
+    return null;
+  });
+  const installApi=()=>{window.pywebview={api:{async get_brand_overview(){
+    state.apiCalls+=1;
+    return {ok:true,brand_name:'X',primary_audience:'Y',voice:[],facts:[]};
+  }}};};
+  if(withApi) installApi();
+  const context={window, document, location:{search:''}, URLSearchParams,
+    setInterval(){return 1;}, clearInterval(){}, setTimeout, clearTimeout, console};
+  vm.createContext(context);
+  return {context, listeners, state, installApi, h3};
+}
+(async()=>{
+  // 1. Late injection: Brend, API arrives after parse.
+  const late=brendContext(false);
+  vm.runInContext(src, late.context);
+  const readyListeners=(late.listeners.pywebviewready||[]).length;
+  late.installApi();
+  for(const fn of late.listeners.pywebviewready||[]) await fn();
+  await new Promise(r=>setTimeout(r,0));
+
+  // 2. Immediate fast path: Brend, API already present.
+  const immediate=brendContext(true);
+  vm.runInContext(src, immediate.context);
+  await new Promise(r=>setTimeout(r,0));
+
+  // 3. Foreign screen (no data-brend-* marker, API present).
+  const foreign=foreignContext(true);
+  vm.runInContext(src, foreign.context);
+  await new Promise(r=>setTimeout(r,0));
+
+  console.log(JSON.stringify({
+    readyListeners,
+    lateHydrated: late.nameEl.textContent==='<img>',
+    immediateHydrated: immediate.nameEl.textContent==='<img>',
+    foreignApiCalls: foreign.state.apiCalls,
+    foreignUntouched: foreign.h3.textContent==='FOREIGN H3' &&
+      foreign.h3.innerHTML==='FOREIGN H3',
+    nameUsesTextContent: late.nameEl.textContent==='<img>' &&
+      late.nameEl.innerHTML==='SSR NAME',
+    audienceUsesTextContent: late.audienceEl.textContent==='<script>' &&
+      late.audienceEl.innerHTML==='SSR AUDIENCE',
+    voiceEscaped: late.voiceEl.innerHTML.includes('&lt;b&gt;warm&lt;/b&gt;') &&
+      !late.voiceEl.innerHTML.includes('<b>warm</b>'),
+    factEscaped: late.factsEl.innerHTML.includes('&lt;i&gt;F-1&lt;/i&gt;') &&
+      late.factsEl.innerHTML.includes('&lt;svg') &&
+      !/<i>|<svg/.test(late.factsEl.innerHTML),
+  }));
+})().catch(e=>{console.error(e);process.exitCode=1;});
+"""
+    completed = subprocess.run(
+        [node, "-e", harness, str(app_js_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    result = json.loads(completed.stdout)
+    assert result == {
+        "readyListeners": 1,
+        "lateHydrated": True,
+        "immediateHydrated": True,
+        "foreignApiCalls": 0,
+        "foreignUntouched": True,
+        "nameUsesTextContent": True,
+        "audienceUsesTextContent": True,
+        "voiceEscaped": True,
+        "factEscaped": True,
+    }
