@@ -14,6 +14,7 @@ from ai_campaign_studio.presentation.state import AppRuntimeState
 from ai_campaign_studio.presentation.ui_models import (
     BrandOverviewResultUiModel,
     CampaignPlanResultUiModel,
+    DashboardOverviewResultUiModel,
     ExportCampaignResultUiModel,
     GenerateContentResultUiModel,
     ListCampaignsResultUiModel,
@@ -74,3 +75,7 @@ class PresentationFacade(Protocol):
     def get_brand_overview(
         self, raw_payload: dict[str, Any] | None = None
     ) -> BrandOverviewResultUiModel: ...
+
+    def get_dashboard_overview(
+        self, raw_payload: dict[str, Any] | None = None
+    ) -> DashboardOverviewResultUiModel: ...

@@ -447,3 +447,21 @@ def test_write_all_pages_brend_carries_hydration_markers(tmp_path: Path) -> None
     # The SSR fixture content is still present (offline fallback).
     assert "BrightSmile Oral Care" in brend_html
     assert "F-001" in brend_html
+
+
+def test_write_all_pages_pocetna_carries_hydration_markers(tmp_path: Path) -> None:
+    """ACS-F1-051: the build-time Početna static HTML carries the
+    screen-specific hydration markers (``data-pocetna-*``) so app.js can
+    hydrate real data at runtime, while still rendering the SSR fixture."""
+    pages = write_all_pages(tmp_path)
+    pocetna_html = pages["pocetna"].read_text(encoding="utf-8")
+
+    assert "data-pocetna-recent" in pocetna_html
+    for key in ("active", "planned", "drafts", "approved"):
+        assert f'data-pocetna-kpi-value="{key}"' in pocetna_html, (
+            f"missing KPI marker: {key!r}"
+        )
+
+    # The SSR fixture content is still present (offline fallback).
+    assert "Nedavne kampanje" in pocetna_html
+    assert "Proljetna kolekcija" in pocetna_html

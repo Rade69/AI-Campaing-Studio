@@ -36,6 +36,8 @@ _EXPECTED_METHODS = {
     "list_campaigns",
     # Added in ACS-F1-049: Brend read path (single demo brand).
     "get_brand_overview",
+    # Added in ACS-F1-051: Početna dashboard read path.
+    "get_dashboard_overview",
 }
 
 
@@ -132,6 +134,21 @@ def test_bridge_implements_get_brand_overview() -> None:
 
     method = getattr(CampaignBridgeApi, "get_brand_overview", None)
     assert method is not None, "bridge must expose get_brand_overview"
+
+    import inspect
+
+    sig = inspect.signature(method)
+    assert list(sig.parameters) == ["self", "raw_payload"]
+
+
+def test_bridge_implements_get_dashboard_overview() -> None:
+    """ACS-F1-051: ``get_dashboard_overview`` is the third READ js_api method
+    (Početna dashboard). Same optional one-dict shape.
+    """
+    from ai_campaign_studio.presentation_webview.bridge import CampaignBridgeApi
+
+    method = getattr(CampaignBridgeApi, "get_dashboard_overview", None)
+    assert method is not None, "bridge must expose get_dashboard_overview"
 
     import inspect
 

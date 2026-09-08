@@ -16,11 +16,12 @@ if TYPE_CHECKING:
     from .. import ActivityEntry, Kpi, PočetnaFixture, RecentCampaign
 
 
-def _kpi_card(kpi: Kpi) -> str:
+def _kpi_card(kpi: Kpi, kpi_key: str) -> str:
     return (
         '<div class="card">'
         f'<div class="muted small">{html.escape(kpi.label)}</div>'
-        f'<div class="metric">{kpi.value}</div>'
+        f'<div class="metric" data-pocetna-kpi-value="{kpi_key}">'
+        f"{kpi.value}</div>"
         f'<div class="muted small">{html.escape(kpi.hint)}</div>'
         "</div>"
     )
@@ -72,14 +73,14 @@ def render_body(fixture: PočetnaFixture | None = None) -> str:
         "</button>"
         "</div>"
         '<div class="grid g4">'
-        + _kpi_card(fx.kpi_active_campaigns)
-        + _kpi_card(fx.kpi_posts_planned)
-        + _kpi_card(fx.kpi_drafts)
-        + _kpi_card(fx.kpi_approved)
+        + _kpi_card(fx.kpi_active_campaigns, "active")
+        + _kpi_card(fx.kpi_posts_planned, "planned")
+        + _kpi_card(fx.kpi_drafts, "drafts")
+        + _kpi_card(fx.kpi_approved, "approved")
         + "</div>"
         '<div class="grid g2" style="margin-top:18px">'
         '<div class="card"><h3>Nedavne kampanje</h3>'
-        f'<div class="list">{recent_html}</div></div>'
+        f'<div class="list" data-pocetna-recent>{recent_html}</div></div>'
         '<div class="card"><h3>Zadnje aktivnosti</h3>'
         f'<div class="list">{activity_html}</div></div>'
         "</div>"

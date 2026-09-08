@@ -2874,3 +2874,263 @@ def test_get_brand_overview_lifecycle_failure_returns_safe_exact_dto(
     assert result["error_code"] == "INTERNAL_ERROR"
     assert sentinel not in json.dumps(result)
     assert sentinel not in caplog.text
+
+
+# --- ACS-F1-051: get_dashboard_overview (Početna read path) ------------------
+
+
+def test_get_dashboard_overview_empty_db_returns_zeroes(tmp_path) -> None:
+    """Empty DB is a valid success: every counter 0 and empty recent list."""
+    bridge = _isolated_bridge(tmp_path)
+    result = bridge.get_dashboard_overview({})
+    assert result["ok"] is True, result
+    assert result["active_campaigns"] == 0
+    assert result["posts_planned"] == 0
+    assert result["drafts"] == 0
+    assert result["approved"] == 0
+    assert result["recent_campaigns"] == ()
+
+
+def test_get_dashboard_overview_returns_campaign_and_content_counts(
+    tmp_path,
+) -> None:
+    """One campaign with 3 content pieces (one PLANNED, one DRAFT, one
+    APPROVED) -> active=1, correct per-status counters, and one recent row
+    (name from the brief's ``offer``)."""
+    from datetime import UTC, datetime
+
+    from ai_campaign_studio.domain.common.ids import CampaignId, CampaignItemId, PostId
+    from ai_campaign_studio.domain.content.entities import (
+        CampaignTarget,
+        ContentPiece,
+        SocialPostPayload,
+    )
+    from ai_campaign_studio.domain.content.enums import (
+        ContentPayloadType,
+        ContentStatus,
+    )
+    from ai_campaign_studio.infrastructure.database.repositories import (
+        SqliteContentRepository,
+    )
+
+    bridge = _isolated_bridge(tmp_path)
+    campaign_id, _plan_id = _seed_brand_and_campaign(bridge, num_items=3)
+
+    connection = create_connection(bridge._bootstrap.paths.database_path)
+    try:
+        campaign_repo = SqliteCampaignRepository(connection)
+        campaign = campaign_repo.get_campaign(CampaignId(campaign_id))
+        assert campaign is not None
+        repo = SqliteContentRepository(connection)
+        now = datetime.now(UTC)
+        target = CampaignTarget(
+            channel="SOCIAL", platform_code="INSTAGRAM", format_code="FEED_POST"
+        )
+        payload = SocialPostPayload(
+            headline="h", caption="c", hook="k", body="b", cta="ct", hashtags=()
+        )
+        for i, status in enumerate(
+            (ContentStatus.PLANNED, ContentStatus.DRAFT, ContentStatus.APPROVED)
+        ):
+            repo.save_content_piece(
+                ContentPiece(
+                    id=PostId(f"piece-{i + 1}"),
+                    campaign_item_id=CampaignItemId(f"item-{i + 1}"),
+                    target=target,
+                    payload_type=ContentPayloadType.SOCIAL_POST,
+                    status=status,
+                    brand_snapshot_id=campaign.brand_snapshot_id,
+                    created_at=now,
+                    updated_at=now,
+                    payload=payload,
+                )
+            )
+        connection.commit()
+    finally:
+        connection.close()
+
+    result = bridge.get_dashboard_overview({})
+    assert result["ok"] is True, result
+    assert result["active_campaigns"] == 1
+    assert result["posts_planned"] == 1
+    assert result["drafts"] == 1
+    assert result["approved"] == 1
+    assert len(result["recent_campaigns"]) == 1
+    assert result["recent_campaigns"][0]["name"] == "Test offer"
+    assert result["recent_campaigns"][0]["status"] == "DRAFT"
+
+
+def test_get_dashboard_overview_exported_campaign_not_active(tmp_path) -> None:
+    """'Active' = status != EXPORTED. An EXPORTED campaign is not counted as
+    active but still appears in the recent list."""
+    from dataclasses import replace
+
+    from ai_campaign_studio.domain.campaign.enums import CampaignStatus
+    from ai_campaign_studio.domain.common.ids import CampaignId
+
+    bridge = _isolated_bridge(tmp_path)
+    campaign_id, _plan_id = _seed_brand_and_campaign(bridge)
+
+    connection = create_connection(bridge._bootstrap.paths.database_path)
+    try:
+        repo = SqliteCampaignRepository(connection)
+        campaign = repo.get_campaign(CampaignId(campaign_id))
+        assert campaign is not None
+        repo.save_campaign(replace(campaign, status=CampaignStatus.EXPORTED))
+        connection.commit()
+    finally:
+        connection.close()
+
+    result = bridge.get_dashboard_overview({})
+    assert result["ok"] is True, result
+    assert result["active_campaigns"] == 0
+    assert len(result["recent_campaigns"]) == 1
+    assert result["recent_campaigns"][0]["status"] == "EXPORTED"
+
+
+def test_get_dashboard_overview_is_json_serializable_and_no_secret_leak(
+    tmp_path,
+) -> None:
+    bridge = _isolated_bridge(tmp_path)
+    result = bridge.get_dashboard_overview({})
+    blob = json.dumps(result)  # must not raise
+    for forbidden in ("api_key", "secret", "password", "token", "database_path"):
+        assert forbidden not in blob
+
+
+def test_get_dashboard_overview_lifecycle_failure_returns_exact_dto(
+    tmp_path, caplog
+) -> None:
+    """A connection-open failure must return the EXACT DashboardOverviewResultUiModel
+    key-set and must not leak the exception text."""
+    import logging
+
+    bridge = _isolated_bridge(tmp_path)
+    sentinel = "SQL=C:/private/dashboard.db SECRET-LIKE-DETAIL"
+
+    with caplog.at_level(logging.ERROR), patch(
+        "ai_campaign_studio.presentation_webview.bridge.create_connection",
+        side_effect=RuntimeError(sentinel),
+    ):
+        result = bridge.get_dashboard_overview({})
+
+    assert set(result) == {
+        "ok",
+        "active_campaigns",
+        "posts_planned",
+        "drafts",
+        "approved",
+        "recent_campaigns",
+        "error_code",
+        "error_message",
+    }
+    assert result["ok"] is False
+    assert result["active_campaigns"] == 0
+    assert result["posts_planned"] == 0
+    assert result["drafts"] == 0
+    assert result["approved"] == 0
+    assert result["recent_campaigns"] == ()
+    assert result["error_code"] == "INTERNAL_ERROR"
+    assert sentinel not in json.dumps(result)
+    assert sentinel not in caplog.text
+
+
+def test_get_dashboard_overview_multi_campaign_different_statuses(
+    tmp_path,
+) -> None:
+    """Real-SQLite integration: two campaigns in the SAME DB, one DRAFT and
+    one EXPORTED, with content pieces of different statuses across BOTH. The
+    counters must be exact: only the DRAFT campaign is "active"; recent still
+    lists both."""
+    from dataclasses import replace
+    from datetime import UTC, datetime
+
+    from ai_campaign_studio.domain.campaign.enums import CampaignStatus
+    from ai_campaign_studio.domain.common.ids import (
+        CampaignId,
+        CampaignItemId,
+        PostId,
+    )
+    from ai_campaign_studio.domain.content.entities import (
+        CampaignTarget,
+        ContentPiece,
+        SocialPostPayload,
+    )
+    from ai_campaign_studio.domain.content.enums import (
+        ContentPayloadType,
+        ContentStatus,
+    )
+    from ai_campaign_studio.infrastructure.database.repositories import (
+        SqliteContentRepository,
+    )
+
+    bridge = _isolated_bridge(tmp_path)
+    campaign_a, _plan_a = _seed_brand_and_campaign(
+        bridge, num_items=3, plan_id="plan-1", item_id_prefix="item"
+    )
+    campaign_b, _plan_b = _seed_brand_and_campaign(
+        bridge, num_items=2, plan_id="plan-2", item_id_prefix="item2"
+    )
+
+    connection = create_connection(bridge._bootstrap.paths.database_path)
+    try:
+        campaign_repo = SqliteCampaignRepository(connection)
+        content_repo = SqliteContentRepository(connection)
+        now = datetime.now(UTC)
+        target = CampaignTarget(
+            channel="SOCIAL", platform_code="INSTAGRAM", format_code="FEED_POST"
+        )
+        payload = SocialPostPayload(
+            headline="h", caption="c", hook="k", body="b", cta="ct", hashtags=()
+        )
+
+        def _save(piece_id: str, item_id: str, snapshot_id, status) -> None:
+            content_repo.save_content_piece(
+                ContentPiece(
+                    id=PostId(piece_id),
+                    campaign_item_id=CampaignItemId(item_id),
+                    target=target,
+                    payload_type=ContentPayloadType.SOCIAL_POST,
+                    status=status,
+                    brand_snapshot_id=snapshot_id,
+                    created_at=now,
+                    updated_at=now,
+                    payload=payload,
+                )
+            )
+
+        camp_a = campaign_repo.get_campaign(CampaignId(campaign_a))
+        assert camp_a is not None
+        snapshot_id = camp_a.brand_snapshot_id
+        # Campaign A (DRAFT): 3 pieces -> PLANNED, DRAFT, APPROVED.
+        _save("p-a1", "item-1", snapshot_id, ContentStatus.PLANNED)
+        _save("p-a2", "item-2", snapshot_id, ContentStatus.DRAFT)
+        _save("p-a3", "item-3", snapshot_id, ContentStatus.APPROVED)
+
+        # Campaign B: mark EXPORTED, then 2 pieces -> PLANNED, APPROVED.
+        camp_b = campaign_repo.get_campaign(CampaignId(campaign_b))
+        assert camp_b is not None
+        campaign_repo.save_campaign(
+            replace(camp_b, status=CampaignStatus.EXPORTED)
+        )
+        _save("p-b1", "item2-1", snapshot_id, ContentStatus.PLANNED)
+        _save("p-b2", "item2-2", snapshot_id, ContentStatus.APPROVED)
+
+        connection.commit()
+    finally:
+        connection.close()
+
+    result = bridge.get_dashboard_overview({})
+    assert result["ok"] is True, result
+    # Only campaign A is active (campaign B is EXPORTED).
+    assert result["active_campaigns"] == 1
+    # PLANNED across both campaigns: item-1 + item2-1.
+    assert result["posts_planned"] == 2
+    # DRAFT: item-2 only.
+    assert result["drafts"] == 1
+    # APPROVED: item-3 + item2-2.
+    assert result["approved"] == 2
+    # Recent lists both campaigns (EXPORTED is still "recent").
+    assert len(result["recent_campaigns"]) == 2
+    statuses = {r["status"] for r in result["recent_campaigns"]}
+    assert statuses == {"DRAFT", "EXPORTED"}
