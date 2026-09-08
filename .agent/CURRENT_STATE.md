@@ -3,7 +3,30 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-053
+**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-054
+(P1.5-G7b, REVIDIRAN) otvoren.** [Task contract](../agent_reports/ACS-F1-054-task-contract.md).
+
+**Stvaran nalaz koji je promijenio G7b scope**: Studio sadržaja ekran
+NEMA `content_piece_id` routing — i dalje je potpuno fixture-only
+mockup ("Stavka 1/6" hardkodovano), jedini runtime identiteti kroz app
+su `campaign_id`/`plan_id`. Originalni plan (§22, "ContentPiece →
+Performance section" u Studio sadržaja) pretpostavlja infrastrukturu
+koja ne postoji. Human Owner odlučio (AskUserQuestion, 2026-09-08): NE
+raditi per-item routing na Studio sadržaja sada (to bi bio zaseban,
+veći posao) — umjesto toga, **G7b postaje tabela content-piece-level
+performance-a UNUTAR postojeće G7a "Učinak kampanje" kartice** u
+Pregled i izvoz ekranu, koristeći SAMO postojeći `campaign_id`
+identitet preko `list_campaign_content` + `build_content_performance_summary`
+(oba već postoje). Kontrakt eksplicitno traži da implementer PRIMIJENI
+(ne ponovi) F1-053-ovu Codex napomenu o dupliranom query-param
+parsing-u.
+
+Sekvenca ostaje: G7a (zatvoren) → **G7b (ovaj task)** → G7c (Import
+Performance UI) → P1.5-G8.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-053
 (P1.5-G7a — Campaign Performance summary) MERGED — Human Owner
 odobrio.** Implementer: Pi. PR
 [#18](https://github.com/Rade69/AI-Campaing-Studio/pull/18)
