@@ -3,7 +3,28 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-054
+**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-055
+(P1.5-G7c — Import Performance CSV) otvoren, posljednji dio G7.**
+[Task contract](../agent_reports/ACS-F1-055-task-contract.md).
+
+Prvi WRITE-path performance GUI task (G7a/b su bili čisto čitanje).
+Namjerno minimalan v1 scope: `column_overrides` ostaje `None` (nema
+interaktivnog remapping UI-ja u v1 -- eksplicitna odluka, ne propust,
+u duhu §22 "Ne praviti veliki Analytics centar"), `ConfirmPerformanceImport`
+uvijek prolazi (već persistuje sve redove, validne i nevalidne, ne
+treba novo blokiranje). Novi arhitektonski presedan: bridge dobija
+PRVI pristup `webview.windows[0].create_file_dialog` (native OS
+file picker) -- potvrđeno da `architecture_boundaries` test to
+dozvoljava (`pywebview` je eksplicitno dozvoljen za
+`presentation_webview`/`bridge` sloj).
+
+Nakon ovog taska: **P1.5-G8 (Integration acceptance)** — provjeriti
+prvo da li §23 scenario uopšte treba `presentation_webview/` ili je
+čist backend/bridge integration test (vjerovatno potonje).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-054
 (P1.5-G7b, revidiran — Content Performance tabela) MERGED — Human
 Owner odobrio.** Implementer: Pi. PR
 [#19](https://github.com/Rade69/AI-Campaing-Studio/pull/19)
