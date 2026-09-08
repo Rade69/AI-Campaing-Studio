@@ -4,6 +4,28 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-055
+— Claude review PASS, čeka Codex adversarial + Human Owner.**
+Implementer: Pi. PR [#20](https://github.com/Rade69/AI-Campaing-Studio/pull/20)
+@ `5af518f`, CI zeleno.
+
+Prvi WRITE-path performance task, prvi bridge pristup
+`webview.windows[0].create_file_dialog`. Nezavisno verifikovano: kod
+pročitan liniju-po-liniju (obje bridge metode, oba XSS puta u
+`app.js`), DVA mutation testa (`escapeImportHtml(c.header)` uklonjen →
+FAIL, `escapeImportHtml` na `invalid_samples.errors` uklonjen → FAIL,
+oba restore → PASS), `sys.modules` patch tehnika za `create_file_dialog`
+mock potvrđena kao CI-safe (nikad ne otvara stvaran OS dialog),
+`architecture_boundaries` test (18/18) nezavisno potvrđen da dozvoljava
+lokalni `import webview`, `column_overrides=None` potvrđen (nema
+remapping UI van scope-a), diff scope tačno 10 fajlova + evidence,
+mypy/ruff čisto, ciljani suite (372, uklj. architecture_boundaries)
+PASS, CI zeleno.
+
+**Sljedeći korak: Codex adversarial review na PR #20.**
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-055
 (P1.5-G7c — Import Performance CSV) otvoren, posljednji dio G7.**
 [Task contract](../agent_reports/ACS-F1-055-task-contract.md).
 
