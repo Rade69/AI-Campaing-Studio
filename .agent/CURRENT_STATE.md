@@ -3,7 +3,42 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-049
+**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **Dva nova
+Task Contract-a otvorena, paralelan par (Human Owner tražio da se
+iskoristi prostor za paralelan rad kad god postoji, bez žrtvovanja
+kvaliteta).**
+
+1. **[ACS-F1-050](../agent_reports/ACS-F1-050-task-contract.md)** —
+   P1.5-G6 Analytics Read Models (`CampaignPerformanceSummary`/
+   `ContentPerformanceSummary`/`PlatformPerformanceSummary`). HIGH risk
+   — PRVA izmjena `PerformanceRepositoryPort` potpisa (nova query
+   metoda, `list_performance_snapshots_by_distribution_instance`),
+   dotiče domain+application+ports+infrastructure. Otvoreno pitanje
+   (agregaciona semantika preko više snapshot-ova + potvrda da je
+   F1-048-ov currency-gap i dalje otvoren) implementer mora istražiti
+   i dokumentovati, ne prećutno pretpostaviti.
+2. **[ACS-F1-051](../agent_reports/ACS-F1-051-task-contract.md)** —
+   Početna (Dashboard) read path, treći GUI read-path ekran (poslije
+   F1-046 Kampanje, F1-049 Brend). Nema domain gap-ova (sve potrebne
+   podatke već nose postojeći entiteti/repo metode) — jedina otvorena
+   odluka je definicija "aktivna kampanja". HIGH risk (GUI lifecycle
+   klasa), ali kontrakt OVAJ PUT eksplicitno mandatuje izvršni Node/VM
+   test OD PRVE VERZIJE (ne "string-assertion kao minimum") da se
+   izbjegne F1-049-ov REJECT round-trip.
+
+`allowed_paths` oba taska su potpuno disjoint (`domain/performance/` +
+`application/performance/` + `ports/repositories.py` +
+`infrastructure/database/repositories/sqlite_performance_repository.py`
+vs `presentation_webview/screens/pocetna/` + `bridge/__init__.py` +
+`app.js` + `presentation/`) — sigurno za paralelan rad, isti obrazac
+kao F1-048+F1-049 par.
+
+Oba contracta su na `main` (`5674bba`), CI zeleno, GitNexus osvježen
+(13.927 nodes/296 clusters/148 flows).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-049
 (Brend read path) MERGED — Human Owner odobrio.** Implementer: Crush.
 PR [#14](https://github.com/Rade69/AI-Campaing-Studio/pull/14)
 squash-merged u `main` (`2b5310d`). Drugi GUI read-path ekran (poslije
