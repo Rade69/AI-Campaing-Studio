@@ -4,6 +4,33 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-049
+(Brend read path) — Codex adversarial REJECT (test-only nalaz), fix
+runda kod Crush-a.** PR
+[#14](https://github.com/Rade69/AI-Campaing-Studio/pull/14),
+[Codex izvještaj](../agent_reports/2026-09-08-ACS-F1-049-review-codex.md).
+
+**Nalaz BF-1**: `test_app_js_has_brand_hydration_with_escape_and_lifecycle`
+je string-presence test (provjerava da stringovi postoje NEGDJE u
+`app.js`), ne izvršni test — ne dokazuje da `pywebviewready`
+lifecycle/cross-screen izolacija/XSS-safe `textContent` STVARNO rade.
+Codex je to dokazao sa 3 in-memory mutacije (bezuslovan poziv na
+parsiranju, generički `.card` selector, `innerHTML` umjesto
+`textContent` za ime/publiku) — sve 3 loše varijante i dalje prolaze
+postojeće provjere. **Sam produkcijski kod je Codex-ovim NEZAVISNIM
+Node/VM harnessom potvrđen kao ispravan** (lateOnce/otherUntouched/
+textContentCarriesLiteral/htmlEscaped svi `true`) — REJECT je ČISTO
+zbog nedostatka regresijskog dokaza, ne zbog bug-a u kodu.
+
+Fix: dodati izvršni Node/VM test po uzoru na F1-046-ov
+`test_app_js_campaign_hydration_lifecycle_and_screen_isolation`, u
+POSTOJEĆEM dozvoljenom test fajlu (nema širenja `allowed_paths`, nema
+dirati bridge/DTO/domain/repo). Nakon fixa: kratak Codex re-review
+(test prolazi na ispravnom kodu + pada na sve 3 mutacije + gate
+zelen), pa tek onda Human Owner odobrenje.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-049
 (Brend read path) — Claude review PASS, čeka Codex adversarial +
 Human Owner.** Implementer: Crush. PR
 [#14](https://github.com/Rade69/AI-Campaing-Studio/pull/14) otvoren
