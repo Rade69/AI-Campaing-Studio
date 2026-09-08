@@ -3,7 +3,34 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-051
+**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-053
+(P1.5-G7a — Campaign Performance summary) otvoren, prvi korak ka
+P1.5-G7 Minimal UI.** [Task contract](../agent_reports/ACS-F1-053-task-contract.md).
+
+G7 (Faza 1 v1.5 §22) je podijeljen na tri sekvencijalna dijela (sva
+tri dijele `app.js`/`bridge/__init__.py`, ne mogu paralelno --
+GUI-009/F1-046/F1-047 lekcija):
+
+- **G7a** (ovaj task) — nova read metoda `get_campaign_performance`,
+  prvi GUI caller `build_campaign_performance_summary` (F1-050).
+  Prikaz u "Pregled i izvoz" ekranu (već nosi `?campaign=` kontekst,
+  nema postojeći tab-sistem pa je nova kartica, ne tab). Mandatoran
+  izvršni Node/VM test sa DVOSTRUKIM `pywebviewready` emit-om (F1-051
+  BF-1 standard ugrađen od početka).
+- **G7b** (sljedeći) — ContentPiece Performance sekcija, novi tab u
+  Studio sadržaja (već ima tab-sistem).
+- **G7c** (poslije) — Import Performance dugme + CSV mapping dialog.
+  Genuinski nov UX obrazac (file picker, višekoračni dialog) — nema
+  postojeći presedan u kodu, zaslužuje poseban dizajn napor kad dođe
+  na red, ne žuriti.
+
+Nakon G7a/b/c: P1.5-G8 (Integration acceptance, §23).
+
+PR/worktree za G7a još nije otvoren (contract čeka implementera).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-051
 (Početna dashboard read path) MERGED — Human Owner odobrio.**
 Implementer: Crush. PR [#16](https://github.com/Rade69/AI-Campaing-Studio/pull/16)
 squash-merged u `main` (`01e2d30`). Treći GUI read-path ekran (poslije
