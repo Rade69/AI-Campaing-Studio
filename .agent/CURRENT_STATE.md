@@ -3,7 +3,25 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **Codex
+**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-050
+(P1.5-G6 Analytics Read Models) MERGED — Human Owner odobrio.**
+Implementer: Pi. PR [#15](https://github.com/Rade69/AI-Campaing-Studio/pull/15)
+squash-merged u `main` (`80353eb`). Pun HIGH-risk ciklus bez skraćivanja:
+Claude PASS → Codex PASS (nezavisno potvrdio isti nalaz: OUT_OF_SCOPE_FINDING
+prihvaćen, agregacija ispravna, `derived` isključivo iz G5, currency gap
+potvrđen i ostavljen van scope-a) → Human Owner odobrio.
+
+`CampaignPerformanceSummary`/`ContentPerformanceSummary`/`PlatformPerformanceSummary`
++ 3 nove aditivne `PerformanceRepositoryPort` query metode sada postoje u
+`main`. P1.5-G6 zatvoren.
+
+ACS-F1-051 (Početna dashboard) ostaje OPEN, čeka Crush fix rundu (BF-1
+listener-options + BF-2 multi-campaign real-DB test) — vidi ispod,
+nepromijenjeno.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **Codex
 adversarial rezultati za F1-050/F1-051.**
 
 1. **[ACS-F1-050](../agent_reports/ACS-F1-050-task-contract.md) —
