@@ -254,10 +254,22 @@ function baseDocument(querySelector,querySelectorAll){
 }
 function baseWindow(){
   const listeners={};
-  return {listeners, window:{addEventListener(n,f){(listeners[n]??=[]).push(f);}}};
+  function addEventListener(n,f,opts){
+    (listeners[n]??=[]).push({fn:f, once:!!(opts&&opts.once)});
+  }
+  function emit(n){
+    const arr=listeners[n]||[];
+    const remaining=[];
+    for(const e of arr){
+      e.fn();
+      if(!e.once) remaining.push(e);
+    }
+    listeners[n]=remaining;
+  }
+  return {listeners, emit, window:{addEventListener}};
 }
 function pocetnaContext(withApi){
-  const {listeners,window}=baseWindow();
+  const {listeners,window,emit}=baseWindow();
   const state={apiCalls:0};
   const recentList=el('SSR RECENT');
   const kpis=[kpiEl('active'),kpiEl('planned'),kpiEl('drafts'),kpiEl('approved')];
@@ -277,7 +289,7 @@ function pocetnaContext(withApi){
   const context={window, document, location:{search:''}, URLSearchParams,
     setInterval(){return 1;}, clearInterval(){}, setTimeout, clearTimeout, console};
   vm.createContext(context);
-  return {context, listeners, state, installApi, recentList, kpis};
+  return {context, listeners, emit, state, installApi, recentList, kpis};
 }
 function foreignContext(withApi){
   const {listeners,window}=baseWindow();
@@ -304,8 +316,12 @@ function foreignContext(withApi){
   vm.runInContext(src, late.context);
   const readyListeners=(late.listeners.pywebviewready||[]).length;
   late.installApi();
-  for(const fn of late.listeners.pywebviewready||[]) await fn();
+  late.emit('pywebviewready');
   await new Promise(r=>setTimeout(r,0));
+  late.emit('pywebviewready');
+  await new Promise(r=>setTimeout(r,0));
+  const lateApiCalls=late.state.apiCalls;
+  const lateListenerCleared=(late.listeners.pywebviewready||[]).length===0;
 
   const immediate=pocetnaContext(true);
   vm.runInContext(src, immediate.context);
@@ -319,6 +335,8 @@ function foreignContext(withApi){
     readyListeners,
     lateHydrated: late.recentList.innerHTML.includes('&lt;img src=x&gt;'),
     lateKpiActive: late.kpis[0].textContent==='4',
+    lateApiCalls,
+    lateListenerCleared,
     immediateHydrated: immediate.recentList.innerHTML.includes('&lt;img src=x&gt;'),
     foreignApiCalls: foreign.state.apiCalls,
     foreignUntouched: foreign.h3.textContent==='FOREIGN H3' &&
@@ -342,6 +360,8 @@ function foreignContext(withApi){
         "readyListeners": 1,
         "lateHydrated": True,
         "lateKpiActive": True,
+        "lateApiCalls": 1,
+        "lateListenerCleared": True,
         "immediateHydrated": True,
         "foreignApiCalls": 0,
         "foreignUntouched": True,
