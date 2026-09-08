@@ -4,6 +4,30 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-053
+— Claude review PASS, čeka Codex adversarial + Human Owner.**
+Implementer: Pi. PR [#18](https://github.com/Rade69/AI-Campaing-Studio/pull/18)
+@ `e63ccea`, CI zeleno, MERGEABLE/CLEAN.
+
+Četvrta READ js_api metoda (`get_campaign_performance`) — jedini
+GUI caller `build_campaign_performance_summary` (G6), nula duplih
+formula. Izvršni Node/VM test (dvostruki `pywebviewready` emit,
+exactly-once dokaz) OD PRVE VERZIJE — F1-051 BF-1 standard primijenjen
+bez podsjetnika. Nezavisno verifikovano: kod pročitan liniju-po-liniju,
+mutation-test na `{once:true}` (uklonjen → test FAIL → restore → PASS),
+diff scope tačno 9 fajlova iz `allowed_paths`, mypy/ruff čisto, ciljani
+suite (337) nezavisno PASS.
+
+Pun suite je jednom pokazao poznat gate-report flake
+(`test_gate_report_against_current_repo_passes`, F1-052-umanjen ali ne
+100%-eliminisan pod konkurentnim opterećenjem) — nezavisno reprodukovan
+kao PASS izolovano, potvrđeno da NIJE regresija F1-053 (task ne dira
+`scripts/`).
+
+**Sljedeći korak: Codex adversarial review na PR #18.**
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-053
 (P1.5-G7a — Campaign Performance summary) otvoren, prvi korak ka
 P1.5-G7 Minimal UI.** [Task contract](../agent_reports/ACS-F1-053-task-contract.md).
 
