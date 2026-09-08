@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
 
 import pytest
@@ -9,6 +10,7 @@ import pytest
 from ai_campaign_studio.domain.common.errors import InvariantViolation
 from ai_campaign_studio.domain.performance.metrics import (
     CanonicalMetricSet,
+    DerivedMetricSet,
     MetricPeriod,
 )
 
@@ -52,3 +54,27 @@ def test_metric_period_rejects_end_before_start() -> None:
     end = datetime(2026, 1, 1, tzinfo=UTC)
     with pytest.raises(InvariantViolation):
         MetricPeriod(start=start, end=end)
+
+
+def test_derived_metric_set_all_default_none() -> None:
+    derived = DerivedMetricSet()
+    assert derived.ctr is None
+    assert derived.cpc is None
+    assert derived.cpm is None
+    assert derived.cpa is None
+    assert derived.roas is None
+    assert derived.conversion_rate is None
+
+
+def test_derived_metric_set_holds_values() -> None:
+    derived = DerivedMetricSet(ctr=0.034, roas=2.5)
+    assert derived.ctr == 0.034
+    assert derived.roas == 2.5
+    # fields not set remain None
+    assert derived.cpa is None
+
+
+def test_derived_metric_set_is_frozen() -> None:
+    derived = DerivedMetricSet(ctr=0.034)
+    with pytest.raises(FrozenInstanceError):
+        derived.ctr = 0.5  # type: ignore[misc]
