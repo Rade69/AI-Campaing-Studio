@@ -4,6 +4,28 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-051
+(Početna dashboard read path) MERGED — Human Owner odobrio.**
+Implementer: Crush. PR [#16](https://github.com/Rade69/AI-Campaing-Studio/pull/16)
+squash-merged u `main` (`01e2d30`). Treći GUI read-path ekran (poslije
+F1-046 Kampanje, F1-049 Brend): `get_dashboard_overview()` čita 4 KPI
+brojača + 5 nedavnih kampanja preko postojećih repo metoda (nula novih).
+
+Pun HIGH-risk adversarial ciklus proveden bez skraćivanja: Claude
+review PASS → **Codex REJECT** (2 test-only nalaza — Node/VM harness
+nije modelirao `{once:true}`, nedostajao multi-campaign real-DB test)
+→ Crush fix runda → **Codex re-review PASS** → Human Owner odobrio.
+Sva tri read-path ekrana (Kampanje/Brend/Početna) su sada zatvorena;
+F1-046 obrazac je dokazan TRI PUTA, sa BF-1/BF-2/XSS/lifecycle
+lekcijama akumuliranim u svaki naredni kontrakt.
+
+Sva tri paralelna taska iz posljednje runde (F1-050/051/052) su sada
+merge-ovana. Sljedeći korak po Human Owner odluci: **P1.5-G7 (Minimal
+UI) + P1.5-G8 (Integration acceptance)** prije Slice 2 (Website
+Ingestion) — vidi prethodni unos ispod.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-051
 — Codex re-review PASS.** PR [#16](https://github.com/Rade69/AI-Campaing-Studio/pull/16)
 @ `286e129`, CI zeleno, MERGEABLE/CLEAN.
 [Codex re-review izvještaj](../agent_reports/2026-09-08-ACS-F1-051-rereview-codex.md)
