@@ -49,6 +49,7 @@ from ai_campaign_studio.application.campaigns.generate_campaign_plan import (
     GenerateCampaignPlan,
 )
 from ai_campaign_studio.application.export import ExportCampaign
+from ai_campaign_studio.application.performance import materialize_performance_snapshots
 from ai_campaign_studio.application.performance.build_performance_summaries import (
     build_campaign_performance_summary,
     build_content_performance_summary,
@@ -1843,6 +1844,11 @@ class CampaignBridgeApi:
             match_result = MatchPerformanceImportBatch(
                 self._performance_repo
             ).execute(batch.id, campaign_id)
+            materialize_result = (
+                materialize_performance_snapshots.MaterializePerformanceSnapshots(
+                    self._performance_repo
+                ).execute(batch.id)
+            )
             return asdict(
                 ConfirmPerformanceImportResultUiModel(
                     ok=True,
@@ -1854,6 +1860,8 @@ class CampaignBridgeApi:
                     ambiguous_count=match_result.ambiguous_count,
                     unmatched_count=match_result.unmatched_count,
                     skipped_count=match_result.skipped_count,
+                    materialized_count=materialize_result.materialized_count,
+                    skipped_invalid_count=materialize_result.skipped_invalid_count,
                     error_code=None,
                     error_message=None,
                 )
@@ -2412,6 +2420,8 @@ class CampaignBridgeApi:
                 ambiguous_count=0,
                 unmatched_count=0,
                 skipped_count=0,
+                materialized_count=0,
+                skipped_invalid_count=0,
                 error_code=code,
                 error_message=message,
             )
