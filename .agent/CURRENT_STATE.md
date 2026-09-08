@@ -4,9 +4,21 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-054
-— Codex adversarial PASS (0 blocking).** PR
-[#19](https://github.com/Rade69/AI-Campaing-Studio/pull/19) @ `20d4be8`,
-CI zeleno, MERGEABLE.
+(P1.5-G7b, revidiran — Content Performance tabela) MERGED — Human
+Owner odobrio.** Implementer: Pi. PR
+[#19](https://github.com/Rade69/AI-Campaing-Studio/pull/19)
+squash-merged u `main` (`8621227`). "Učinak po objavi" tabela u
+Pregled i izvoz — content-piece-level CTR/CPC preko postojeće
+`build_content_performance_summary` (G6). Pun HIGH-risk adversarial
+ciklus bez skraćivanja: Claude PASS → Codex PASS (0 blocking, plus
+sentinel proba i treća mutacija) → Human Owner odobrio.
+
+**G7b zatvoren. Sljedeći korak: G7c (Import Performance dugme + CSV
+mapping dialog)** — genuinski nov UX obrazac (file picker, višekoračni
+dialog), zaslužuje poseban dizajn napor prije pisanja kontrakta. Nakon
+G7c: P1.5-G8 (Integration acceptance).
+
+---
 [Codex izvještaj](../agent_reports/2026-09-08-ACS-F1-054-review-codex.md)
 nezavisno potvrdio isto što i Claude, plus dodatna sentinel proba
 (zamijenjen G6 builder rezultat sa `ctr=123.456, cpc=789.012`,
