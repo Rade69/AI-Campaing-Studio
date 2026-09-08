@@ -4,6 +4,34 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-055
+(P1.5-G7c — Import Performance CSV) MERGED — Human Owner odobrio.
+P1.5-G7 (Minimal UI) je POTPUNO ZATVOREN.** Implementer: Pi. PR
+[#20](https://github.com/Rade69/AI-Campaing-Studio/pull/20)
+squash-merged u `main` (`43557d5`). Prvi write-path performance task —
+"Uvezi CSV" dugme (native file dialog) → read-only preview → "Potvrdi
+uvoz" → persist + match, sve preko postojećih G3/G4 use-caseova.
+
+**G7 sažetak (sva tri dijela zatvorena danas):**
+- G7a (ACS-F1-053) — Campaign Performance summary kartica.
+- G7b (ACS-F1-054, revidiran) — Content Performance tabela.
+- G7c (ACS-F1-055) — Import Performance CSV write-path.
+
+Sva tri su prošla pun HIGH-risk adversarial ciklus (Claude + Codex +
+Human Owner) bez skraćivanja. Napomena zabilježena za buduće slične
+taskove: G7c-stil "samo ožičavanje već pregledanih use-caseova, bez
+lifecycle rizika" trebao je vjerovatno ići kao MEDIUM/§29 — primijeniti
+ubuduće na G8 ako obrazac ostane potvrđen.
+
+**Sljedeći korak: P1.5-G8 (Integration acceptance, §23)** — posljednji
+gate Slice 1.5. Provjeriti prvo da li scenario (create→generate→
+approve→export→import CSV→match→calculate→show aggregate/content
+result) uopšte treba `presentation_webview/` ili je čist backend/
+bridge integration test. Nakon G8 PASS: Slice 1.5 zatvoren, Slice 2
+(Website Ingestion) može početi po ranijoj Human Owner odluci.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-055
 — Codex adversarial PASS (0 blocking).** PR
 [#20](https://github.com/Rade69/AI-Campaing-Studio/pull/20) @ `5af518f`,
 CI zeleno, MERGEABLE/CLEAN.
