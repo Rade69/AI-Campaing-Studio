@@ -4,6 +4,23 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-049
+(Brend read path) — Codex re-review PASS. Čeka Human Owner
+odobrenje za merge (HIGH rizik, pun ciklus).** PR
+[#14](https://github.com/Rade69/AI-Campaing-Studio/pull/14) @ `1353075`,
+CI zeleno, MERGEABLE/CLEAN.
+[Codex re-review izvještaj](../agent_reports/2026-09-08-ACS-F1-049-rereview-codex.md)
+potvrđuje: novi test prolazi na ispravnom kodu, pada na sve 3
+mutacije (BF-1 lifecycle, BF-2 generic selector, XSS innerHTML), 0
+scope creep (samo test fajl + prethodni review report), pun suite
+1147 passed/1 skipped, ruff/mypy čisto. Prethodni BF-1 nalaz je
+zatvoren. Ovo je Claude PASS → Codex REJECT → Crush fix → Codex PASS
+ciklus, potpuno završen — jedino preostaje eksplicitno Human Owner
+odobrenje prije merge-a (nije §29 slučaj, HIGH rizik ostaje na punom
+ciklusu bez izuzetka).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-049
 (Brend read path) — BF-1 fix pushovan (`1353075`), čeka Codex
 re-review.** PR [#14](https://github.com/Rade69/AI-Campaing-Studio/pull/14),
 CI zeleno. Test-only fix (Crush): `test_app_js_brand_hydration_lifecycle_isolation_and_xss`
