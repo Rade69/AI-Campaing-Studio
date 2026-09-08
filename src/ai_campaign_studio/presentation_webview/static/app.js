@@ -1,4 +1,12 @@
 
+// Shared runtime state parsed ONCE by the boot IIFE below. Hydration
+// IIFEs that need a campaign/plan id (Campaign Performance, Content
+// Performance) read these instead of re-parsing ``location.search``
+// (Codex F1-053 note — do not duplicate the query-param parsing a third
+// time). ``null`` means "no id in this page's URL".
+let appCampaignId = null;
+let appPlanId = null;
+
 (function(){
   document.querySelectorAll('[data-action]').forEach(el=>el.addEventListener('click',()=>{
     const action=el.dataset.action;
@@ -588,6 +596,8 @@ async function exportCampaign(button) {
   const params=new URLSearchParams(location.search);
   const campaign=params.get('campaign');
   const plan=params.get('plan');
+  appCampaignId = campaign;
+  appPlanId = plan;
   if(campaign){
     document.querySelectorAll('[data-campaign-only]').forEach(el=>el.hidden=false);
     document.querySelectorAll('[data-campaign-hide]').forEach(el=>el.hidden=true);
@@ -920,5 +930,76 @@ async function exportCampaign(button) {
     loadCampaignPerformance();
   }else{
     window.addEventListener('pywebviewready', loadCampaignPerformance, {once:true});
+  }
+})();
+
+// --- ACS-F1-054: Pregled i izvoz — "Učinak po objavi" tabela ---
+//
+// Hidratuje content-piece-level performance tabelu STVARNIM podacima iz
+// ``get_campaign_content_performance``. Ekran-specifični
+// ``data-content-perf-*`` markeri (nikad generički selector) spriječavaju
+// dodir drugih ekrana. ``campaign_id`` se ČITA iz shared ``appCampaignId``
+// (parsiran JEDNOM u boot IIFE-u — Codex F1-053 napomena, ne ponavljati
+// ``URLSearchParams``). Label (platform/format + AI headline) ide kroz
+// ``escapeHtml`` (XSS); CTR/CPC se takođe escape-uju (brojevi su po prirodi
+// bezbjedni, ali ostajemo defanzivni — isti obrazac kao Kampanje/Brend);
+// ``None`` -> 'N/A' (nikad prazan string).
+(function(){
+  const table=document.querySelector('[data-content-perf-table]');
+  if(!table) return;
+  const campaign=appCampaignId;
+  if(!campaign) return;
+
+  function escapeHtml(value){
+    return String(value).replace(/[&<>"']/g, function(ch){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+    });
+  }
+
+  function fmt(v){
+    if(v===null || v===undefined) return 'N/A';
+    return String(v);
+  }
+
+  async function loadContentPerformance(){
+    const api=window.pywebview && window.pywebview.api;
+    if(!api || typeof api.get_campaign_content_performance !== 'function'){
+      return; // offline/debug preview: keep the SSR fixture
+    }
+    let result;
+    try{
+      result=await api.get_campaign_content_performance({campaign_id: campaign});
+    }catch(err){
+      return;
+    }
+    if(!result || result.ok !== true){
+      return;
+    }
+
+    const tbody=table.querySelector('[data-content-perf-rows]') ||
+      table.querySelector('tbody');
+    if(!tbody) return;
+
+    const rows=result.rows || [];
+    if(rows.length===0){
+      tbody.innerHTML='<tr><td colspan="3" class="muted">Nema podataka.</td></tr>';
+    }else{
+      tbody.innerHTML=rows.map(function(r){
+        return '<tr>' +
+          '<td>'+escapeHtml(r.label)+'</td>' +
+          '<td>'+escapeHtml(fmt(r.ctr))+'</td>' +
+          '<td>'+escapeHtml(fmt(r.cpc))+'</td>' +
+          '</tr>';
+      }).join('');
+    }
+    const note=document.querySelector('[data-content-perf-note]');
+    if(note && rows.length>0) note.hidden=true;
+  }
+
+  const api=window.pywebview && window.pywebview.api;
+  if(api && typeof api.get_campaign_content_performance === 'function'){
+    loadContentPerformance();
+  }else{
+    window.addEventListener('pywebviewready', loadContentPerformance, {once:true});
   }
 })();

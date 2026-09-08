@@ -305,3 +305,39 @@ class CampaignPerformanceResultUiModel:
     distribution_instance_count: int
     error_code: str | None
     error_message: str | None
+
+
+@dataclass(frozen=True)
+class ContentPerformanceRowUiModel:
+    """One content-piece-level performance row (ACS-F1-054).
+
+    ``label`` is the human-readable piece identifier (platform/format code,
+    plus the payload headline when one exists); ``ctr``/``cpc`` are the
+    derived metrics mapped straight from the G6
+    ``build_content_performance_summary`` result (CTR + CPC is the chosen MVP
+    subset — the full six-metric set already lives on the campaign-level
+    G7a card). A piece with no performance data yields ``None`` metrics.
+    """
+
+    content_piece_id: str
+    label: str
+    ctr: float | None
+    cpc: float | None
+
+
+@dataclass(frozen=True)
+class ContentPerformanceResultUiModel:
+    """Result of a ``get_campaign_content_performance`` call (ACS-F1-054).
+
+    One row per ``ContentPiece`` of the campaign, ordered by piece id (the
+    repository's ``list_campaign_content`` ordering). A campaign with zero
+    content pieces returns ``ok=True`` with an empty ``rows`` tuple (not an
+    error). ``derived`` values per row come ONLY from the G6
+    ``build_content_performance_summary`` builder — no hand-written formula
+    in the bridge. Never carries secret/path/exception text.
+    """
+
+    ok: bool
+    rows: tuple[ContentPerformanceRowUiModel, ...]
+    error_code: str | None
+    error_message: str | None

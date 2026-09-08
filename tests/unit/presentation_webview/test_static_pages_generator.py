@@ -465,3 +465,27 @@ def test_write_all_pages_pocetna_carries_hydration_markers(tmp_path: Path) -> No
     # The SSR fixture content is still present (offline fallback).
     assert "Nedavne kampanje" in pocetna_html
     assert "Proljetna kolekcija" in pocetna_html
+
+
+def test_write_all_pages_pregled_izvoz_carries_content_performance_markers(
+    tmp_path: Path,
+) -> None:
+    """ACS-F1-054: the build-time Pregled i izvoz static HTML carries the
+    per-content-piece performance table markers (``data-content-perf-*``)
+    so app.js can hydrate real data at runtime, while still rendering the
+    SSR placeholder rows (offline fallback)."""
+    pages = write_all_pages(tmp_path)
+    pregled_html = pages["pregled_izvoz"].read_text(encoding="utf-8")
+
+    for marker in (
+        "data-content-perf-card",
+        "data-content-perf-table",
+        "data-content-perf-rows",
+        "data-content-perf-note",
+    ):
+        assert marker in pregled_html, f"missing content-perf marker: {marker!r}"
+
+    # The SSR fixture content is still present (offline fallback).
+    assert "Učinak po objavi" in pregled_html
+    assert "INSTAGRAM/FEED_POST" in pregled_html
+    assert "FACEBOOK/FEED_POST" in pregled_html

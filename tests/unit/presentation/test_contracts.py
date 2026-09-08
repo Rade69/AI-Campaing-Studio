@@ -40,6 +40,9 @@ _EXPECTED_METHODS = {
     "get_dashboard_overview",
     # Added in ACS-F1-053: Campaign Performance summary (Pregled i izvoz).
     "get_campaign_performance",
+    # Added in ACS-F1-054: per-content-piece performance table
+    # (Pregled i izvoz — "Učinak po objavi").
+    "get_campaign_content_performance",
 }
 
 
@@ -167,6 +170,26 @@ def test_bridge_implements_get_campaign_performance() -> None:
 
     method = getattr(CampaignBridgeApi, "get_campaign_performance", None)
     assert method is not None, "bridge must expose get_campaign_performance"
+
+    import inspect
+
+    sig = inspect.signature(method)
+    assert list(sig.parameters) == ["self", "raw_payload"]
+
+
+def test_bridge_implements_get_campaign_content_performance() -> None:
+    """ACS-F1-054: ``get_campaign_content_performance`` is the fifth READ
+    js_api method (Pregled i izvoz — per-content-piece performance). Takes
+    a REQUIRED one-dict payload carrying ``campaign_id``.
+    """
+    from ai_campaign_studio.presentation_webview.bridge import CampaignBridgeApi
+
+    method = getattr(
+        CampaignBridgeApi, "get_campaign_content_performance", None
+    )
+    assert method is not None, (
+        "bridge must expose get_campaign_content_performance"
+    )
 
     import inspect
 

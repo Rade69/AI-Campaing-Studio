@@ -9,6 +9,8 @@ from ai_campaign_studio.presentation.ui_models import (
     CampaignPerformanceResultUiModel,
     CampaignPlanResultUiModel,
     CampaignSummaryUiModel,
+    ContentPerformanceResultUiModel,
+    ContentPerformanceRowUiModel,
     DashboardOverviewResultUiModel,
     DashboardRecentCampaignUiModel,
     DerivedMetricSetUiModel,
@@ -626,3 +628,117 @@ def test_campaign_performance_result_carries_no_secret_field() -> None:
     assert "secret" not in result_fields
     assert "error_code" in result_fields
     assert "error_message" in result_fields
+
+
+def test_content_performance_row_ui_model_shape() -> None:
+    """ACS-F1-054: one row carries content_piece_id + label + the chosen
+    derived subset (CTR/CPC)."""
+    row = ContentPerformanceRowUiModel(
+        content_piece_id="piece-1",
+        label="INSTAGRAM/FEED_POST — Headline",
+        ctr=0.034,
+        cpc=5.8824,
+    )
+    blob = asdict(row)
+    assert blob == {
+        "content_piece_id": "piece-1",
+        "label": "INSTAGRAM/FEED_POST — Headline",
+        "ctr": 0.034,
+        "cpc": 5.8824,
+    }
+
+
+def test_content_performance_result_success_shape() -> None:
+    """ACS-F1-054: rows is a tuple of row models; success carries no error."""
+    result = ContentPerformanceResultUiModel(
+        ok=True,
+        rows=(
+            ContentPerformanceRowUiModel(
+                content_piece_id="piece-1",
+                label="INSTAGRAM/FEED_POST — A",
+                ctr=0.034,
+                cpc=5.8824,
+            ),
+            ContentPerformanceRowUiModel(
+                content_piece_id="piece-2",
+                label="FACEBOOK/FEED_POST",
+                ctr=None,
+                cpc=None,
+            ),
+        ),
+        error_code=None,
+        error_message=None,
+    )
+    blob = asdict(result)
+    assert blob == {
+        "ok": True,
+        "rows": (
+            {
+                "content_piece_id": "piece-1",
+                "label": "INSTAGRAM/FEED_POST — A",
+                "ctr": 0.034,
+                "cpc": 5.8824,
+            },
+            {
+                "content_piece_id": "piece-2",
+                "label": "FACEBOOK/FEED_POST",
+                "ctr": None,
+                "cpc": None,
+            },
+        ),
+        "error_code": None,
+        "error_message": None,
+    }
+    json.dumps(blob)  # JSON-serializable
+
+
+def test_content_performance_result_empty_success_shape() -> None:
+    """ACS-F1-054: zero content pieces is a valid success (empty rows), not
+    an error."""
+    result = ContentPerformanceResultUiModel(
+        ok=True,
+        rows=(),
+        error_code=None,
+        error_message=None,
+    )
+    blob = asdict(result)
+    assert blob == {
+        "ok": True,
+        "rows": (),
+        "error_code": None,
+        "error_message": None,
+    }
+
+
+def test_content_performance_result_error_shape() -> None:
+    """ACS-F1-054: error case carries empty rows + populated error fields."""
+    result = ContentPerformanceResultUiModel(
+        ok=False,
+        rows=(),
+        error_code="VALIDATION_ERROR",
+        error_message="Kampanja ne postoji.",
+    )
+    blob = asdict(result)
+    assert blob == {
+        "ok": False,
+        "rows": (),
+        "error_code": "VALIDATION_ERROR",
+        "error_message": "Kampanja ne postoji.",
+    }
+
+
+def test_content_performance_result_carries_no_secret_field() -> None:
+    """Structural guarantee: no api_key/secret field on the content
+    performance DTOs."""
+    api_key = "a" + "pi_key"
+    result_fields = {
+        f.name for f in ContentPerformanceResultUiModel.__dataclass_fields__.values()
+    }
+    row_fields = {
+        f.name for f in ContentPerformanceRowUiModel.__dataclass_fields__.values()
+    }
+    assert api_key not in result_fields
+    assert api_key not in row_fields
+    assert "secret" not in result_fields
+    assert "secret" not in row_fields
+    assert row_fields == {"content_piece_id", "label", "ctr", "cpc"}

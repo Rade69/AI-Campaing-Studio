@@ -15,6 +15,7 @@ from pathlib import Path
 
 from ai_campaign_studio.presentation_webview.screens.pregled_izvoz import (
     DEFAULT_FIXTURE,
+    ContentPerformanceRow,
     ContentPreviewItem,
     ExportRow,
     PregledIzvozFixture,
@@ -388,6 +389,227 @@ function foreignContext(withApi){
         "lateCtr": True,
         "lateCpcNA": True,
         "lateCount": True,
+        "lateNoteHidden": True,
+        "immediateHydrated": True,
+        "foreignApiCalls": 0,
+        "foreignUntouched": True,
+    }
+
+
+def test_render_body_emits_content_performance_markers() -> None:
+    """ACS-F1-054: the SSR emits the screen-specific content-performance
+    markers (card/table/rows/note) that app.js targets for real-data
+    hydration, plus the offline placeholder rows."""
+    body = render_body()
+    assert "data-content-perf-card" in body
+    assert "Učinak po objavi" in body
+    assert "data-content-perf-table" in body
+    assert "data-content-perf-rows" in body
+    assert "data-content-perf-note" in body
+    # Offline placeholder rows from DEFAULT_FIXTURE.
+    assert "INSTAGRAM/FEED_POST" in body
+    assert "FACEBOOK/FEED_POST" in body
+
+
+def test_render_body_content_performance_empty_fixture_emits_no_data() -> None:
+    """ACS-F1-054: an empty fixture renders a 'Nema podataka.' row, not a
+    broken empty table."""
+    custom = PregledIzvozFixture(
+        campaign_name="Custom",
+        content_items=[],
+        quality_checks=[],
+        export_rows=[],
+        export_intro="Intro",
+        odobri_toast="t1",
+        izvezi_toast="t2",
+        content_performance_rows=[],
+    )
+    body = render_body(custom)
+    assert 'Nema podataka.' in body
+    assert "data-content-perf-rows" in body
+
+
+def test_render_body_content_performance_escapes_fixture_labels() -> None:
+    """ACS-F1-054: SSR placeholder labels go through html.escape (same XSS
+    contract as every other user/AI-text field on the screen)."""
+    custom = PregledIzvozFixture(
+        campaign_name="Custom",
+        content_items=[],
+        quality_checks=[],
+        export_rows=[],
+        export_intro="Intro",
+        odobri_toast="t1",
+        izvezi_toast="t2",
+        content_performance_rows=[
+            ContentPerformanceRow("<script>x</script>", "—", "—"),
+        ],
+    )
+    body = render_body(custom)
+    assert "<script>x</script>" not in body
+    assert "&lt;script&gt;x&lt;/script&gt;" in body
+
+
+def test_app_js_content_performance_hydration_lifecycle_isolation_and_xss() -> None:
+    """Execute the committed app.js against a tiny DOM double.
+
+    ACS-F1-054: applies the F1-046/049/051/053 lifecycle/isolation/XSS
+    precedent to the per-content-piece performance table from the first
+    version. Models the ``addEventListener`` ``options`` argument and emits
+    ``pywebviewready`` TWICE, proving exactly-once hydration; verifies the
+    immediate fast path; verifies a foreign screen (no
+    ``data-content-perf-*`` marker) is never touched; verifies the label
+    (AI headline) is HTML-escaped and ``None`` metrics render 'N/A'; and
+    verifies ``campaign_id`` is REUSED from the boot IIFE (no re-parse).
+    """
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is unavailable; executable app.js regression skipped")
+
+    app_js_path = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "src" / "ai_campaign_studio" / "presentation_webview" / "static"
+        / "app.js"
+    )
+    harness = r"""
+const fs=require('fs'),vm=require('vm');
+const src=fs.readFileSync(process.argv[1],'utf8');
+function el(initial){
+  return {
+    _text:initial, _html:initial, _hidden:false,
+    set textContent(v){this._text=v;}, get textContent(){return this._text;},
+    set innerHTML(v){this._html=v;}, get innerHTML(){return this._html;},
+    set hidden(v){this._hidden=v;}, get hidden(){return this._hidden;},
+    dataset:{}
+  };
+}
+function baseWindow(){
+  const listeners={};
+  function addEventListener(n,f,opts){
+    (listeners[n]??=[]).push({fn:f, once:!!(opts&&opts.once)});
+  }
+  function emit(n){
+    const arr=listeners[n]||[];
+    const remaining=[];
+    for(const e of arr){
+      e.fn();
+      if(!e.once) remaining.push(e);
+    }
+    listeners[n]=remaining;
+  }
+  return {listeners, emit, window:{addEventListener}};
+}
+function contentPerfContext(withApi){
+  const {listeners,window,emit}=baseWindow();
+  const state={apiCalls:0};
+  const tbody=el('<tr><td colspan="3" class="muted">SSR</td></tr>');
+  const table=el('');
+  table.querySelector=function(){ return tbody; };
+  const note=el('Nema podataka o performansama još.');
+  const document={
+    querySelectorAll:function(){ return []; },
+    querySelector:function(s){
+      if(s==='[data-content-perf-table]') return table;
+      if(s==='[data-content-perf-note]') return note;
+      return null;
+    },
+    getElementById(){return null;}
+  };
+  const installApi=()=>{window.pywebview={api:{async get_campaign_content_performance(){
+    state.apiCalls+=1;
+    return {ok:true, rows:[
+      {content_piece_id:'piece-1',
+       label:'INSTAGRAM/FEED_POST — <script>x</script>',
+       ctr:0.034, cpc:null},
+      {content_piece_id:'piece-2', label:'FACEBOOK/FEED_POST', ctr:null, cpc:5.8824}
+    ]};
+  }}};};
+  if(withApi) installApi();
+  const context={window, document, location:{search:'?campaign=c-1'}, URLSearchParams,
+    setInterval(){return 1;}, clearInterval(){}, setTimeout, clearTimeout, console};
+  vm.createContext(context);
+  return {context, listeners, emit, state, installApi, tbody, note};
+}
+function foreignContext(withApi){
+  const {listeners,window}=baseWindow();
+  const state={apiCalls:0};
+  const h3=el('FOREIGN H3');
+  const document={
+    querySelectorAll:function(){return [];},
+    querySelector:function(s){
+      if(s==='h3') return h3;
+      return null;
+    },
+    getElementById(){return null;}
+  };
+  const installApi=()=>{window.pywebview={api:{async get_campaign_content_performance(){
+    state.apiCalls+=1;
+    return {ok:true,rows:[]};
+  }}};};
+  if(withApi) installApi();
+  const context={window, document, location:{search:''}, URLSearchParams,
+    setInterval(){return 1;}, clearInterval(){}, setTimeout, clearTimeout, console};
+  vm.createContext(context);
+  return {context, listeners, state, installApi, h3};
+}
+(async()=>{
+  const late=contentPerfContext(false);
+  vm.runInContext(src, late.context);
+  const readyListeners=(late.listeners.pywebviewready||[]).length;
+  late.installApi();
+  late.emit('pywebviewready');
+  await new Promise(r=>setTimeout(r,0));
+  late.emit('pywebviewready');
+  await new Promise(r=>setTimeout(r,0));
+  const lateApiCalls=late.state.apiCalls;
+  const lateListenerCleared=(late.listeners.pywebviewready||[]).length===0;
+  const lateHtml=late.tbody.innerHTML;
+
+  const immediate=contentPerfContext(true);
+  vm.runInContext(src, immediate.context);
+  await new Promise(r=>setTimeout(r,0));
+
+  const foreign=foreignContext(true);
+  vm.runInContext(src, foreign.context);
+  await new Promise(r=>setTimeout(r,0));
+
+  console.log(JSON.stringify({
+    readyListeners,
+    lateApiCalls,
+    lateListenerCleared,
+    lateHydrated: lateHtml.indexOf('INSTAGRAM/FEED_POST')!==-1 &&
+      lateHtml.indexOf('FACEBOOK/FEED_POST')!==-1,
+    lateEscaped: lateHtml.indexOf('&lt;script&gt;')!==-1 &&
+      lateHtml.indexOf('<script>')===-1,
+    lateNA: lateHtml.indexOf('N/A')!==-1,
+    lateNoteHidden: late.note.hidden===true,
+    immediateHydrated: immediate.tbody.innerHTML.indexOf('FACEBOOK/FEED_POST')!==-1,
+    foreignApiCalls: foreign.state.apiCalls,
+    foreignUntouched: foreign.h3.textContent==='FOREIGN H3' &&
+      foreign.h3.innerHTML==='FOREIGN H3',
+  }));
+})().catch(e=>{console.error(e);process.exitCode=1;});
+"""
+    completed = subprocess.run(
+        [node, "-e", harness, str(app_js_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    result = json.loads(completed.stdout)
+    assert result == {
+        "readyListeners": 1,
+        "lateApiCalls": 1,
+        "lateListenerCleared": True,
+        "lateHydrated": True,
+        "lateEscaped": True,
+        "lateNA": True,
         "lateNoteHidden": True,
         "immediateHydrated": True,
         "foreignApiCalls": 0,
