@@ -4,6 +4,56 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-09 (coordinator: claude) — **ACS-S2-001
+MERGED (PR #23, squash `87b5385`) -- S2-G1 PASS. Slice 2 (Website
+Ingestion) formalno ima svoje prve domain/ports contracte.**
+[Task contract](../agent_reports/ACS-S2-001-task-contract.md) ·
+[Implementer evidence (Pi)](../agent_reports/2026-09-09-ACS-S2-001-pi.md).
+
+`domain/ingestion/` (nov paket: `SourceSnapshot`, `SourceChunk`,
+`IngestionRun`+`IngestionRunStats`, `IngestionCheckpoint`, sve
+`frozen=True`; `PageType`/`IngestionRunStatus`/`IngestionPhase` enum-i).
+`FactStatus.PROPOSED` + `FactCandidate` u `domain/facts/` (TYPE-LEVEL
+provenance -- `snapshot_id: SourceSnapshotId` obavezno, `chunk_id:
+SourceChunkId | None` opciono -- G-WI-EVIDENCE na tip-nivou; postojeći
+`ApprovedFact`/`SourceReference` NETAKNUTI, namjerna odluka da se
+`SourceReference` NE tighten-uje na NewType jer bi to zahtijevalo
+izmjenu `infrastructure/database/repositories/sqlite_fact_repository.py`
+koji je u `forbidden_paths` -- nezavisno verifikovano tačno).
+`ports/web_ingestion.py` (nov, 6 portova, SVI sinhroni -- §4/§5 odluka
+iz kontrakta i kanonskog plana ispoštovana bukvalno). `IngestionRepositoryPort`
+u `ports/repositories.py` (aditivno, 13 metoda). 5 novih ID tipova.
+
+**Independent Claude review (§29, MEDIUM, bez Codexa):** kod pročitan
+u cjelini; diff za `domain/facts/*`/`ports/repositories.py`/
+`domain/common/ids.py` potvrđen ČISTO aditivan (git diff read,
+nijedna postojeća linija promijenjena osim import proširenja);
+mutation test na §5 sync odluku (privremeno `def fetch` → `async def
+fetch` u `HttpFetcherPort` preko Edit alata -- `test_all_port_signatures_are_synchronous`
+odmah pao kako se očekivalo, restauracija preko Edit alata potvrđena
+čistom `git diff --stat`) dokazuje da test stvarno hvata kršenje §5
+odluke, ne prolazi slučajno; `sqlite_fact_repository.py:85-86`
+(implementerova `forbidden_paths` tvrdnja) nezavisno grep-om potvrđena
+tačna; mypy/ruff čisto; `tests/architecture/test_import_boundaries.py`
+zelen bez izmjena. Scope potvrđen: tačno 14 fajlova (+ evidence),
+nula u `forbidden_paths`. Nezavisan pun test suite run: **1238
+passed** + isti poznati FLAKY fail
+(`test_gate_report_against_current_repo_passes`) -- SADA 3. put
+zaredom kroz tri odvojena taska (F1-057/F1-056/S2-001), svaki put
+izolovano potvrđen kao nepovezan; [ACS-MAINT-001](../agent_reports/ACS-MAINT-001-task-contract.md)
+(dijagnostika za ovaj flake) je već preuzet paralelno (worktree
+postoji) -- vidi taj task kad se javi evidence. PR #23 CI zeleno,
+post-merge CI na `main` (run `34321062764`) zeleno. GitNexus osvježen
+(`npx gitnexus analyze`, 15.025 nodes/21.989 edges/170 flows).
+
+**Sljedeći korak Slice 2**: S2-G2 (Ingestion Persistence -- migracija
+`0009_ingestion_foundation.sql`, HIGH rizik) sada može biti
+kontraktovan, koristi portove/entitete iz ovog taska kao fiksni ulaz.
+S2-G3/G4/G5/G9 ostaju blokirani dok S2-G2 ne merguje (kanonski plan §3
+DAG).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-09 (coordinator: claude) — **ACS-S2-001
 OTVOREN -- prvi Slice 2 task (S2-G1, Brand Ingestion Domain + Ports).**
 [Task contract](../agent_reports/ACS-S2-001-task-contract.md). Sync/async
 odluka FIKSIRANA u kontraktu (ostati sinhron -- vidi kontrakt §4 i
