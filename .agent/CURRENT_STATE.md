@@ -3,7 +3,35 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-09 (coordinator: claude) — **ACS-F1-056
+**Zadnje ažurirano:** 2026-09-09 (coordinator: claude) — **ACS-S2-001
+OTVOREN -- prvi Slice 2 task (S2-G1, Brand Ingestion Domain + Ports).**
+[Task contract](../agent_reports/ACS-S2-001-task-contract.md). Sync/async
+odluka FIKSIRANA u kontraktu (ostati sinhron -- vidi kontrakt §4 i
+`.agent/TASK_ROUTING.md` novu sekciju "Website Ingestion task").
+`allowed_paths`: `domain/ingestion/` (nov), `domain/facts/` (aditivno --
+`FactStatus.PROPOSED` + `FactCandidate`), `domain/common/ids.py`
+(aditivno), `ports/web_ingestion.py` (nov), `ports/repositories.py`
+(aditivno -- `IngestionRepositoryPort`). Nula infrastructure/application/
+presentation_webview/migracija koda.
+
+**Paralelno rad PROVJEREN i ODOBREN**: [ACS-MAINT-001](../agent_reports/ACS-MAINT-001-task-contract.md)
+(LOW rizik, dijagnostika ponavljajućeg flaky gate-report testa --
+`_run_python()` trenutno hvata samo `stderr` tail za `pytest` check,
+ne i stdout gdje pytest stvarno ispisuje koji test je pao; flake se
+pojavio 2x zaredom u ACS-F1-057/ACS-F1-056 reviewima, oba puta
+izolovano potvrđen kao nepovezan, ali bez ove izmjene svaka buduća
+pojava zahtijeva ručnu rekonstrukciju od koordinatora) može ići
+ISTOVREMENO sa ACS-S2-001 -- `allowed_paths` potpuno disjunktan
+(`scripts/`/`tests/unit/scripts/` naspram `domain/`/`ports/`), nema
+GitNexus shared-caller (gate-report skripta ne uvozi domain/ports
+module). Unutar Slice 2 samog: DAG (kanonski plan §3) je strogo
+sekvencijalan do S2-G2 -- nijedan drugi S2-G* gate ne može startovati
+prije nego ACS-S2-001 fiksira portove/entitete koje svi ostali gate-ovi
+koriste.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-09 (coordinator: claude) — **ACS-F1-056
 MERGED (PR #22, squash `ef05b59`) -- P1.5-G8 PASS. Slice 1.5
 (Performance/Analytics) ZVANIČNO ZATVOREN. Slice 2 (Website Ingestion)
 može krenuti.** [Task contract](../agent_reports/ACS-F1-056-task-contract.md)

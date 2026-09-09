@@ -157,6 +157,40 @@ Tek poslije uspješnog Slice 1.5 i dokazane potrebe kroz realnu upotrebu CSV/man
 
 Svaki novi adapter ide iza `PerformanceSourcePort`; Campaign Engine ne smije znati concrete adapter.
 
+## Website Ingestion task
+
+Ova sekcija je obavezna za svaki S2-G* task (Slice 2 — Website/Brand
+Ingestion).
+
+Obavezno čitati:
+
+1. `docs/AI_Campaign_Studio_Slice_2_Canonical_Plan.md` u cjelini
+   (kostur DAG-a §3, zaključane granice §4, sync/async odluka §5 —
+   fiksirana u ACS-S2-001, ne ponovo odlučivati, SSRF §6, durability §7,
+   page classification §8, reuse mapa §9, konkretan S2-G* gate iz §10,
+   hard gate-ovi §11);
+2. tri arhivska izvorna dokumenta SAMO ako kanonski plan eksplicitno
+   uputi na detalj koji ne sažima u potpunosti (`AI_Campaign_Studio_Slice_2_Ingestion_Plan.md`,
+   `ACS_Website_Ingestion_WebshopAudit_Donor_Analysis.md`,
+   `docs/deep-research-report.md`);
+3. `domain/facts/entities.py`/`enums.py`/`policies.py` (postojeći
+   `ApprovedFact`/`FactStatus` seam koji Slice 2 ispunjava);
+4. `.agent/GITNEXUS_PROTOCOL.md`.
+
+Nepregovorljiv arhitektonski princip (kanonski plan §2): website
+sadržaj NIKAD direktno ne ulazi u Campaign Engine.
+`Website Ingestion → FactCandidate → Human Review → ApprovedFact`.
+Tool-less LLM extractor (ako postoji) nema browser/HTTP/shell/DB-write/
+ApprovedFact-mutation pristup — odbrana od indirect prompt injection.
+
+Sync/async runtime odluka je FIKSIRANA u ACS-S2-001 (ostati sinhron,
+`requests` + custom `HTTPAdapter` za SSRF, ne aiohttp/asyncio) — svaki
+sljedeći S2-G* task nasljeđuje tu odluku, ne preispituje je bez
+eskalacije koordinatoru.
+
+DAG (kanonski plan §3) je strogo sekvencijalan do S2-G2; S2-G3/G4/G5/G9
+mogu ići paralelno TEK nakon što S2-G2 (migracija 0009) merguje.
+
 ## Napomena o paralelizaciji
 
 Prije nego što se dva taska pokrenu paralelno, provjeriti (workflow §10):
