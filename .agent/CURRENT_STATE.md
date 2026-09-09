@@ -4,10 +4,40 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-09 (coordinator: claude) — **ACS-S2-002
-OTVOREN -- treći Slice 2 task (S2-G2, Ingestion Persistence).**
-[Task contract](../agent_reports/ACS-S2-002-task-contract.md).
-**HIGH rizik (migracija, non-negotiable) -- PUN review ciklus: Claude →
-Codex → Human Owner, NE §29.**
+Claude review = PASS, čeka Codex adversarial review (PR #25 otvoren,
+CI zeleno).** [Task contract](../agent_reports/ACS-S2-002-task-contract.md)
+· [Implementer evidence (Pi, uklj. fix)](../agent_reports/2026-09-09-ACS-S2-002-pi.md).
+**HIGH rizik (migracija) -- PUN ciklus, NE §29 -- ne mergovati bez
+Codex + eksplicitnog Human Owner odobrenja.**
+
+**Prvi Claude review krug NAŠAO stvaran blokirajući nalaz** (nezavisno
+reprodukovan skriptom prije javljanja implementeru):
+`list_source_snapshots_by_run` je originalno spajao preko
+`crawl_targets.normalized_url == source_snapshots.url` (nema run-scoping
+FK) -- dva run-a koja crawl-uju ISTI URL u različito vrijeme kontaminiraju
+jedan drugom listu snapshot-a, direktno potkopava G-WI-RECRAWL hard gate.
+Pi je popravio (`crawl_targets.snapshot_id` FK umjesto URL-stringa,
+`update_crawl_target_state` dobija COALESCE semantiku za taj kwarg) --
+koordinator nezavisno reprodukovao originalni bug PRIJE fixa, potvrdio
+popravku PRIJE/POSLIJE, i mutation-testirao novi regresioni test (isti
+URL-join vraćen privremeno preko Edit alata -- test odmah pao sa
+identičnim simptomom, restauracija čista). `claim_next_crawl_target`
+atomicity i dalje čvrsto stoji (3x nezavisno ponovljen concurrency test
+poslije fixa). Scope ostao čist (12 fajlova, allowed_paths).
+
+**Usput riješena zagonetka**: "poznati flaky gate-report pytest test"
+koji se ponavljao kroz F1-057/F1-056/S2-001/MAINT-001 review-e NIJE
+resource-contention flake kako je pretpostavljeno -- ACS-MAINT-001-ov
+`stdout_tail=` (prvi put stvarno koristan) otkrio je STVARAN uzrok:
+`test_full_vertical_slice_against_real_deepseek` (živi DeepSeek E2E
+test, ACS-F1-047) povremeno vraća pogrešan broj stavki od LLM-a --
+ČISTO zato što koordinatorova shell sesija ima pravi
+`AI_CAMPAIGN_STUDIO_DEEPSEEK_API_KEY` postavljen dok implementeri
+svjesno unset-uju taj env var prije verifikacije. Nepovezano sa BILO
+kojim pregledanim taskom ovog perioda. **Praksa ubuduće**: koordinator
+unset-uje `AI_CAMPAIGN_STUDIO_DEEPSEEK_API_KEY` prije punog suite
+verification run-a da izbjegne live-LLM šum (potvrđeno čist rezultat,
+1262 passed, kad je unset-ovan za ovaj task).
 
 Migracija `0009_ingestion_foundation.sql` (source_snapshots,
 source_chunks, ingestion_runs, ingestion_checkpoints, fact_candidates,
