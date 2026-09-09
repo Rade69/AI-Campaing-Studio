@@ -3,7 +3,43 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-09 (coordinator: claude) — **ACS-S2-001
+**Zadnje ažurirano:** 2026-09-09 (coordinator: claude) — **ACS-MAINT-001
+MERGED (PR #24, squash `452ab0b`) -- gate-report `_run_python()` sada
+perzistira pytest stdout tail (zadnjih 15 linija) u `notes[].detail`,
+ne samo stderr.** [Task contract](../agent_reports/ACS-MAINT-001-task-contract.md)
+· [Evidence](../agent_reports/2026-09-09-ACS-MAINT-001-evidence.md).
+
+Diagnostic-only, ne pokušava popraviti nepoznat root cause. Secret-scan
+poseban slučaj netaknut (regression-guarded testom); ruff/mypy grane i
+dalje koriste stari `exit=N stderr_tail=...` format (namjerno, van
+scope-a). **Independent Claude review (§29, LOW):** kod pročitan u
+cjelini; mutation test (privremeno onemogućen `is_pytest` grana preko
+Edit alata -- `test_run_python_pytest_includes_stdout_tail` odmah pao,
+restauracija čista) potvrđuje da testovi stvarno hvataju regresiju.
+Scope čist (2 fajla + evidence, `git diff` protiv merge-base-a).
+Full suite: 1228 passed (ovaj branch je granat prije ACS-S2-001-a, pa
+nema S2-G1 testove -- broj je u redu). Implementerova napomena o
+"neočekivanom ruff subprocess flake-u" u e2e kontekstu **nije nezavisno
+reprodukovana** -- koordinator je 3x ponovio e2e test i dobio isti,
+već poznati pytest flake (1x fail/2x pass), ne ruff flake. Ne blokira
+merge (dijagnostička izmjena stoji na svojim testovima nezavisno od te
+napomene), ali ostaje otvoreno zapažanje -- ako se ruff-specifičan
+flake ponovo pojavi, `notes[].detail` za ruff NEĆE imati stdout (van
+scope-a ovog taska), pa bi to bio kandidat za sljedeći MAINT task.
+PR #24 CI zeleno, post-merge CI na `main` (run `34322672887`) zeleno.
+GitNexus osvježen nakon jednog tranzijentnog segfault-a na prvom
+pokušaju (poznat obrazac, retry rješava) -- 15.060 nodes/22.095
+edges/170 flows.
+
+**Poznati pytest gate-report flake se sada pojavio 4x ukupno** (F1-057,
+F1-056, S2-001, i ponovo tokom ovog MAINT-001 reprodukcionog pokušaja)
+kroz četiri odvojena taska -- svaki put izolovano PASS bez izmjena.
+Sljedeća pojava bi trebala biti dijagnostikovana odmah preko
+`stdout_tail=` u `artifacts/phase0_foundation_gate.json`.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-09 (coordinator: claude) — **ACS-S2-001
 MERGED (PR #23, squash `87b5385`) -- S2-G1 PASS. Slice 2 (Website
 Ingestion) formalno ima svoje prve domain/ports contracte.**
 [Task contract](../agent_reports/ACS-S2-001-task-contract.md) ·
