@@ -295,10 +295,21 @@ class SqliteIngestionRepository:
         DIFFERENT row (its ``state='PENDING'`` filter no longer matches the
         already-claimed row). ``attempts`` is deliberately NOT incremented
         here (retry accounting is an S2-G6 orchestration decision).
+
+        BF-1 (Codex): ``lease_until`` is computed INSIDE the transaction,
+        AFTER ``BEGIN IMMEDIATE`` acquires the write lock — computing it
+        before would let a long lock wait expire the lease before the claim
+        even commits, letting ``recover_expired_leases`` immediately re-queue
+        a target that is still being worked.
         """
-        lease_until = utc_now() + timedelta(seconds=lease_duration_seconds)
+        if lease_duration_seconds <= 0:
+            raise ValueError(
+                f"lease_duration_seconds must be positive, got "
+                f"{lease_duration_seconds}"
+            )
         self._connection.execute("BEGIN IMMEDIATE")
         try:
+            lease_until = utc_now() + timedelta(seconds=lease_duration_seconds)
             row = self._connection.execute(
                 "SELECT * FROM crawl_targets WHERE run_id = ? AND state = ?"
                 " ORDER BY priority DESC, id ASC LIMIT 1",

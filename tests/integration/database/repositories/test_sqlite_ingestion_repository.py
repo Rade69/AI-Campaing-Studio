@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+import pytest
 
 from ai_campaign_studio.domain.common.ids import (
     BrandId,
@@ -466,4 +469,73 @@ def test_update_crawl_target_state_keeps_snapshot_when_not_passed(
     overwritten = repo.get_crawl_target(CrawlTargetId("ct-1"))
     assert overwritten is not None
     assert overwritten.snapshot_id == SourceSnapshotId("snap-2")
+    connection.close()
+
+
+def test_claim_lease_until_is_future_under_contention(tmp_path: Path) -> None:
+    """BF-1 (Codex): the lease must be computed AFTER the write lock is
+    acquired, not before — a long ``BEGIN IMMEDIATE`` wait must not expire
+    the lease before the claim commits."""
+    db_path = tmp_path / "test.db"
+    connection = create_connection(db_path)
+    run_migrations(connection, _MIGRATIONS_DIR)
+    _seed_brand(connection)
+    repo = SqliteIngestionRepository(connection)
+    repo.save_ingestion_run(_run())
+    repo.register_crawl_targets([_crawl_target("ct-1")])
+    connection.close()
+
+    release = threading.Event()
+    holder_acquired = threading.Event()
+
+    def _holder() -> None:
+        conn = create_connection(db_path)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            holder_acquired.set()
+            # Hold the write lock longer than the 1s lease the claimer uses.
+            release.wait(timeout=10)
+            conn.execute("COMMIT")
+        finally:
+            conn.close()
+
+    result: dict[str, CrawlTarget | None] = {}
+
+    def _claimer() -> None:
+        conn = create_connection(db_path)
+        try:
+            claimer_repo = SqliteIngestionRepository(conn)
+            result["claimed"] = claimer_repo.claim_next_crawl_target(
+                IngestionRunId("run-1"), 1
+            )
+        finally:
+            conn.close()
+
+    holder = threading.Thread(target=_holder)
+    holder.start()
+    assert holder_acquired.wait(timeout=5), "holder did not acquire the lock"
+
+    claimer = threading.Thread(target=_claimer)
+    claimer.start()
+    time.sleep(1.5)  # claimer blocks on BEGIN IMMEDIATE; lease is only 1s
+    release.set()
+    holder.join(timeout=5)
+    claimer.join(timeout=10)
+
+    claimed = result["claimed"]
+    assert claimed is not None
+    assert claimed.lease_until is not None
+    # The lease must still be in the future AFTER the lock wait.
+    assert claimed.lease_until > datetime.now(UTC)
+
+
+def test_claim_rejects_non_positive_lease_duration(tmp_path: Path) -> None:
+    connection = _setup_db(tmp_path)
+    _seed_brand(connection)
+    repo = SqliteIngestionRepository(connection)
+    repo.save_ingestion_run(_run())
+    repo.register_crawl_targets([_crawl_target("ct-1")])
+
+    with pytest.raises(ValueError):
+        repo.claim_next_crawl_target(IngestionRunId("run-1"), 0)
     connection.close()
