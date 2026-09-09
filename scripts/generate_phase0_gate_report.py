@@ -133,7 +133,26 @@ def _run_python(repo_root: Path, args: list[str]) -> tuple[bool, str]:
         return passed, f"exit={completed.returncode}"
     stderr = completed.stderr.strip()
     last_line = stderr.splitlines()[-1] if stderr else "<empty>"
-    detail = f"exit={completed.returncode} stderr_tail={last_line}"
+    # ACS-MAINT-001: the ``pytest`` invocation's failure summary (e.g.
+    # ``FAILED tests/unit/X/test_Y.py::test_Z - AssertionError``) is
+    # emitted on STDOUT, not stderr. Without persisting the stdout
+    # tail, ``notes[].detail`` is useless for diagnosing the (still
+    # intermittent) gate-report flake. The secret-scan special case
+    # above already short-circuits before reaching this block, so the
+    # ``stdout_tail`` capture is safe — pytest never prints secret-
+    # shaped values in normal test output.
+    if is_pytest:
+        stdout = completed.stdout.strip()
+        stdout_tail = (
+            "\n".join(stdout.splitlines()[-15:]) if stdout else "<empty>"
+        )
+        detail = (
+            f"exit={completed.returncode} "
+            f"stderr_tail={last_line} "
+            f"stdout_tail={stdout_tail!r}"
+        )
+    else:
+        detail = f"exit={completed.returncode} stderr_tail={last_line}"
     return passed, detail
 
 
