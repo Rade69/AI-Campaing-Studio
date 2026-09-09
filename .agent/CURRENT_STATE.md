@@ -4,11 +4,49 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-09 (coordinator: claude) — **ACS-S2-002
-Claude review = PASS, čeka Codex adversarial review (PR #25 otvoren,
-CI zeleno).** [Task contract](../agent_reports/ACS-S2-002-task-contract.md)
-· [Implementer evidence (Pi, uklj. fix)](../agent_reports/2026-09-09-ACS-S2-002-pi.md).
+Codex adversarial review = REJECT (1 stvaran HIGH bug, 1 kontrakt
+propust), vraćeno Pi-ju na drugu popravku.**
+[Task contract](../agent_reports/ACS-S2-002-task-contract.md) ·
+[Codex review](../agent_reports/2026-09-09-ACS-S2-002-review-codex.md).
 **HIGH rizik (migracija) -- PUN ciklus, NE §29 -- ne mergovati bez
-Codex + eksplicitnog Human Owner odobrenja.**
+Codex PASS + eksplicitnog Human Owner odobrenja.**
+
+**BF-1 (HIGH, nezavisno potvrđeno čitanjem koda)**: `claim_next_crawl_target`
+računa `lease_until = utc_now() + timedelta(...)` PRIJE `BEGIN IMMEDIATE`
+(linija 299 prije 300) -- ako drugi writer drži write lock i ovaj poziv
+čeka na `busy_timeout` (5000ms), stvaran claim se desi KASNIJE nego što
+je lease deadline izračunat, pa lease može biti već istekao (ili skoro
+istekao) čim se commituje. Codex je ovo live reprodukovao (duration=1s,
+konkurentan writer lock, vraćen lease -0.43s u prošlosti). Posljedica:
+`recover_expired_leases` bi mogao odmah vratiti taj red na PENDING dok
+ga prvi worker još stvarno obrađuje -- drugi worker ga claimuje
+istovremeno, tačno ono što je cijeli lease-queue mehanizam trebao
+spriječiti. Fix: pomjeriti `lease_until` računanje NA POSLIJE uspješnog
+`BEGIN IMMEDIATE` (lock je tad stvarno stečen), + dodati test koji drži
+lock duže od lease trajanja i potvrđuje da vraćeni lease NIJE već
+istekao. Codex sugeriše i validaciju pozitivnog `lease_duration_seconds`.
+
+**BF-2 (MEDIUM, koordinatorov kontrakt propust, NE implementer greška)**:
+`domain/ingestion/__init__.py` je diran (re-export `CrawlTarget`/
+`CrawlTargetState`, isti obrazac kao S2-G1-ova sopstvena izmjena istog
+fajla) ali nije bio eksplicitno u ACS-S2-002 `allowed_paths` -- kontrakt
+je nabrajao `entities.py`/`enums.py` file-level umjesto `domain/ingestion/`
+direktorijum-level (S2-G1 je imao direktorijum-level jer je paket tada
+bio nov). **Koordinator eksplicitno odobrava ovu izmjenu retroaktivno**
+(čisto aditivan re-export, nužna posljedica dodavanja novih entiteta u
+paket koji već re-eksportuje svoje simbole) -- Pi NE treba ništa mijenjati
+za BF-2, samo BF-1.
+
+Sve ostalo Codex je POTVRDIO ispravno: migracija upgrade putanja, snapshot
+FK/JOIN fix (prošli Claude nalaz), UNIQUE/ON CONFLICT, recovery granica,
+puni suite (1262 passed), ruff/mypy/secret-scan/CI. GitNexus
+`IngestionRepositoryPort` impact HIGH (22 stavke/18 direktnih importa) --
+očekivano za shared-contract port, ne alarm.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-09 (coordinator: claude) — **ACS-S2-002
+Claude review = PASS, poslato na Codex adversarial review.**
 
 **Prvi Claude review krug NAŠAO stvaran blokirajući nalaz** (nezavisno
 reprodukovan skriptom prije javljanja implementeru):
