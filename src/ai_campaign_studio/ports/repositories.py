@@ -22,18 +22,28 @@ from ai_campaign_studio.domain.common.ids import (
     CampaignId,
     CampaignPlanId,
     DistributionInstanceId,
+    FactCandidateId,
     FactId,
+    IngestionRunId,
     LayoutSpecId,
     PerformanceImportBatchId,
     PerformanceImportRowId,
     PerformanceSnapshotId,
     PostId,
     RevisionId,
+    SourceChunkId,
+    SourceSnapshotId,
     VisualSystemId,
 )
 from ai_campaign_studio.domain.content.entities import ContentPiece
 from ai_campaign_studio.domain.content.revisions import Revision
-from ai_campaign_studio.domain.facts.entities import ApprovedFact
+from ai_campaign_studio.domain.facts.entities import ApprovedFact, FactCandidate
+from ai_campaign_studio.domain.ingestion.entities import (
+    IngestionCheckpoint,
+    IngestionRun,
+    SourceChunk,
+    SourceSnapshot,
+)
 from ai_campaign_studio.domain.performance.entities import (
     DistributionInstance,
     PerformanceImportBatch,
@@ -261,6 +271,62 @@ class PerformanceRepositoryPort(Protocol):
     def list_performance_import_rows(
         self, batch_id: PerformanceImportBatchId
     ) -> tuple[PerformanceImportRow, ...]: ...
+
+
+@runtime_checkable
+class IngestionRepositoryPort(Protocol):
+    """Persistence for the Website/Brand Ingestion domain (S2-G1).
+
+    Save/get/list for the four ingestion value objects plus the Slice 2
+    ``FactCandidate``. The concrete adapter (and its migration) land in
+    S2-G2; no implementation exists yet. The list methods cover the
+    provenance/review lookups the S2-G6/G7a gates need (chunks per snapshot,
+    candidates per snapshot/brand) — no wider query surface is invented here.
+    """
+
+    def save_source_snapshot(self, snapshot: SourceSnapshot) -> None: ...
+
+    def get_source_snapshot(
+        self, snapshot_id: SourceSnapshotId
+    ) -> SourceSnapshot | None: ...
+
+    def list_source_snapshots_by_run(
+        self, run_id: IngestionRunId
+    ) -> tuple[SourceSnapshot, ...]: ...
+
+    def save_source_chunk(self, chunk: SourceChunk) -> None: ...
+
+    def get_source_chunk(
+        self, chunk_id: SourceChunkId
+    ) -> SourceChunk | None: ...
+
+    def list_source_chunks_by_snapshot(
+        self, snapshot_id: SourceSnapshotId
+    ) -> tuple[SourceChunk, ...]: ...
+
+    def save_ingestion_run(self, run: IngestionRun) -> None: ...
+
+    def get_ingestion_run(
+        self, run_id: IngestionRunId
+    ) -> IngestionRun | None: ...
+
+    def save_ingestion_checkpoint(
+        self, checkpoint: IngestionCheckpoint
+    ) -> None: ...
+
+    def get_latest_checkpoint(
+        self, run_id: IngestionRunId
+    ) -> IngestionCheckpoint | None: ...
+
+    def save_fact_candidate(self, candidate: FactCandidate) -> None: ...
+
+    def get_fact_candidate(
+        self, candidate_id: FactCandidateId
+    ) -> FactCandidate | None: ...
+
+    def list_fact_candidates_by_snapshot(
+        self, snapshot_id: SourceSnapshotId
+    ) -> tuple[FactCandidate, ...]: ...
 
 
 @runtime_checkable

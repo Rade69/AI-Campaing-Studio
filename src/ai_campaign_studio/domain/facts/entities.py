@@ -10,7 +10,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from ai_campaign_studio.domain.common.ids import FactId
+from ai_campaign_studio.domain.common.ids import (
+    FactCandidateId,
+    FactId,
+    SourceChunkId,
+    SourceSnapshotId,
+)
 from ai_campaign_studio.domain.facts.enums import FactStatus
 
 
@@ -45,3 +50,24 @@ class ApprovedFact:
     created_at: datetime
     superseded_by: FactId | None = None
     deleted_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class FactCandidate:
+    """A proposed fact extracted from a source, awaiting human review.
+
+    Slice 2 (S2-G1). Provenance is TYPE-LEVEL (G-WI-EVIDENCE, canonical plan
+    §11): snapshot_id is a SourceSnapshotId pointing at the
+    immutable source snapshot, and chunk_id an optional SourceChunkId
+    for locator-precise evidence. A candidate is NOT an ApprovedFact and
+    can never become one implicitly — only the explicit approve step (S2-G7a)
+    creates an ApprovedFact; no constructor path here performs that
+    conversion.
+    """
+
+    id: FactCandidateId
+    snapshot_id: SourceSnapshotId
+    content: str
+    created_at: datetime
+    status: FactStatus = FactStatus.PROPOSED
+    chunk_id: SourceChunkId | None = None

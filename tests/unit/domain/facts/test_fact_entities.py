@@ -5,8 +5,17 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ai_campaign_studio.domain.common.ids import FactId
-from ai_campaign_studio.domain.facts.entities import ApprovedFact, SourceReference
+from ai_campaign_studio.domain.common.ids import (
+    FactCandidateId,
+    FactId,
+    SourceChunkId,
+    SourceSnapshotId,
+)
+from ai_campaign_studio.domain.facts.entities import (
+    ApprovedFact,
+    FactCandidate,
+    SourceReference,
+)
 from ai_campaign_studio.domain.facts.enums import FactStatus
 
 _CREATED_AT = datetime(2026, 1, 1, tzinfo=UTC)
@@ -61,3 +70,40 @@ def test_approved_fact_round_trip() -> None:
     assert fact.source_ref.source_type == "fixture"
     assert fact.source_ref.uri == "fixture://dental_clinic_v1"
     assert fact.status is FactStatus.APPROVED
+
+
+def _candidate() -> FactCandidate:
+    return FactCandidate(
+        id=FactCandidateId("cand-1"),
+        snapshot_id=SourceSnapshotId("snap-1"),
+        content="We offer implantology.",
+        created_at=_CREATED_AT,
+    )
+
+
+def test_fact_candidate_defaults_to_proposed() -> None:
+    candidate = _candidate()
+    assert candidate.status is FactStatus.PROPOSED
+    assert candidate.chunk_id is None
+
+
+def test_fact_candidate_is_frozen() -> None:
+    candidate = _candidate()
+    with pytest.raises(FrozenInstanceError):
+        candidate.content = "changed"
+    with pytest.raises(FrozenInstanceError):
+        candidate.status = FactStatus.APPROVED
+
+
+def test_fact_candidate_provenance_is_typed() -> None:
+    """G-WI-EVIDENCE on the type level: provenance fields are typed IDs,
+    not bare ``str``."""
+    candidate = FactCandidate(
+        id=FactCandidateId("cand-1"),
+        snapshot_id=SourceSnapshotId("snap-1"),
+        content="text",
+        created_at=_CREATED_AT,
+        chunk_id=SourceChunkId("chunk-1"),
+    )
+    assert candidate.snapshot_id == SourceSnapshotId("snap-1")
+    assert candidate.chunk_id == SourceChunkId("chunk-1")

@@ -11,11 +11,12 @@ _ALL_PORTS = [
     "ContentRepositoryPort",
     "VisualRepositoryPort",
     "RevisionRepositoryPort",
+    "IngestionRepositoryPort",
     "TelemetryRepositoryPort",
 ]
 
 
-def test_all_seven_ports_are_defined() -> None:
+def test_all_repository_ports_are_defined() -> None:
     for name in _ALL_PORTS:
         cls = getattr(repositories, name)
         assert issubclass(cls, Protocol)

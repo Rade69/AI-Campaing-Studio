@@ -24,6 +24,12 @@ DistributionInstanceId = NewType("DistributionInstanceId", str)
 PerformanceSnapshotId = NewType("PerformanceSnapshotId", str)
 PerformanceImportBatchId = NewType("PerformanceImportBatchId", str)
 PerformanceImportRowId = NewType("PerformanceImportRowId", str)
+# Slice 2 (Website/Brand Ingestion) — S2-G1.
+SourceSnapshotId = NewType("SourceSnapshotId", str)
+SourceChunkId = NewType("SourceChunkId", str)
+IngestionRunId = NewType("IngestionRunId", str)
+IngestionCheckpointId = NewType("IngestionCheckpointId", str)
+FactCandidateId = NewType("FactCandidateId", str)
 
 
 def new_id() -> str:
