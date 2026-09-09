@@ -10,7 +10,11 @@ from __future__ import annotations
 from ai_campaign_studio.domain.common.errors import InvariantViolation
 from ai_campaign_studio.domain.common.ids import FactId, new_id
 from ai_campaign_studio.domain.common.timestamps import utc_now
-from ai_campaign_studio.domain.facts.entities import ApprovedFact, SourceReference
+from ai_campaign_studio.domain.facts.entities import (
+    ApprovedFact,
+    FactCandidate,
+    SourceReference,
+)
 from ai_campaign_studio.domain.facts.enums import FactStatus
 
 
@@ -50,3 +54,24 @@ def create_next_fact_version(
         status=FactStatus.APPROVED,
         created_at=utc_now(),
     )
+
+
+def is_candidate_proposed(candidate: FactCandidate) -> bool:
+    """Return True only if the candidate is still awaiting review.
+
+    S2-G1: the type-level invariant "a candidate never becomes an approved
+    fact implicitly" is backed by this predicate — the approve use-case
+    (S2-G7a) MUST check it before creating an ``ApprovedFact``. A candidate
+    in any non-``PROPOSED`` state (e.g. a future REJECTED status) is not
+    eligible.
+    """
+    return candidate.status is FactStatus.PROPOSED
+
+
+def assert_candidate_proposed(candidate: FactCandidate) -> None:
+    """Raise ``InvariantViolation`` if the candidate is not ``PROPOSED``."""
+    if not is_candidate_proposed(candidate):
+        raise InvariantViolation(
+            f"candidate {candidate.id} is not proposed "
+            f"(status={candidate.status.value})"
+        )

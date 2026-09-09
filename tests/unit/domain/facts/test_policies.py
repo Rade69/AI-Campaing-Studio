@@ -5,12 +5,22 @@ from datetime import UTC, datetime
 import pytest
 
 from ai_campaign_studio.domain.common.errors import InvariantViolation
-from ai_campaign_studio.domain.common.ids import FactId
-from ai_campaign_studio.domain.facts.entities import ApprovedFact, SourceReference
+from ai_campaign_studio.domain.common.ids import (
+    FactCandidateId,
+    FactId,
+    SourceSnapshotId,
+)
+from ai_campaign_studio.domain.facts.entities import (
+    ApprovedFact,
+    FactCandidate,
+    SourceReference,
+)
 from ai_campaign_studio.domain.facts.enums import FactStatus
 from ai_campaign_studio.domain.facts.policies import (
+    assert_candidate_proposed,
     assert_fact_usable,
     create_next_fact_version,
+    is_candidate_proposed,
     is_fact_usable,
 )
 
@@ -90,3 +100,25 @@ def test_create_next_fact_version_does_not_mutate_previous() -> None:
         previous.superseded_by,
     )
     assert after == before
+
+
+def _candidate(status: FactStatus = FactStatus.PROPOSED) -> FactCandidate:
+    return FactCandidate(
+        id=FactCandidateId("cand-1"),
+        snapshot_id=SourceSnapshotId("snap-1"),
+        content="proposed text",
+        created_at=_CREATED_AT,
+        status=status,
+    )
+
+
+def test_is_candidate_proposed() -> None:
+    assert is_candidate_proposed(_candidate()) is True
+    # Any non-PROPOSED status (a future REJECTED, for example) is not eligible.
+    assert is_candidate_proposed(_candidate(status=FactStatus.APPROVED)) is False
+
+
+def test_assert_candidate_proposed_raises_for_non_proposed() -> None:
+    assert_candidate_proposed(_candidate())  # no raise
+    with pytest.raises(InvariantViolation):
+        assert_candidate_proposed(_candidate(status=FactStatus.APPROVED))
