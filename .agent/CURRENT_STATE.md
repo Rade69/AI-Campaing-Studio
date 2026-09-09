@@ -4,10 +4,28 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-09 (coordinator: claude) — **ACS-S2-002
-Codex adversarial review = REJECT (1 stvaran HIGH bug, 1 kontrakt
-propust), vraćeno Pi-ju na drugu popravku.**
-[Task contract](../agent_reports/ACS-S2-002-task-contract.md) ·
-[Codex review](../agent_reports/2026-09-09-ACS-S2-002-review-codex.md).
+BF-1 (lease_until timing) POPRAVLJEN, Claude review = PASS, poslato
+Codex-u na TREĆI review krug** (Codex je eksplicitno tražio re-review
+nakon BF-1). [Task contract](../agent_reports/ACS-S2-002-task-contract.md)
+· [Codex review round 1](../agent_reports/2026-09-09-ACS-S2-002-review-codex.md)
+· [Implementer evidence (Pi, uklj. oba fixa)](../agent_reports/2026-09-09-ACS-S2-002-pi.md).
+**HIGH -- i dalje NE §29, čeka Codex PASS + Human Owner.**
+
+Fix: `lease_until` računanje pomjereno NA POSLIJE uspješnog
+`BEGIN IMMEDIATE` (bilo prije -- dugo čekanje na write lock je moglo
+"pojesti" lease trajanje prije nego se claim uopšte commituje). Bonus:
+`lease_duration_seconds <= 0` sad baca `ValueError` (Codex sugestija).
+Nov test `test_claim_lease_until_is_future_under_contention` stvarno
+prisiljava contention (holder thread drži `BEGIN IMMEDIATE` 1.5s, lease
+1s) -- **koordinator nezavisno reprodukovao mutation (privremeno vraćen
+stari redoslijed preko Edit alata -- test pao sa IDENTIČNIM simptomom
+kao Codex-ov live repro, lease u prošlosti; restauracija čista)**.
+Postojeći `test_claim_next_crawl_target_is_atomic_under_concurrency`
+i dalje zelen (3x ponovljen) -- fix dira timing, ne atomicity garanciju.
+Diff scope: SAMO `sqlite_ingestion_repository.py` (claim metoda) + test
+fajl + evidence -- nijedna druga izmjena. Pun suite (DeepSeek key
+unset): 1264 passed, 0 regresija. Ruff/mypy čisti. PR #25 CI zeleno
+(run `34347711302`).
 **HIGH rizik (migracija) -- PUN ciklus, NE §29 -- ne mergovati bez
 Codex PASS + eksplicitnog Human Owner odobrenja.**
 
