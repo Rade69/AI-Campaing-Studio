@@ -109,6 +109,106 @@ def test_write_report_overwrites_existing(tmp_path: Path) -> None:
     assert payload["status"] == "FAIL"
 
 
+# --- _run_python subprocess observability (ACS-MAINT-001) -------------
+
+
+def test_run_python_pytest_includes_stdout_tail(monkeypatch) -> None:
+    """ACS-MAINT-001: when a pytest subprocess fails, ``notes[].detail``
+    must include the stdout tail so the pytest ``FAILED tests/...``
+    summary line is preserved for offline diagnosis. The stderr-only
+    detail string is useless for the long-standing gate-report flake.
+    """
+    fake_completed = subprocess.CompletedProcess(
+        args=[],
+        returncode=1,
+        stdout=(
+            "..........F............                                          [ 60%]\n"
+            "===================== short test summary info =====================\n"
+            "FAILED tests/unit/scripts/test_x.py::test_y - AssertionError\n"
+            "1 failed in 0.50s\n"
+        ),
+        stderr="some pytest warning line\n",
+    )
+    monkeypatch.setattr(gpr.subprocess, "run", lambda *a, **kw: fake_completed)
+
+    passed, detail = gpr._run_python(
+        Path("/tmp"), ["-m", "pytest", "-q"]
+    )
+    assert passed is False
+    # stderr tail still present (back-compat with prior format).
+    assert "stderr_tail=some pytest warning line" in detail
+    # stdout tail present with the FAILED summary line.
+    assert "stdout_tail=" in detail
+    assert (
+        "FAILED tests/unit/scripts/test_x.py::test_y" in detail
+    )
+    assert "1 failed in 0.50s" in detail
+    # exit code present.
+    assert "exit=1" in detail
+
+
+def test_run_python_secret_scan_does_not_leak_stdout(monkeypatch) -> None:
+    """ACS-MAINT-001 (regression guard): the secret-scan special case
+    must REMAIN untouched. The secret scanner can echo the secret-
+    shaped value it just detected on stderr, so ``notes[].detail`` for
+    that check must contain ONLY the exit code, never stdout/stderr
+    content. The new pytest-branch ``stdout_tail`` capture is gated
+    by ``is_pytest`` and does NOT reach the secret-scan path.
+    """
+    fake_completed = subprocess.CompletedProcess(
+        args=[],
+        returncode=0,
+        stdout="NO CONFIRMED SECRET in tracked files\n",
+        stderr="would-have-leaked-secret-if-persisted\n",
+    )
+    monkeypatch.setattr(gpr.subprocess, "run", lambda *a, **kw: fake_completed)
+
+    # The args list ends with ``check_no_secrets.py`` which is the
+    # trigger for the secret-scan special case in ``_run_python``.
+    passed, detail = gpr._run_python(
+        Path("/tmp"),
+        [str(Path("/repo") / "scripts" / "check_no_secrets.py")],
+    )
+    assert passed is True
+    # Detail is the bare exit code -- no stderr_tail, no stdout_tail,
+    # no leaked content.
+    assert detail == "exit=0"
+    assert "stderr_tail" not in detail
+    assert "stdout_tail" not in detail
+    assert "NO CONFIRMED SECRET" not in detail
+    assert "would-have-leaked-secret" not in detail
+
+
+def test_run_python_non_pytest_does_not_include_stdout_tail(
+    monkeypatch,
+) -> None:
+    """ACS-MAINT-001 (regression guard): for non-pytest subprocess
+    invocations (e.g. ``ruff``, ``mypy``), the ``detail`` string
+    keeps the prior ``exit=N stderr_tail=...`` format -- it does NOT
+    grow a ``stdout_tail=`` field. Adding it broadly would risk
+    pulling in stdout from arbitrary tools; the contract scopes the
+    new field to pytest only.
+    """
+    fake_completed = subprocess.CompletedProcess(
+        args=[],
+        returncode=1,
+        stdout="ruff found 1 error\n",
+        stderr="E501 line too long\n",
+    )
+    monkeypatch.setattr(gpr.subprocess, "run", lambda *a, **kw: fake_completed)
+
+    passed, detail = gpr._run_python(
+        Path("/tmp"),
+        ["-m", "ruff", "check", "."],
+    )
+    assert passed is False
+    assert "exit=1" in detail
+    assert "stderr_tail=E501 line too long" in detail
+    # No stdout_tail for non-pytest invocations.
+    assert "stdout_tail" not in detail
+    assert "ruff found 1 error" not in detail
+
+
 # --- end-to-end: actual gate report against the current repo -----------
 
 
@@ -121,6 +221,18 @@ def test_gate_report_against_current_repo_passes() -> None:
     check. To avoid infinite recursion (gate → pytest → gate → …) the
     gate report sets ``ACS_GATE_REPORT_RUNNING=1`` for its ``pytest``
     subprocess; this test respects that and short-circuits.
+
+    Flake note (ACS-F1-052 + ACS-MAINT-001): this test is known to be
+    intermittently flaky under heavy resource contention (e.g. when
+    invoked immediately after a full 1223+ test-suite run). ACS-F1-052
+    isolated the nested pytest invocation (``ACS_GATE_REPORT_RUNNING``,
+    ``--basetemp``, ``-p no:cacheprovider``) which reduced the rate but
+    did not eliminate the flake. ACS-MAINT-001 added stdout-tail
+    observability so the *cause* of the next occurrence is in
+    ``artifacts/phase0_foundation_gate.json`` under
+    ``notes[].detail`` (look for ``stdout_tail=``). If this test fails,
+    inspect that JSON first -- it should now contain pytest's
+    ``FAILED tests/...`` summary line, not just a useless stderr tail.
     """
     if os.environ.get("ACS_GATE_REPORT_RUNNING") == "1":
         pytest.skip(
