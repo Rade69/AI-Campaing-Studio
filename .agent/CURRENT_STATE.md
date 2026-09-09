@@ -3,7 +3,35 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-09 (coordinator: claude) — **ACS-MAINT-001
+**Zadnje ažurirano:** 2026-09-09 (coordinator: claude) — **ACS-S2-002
+OTVOREN -- treći Slice 2 task (S2-G2, Ingestion Persistence).**
+[Task contract](../agent_reports/ACS-S2-002-task-contract.md).
+**HIGH rizik (migracija, non-negotiable) -- PUN review ciklus: Claude →
+Codex → Human Owner, NE §29.**
+
+Migracija `0009_ingestion_foundation.sql` (source_snapshots,
+source_chunks, ingestion_runs, ingestion_checkpoints, fact_candidates,
+crawl_targets) + `SqliteIngestionRepository` (implementira svih 13
+S2-G1 port metoda + 6 novih lease-queue metoda) + `CrawlTarget`
+domain entitet (koordinatorova odluka, 2026-09-09 -- vidi kontrakt §1:
+CrawlTarget dobija domain entitet jer S2-G6 orkestracija treba
+tipizovane vrijednosti za lease-queue state mašinu, ista logika kao
+IngestionRun/IngestionCheckpoint). Namjerno ODLOŽENO: kanonski plan
+pominje `structured_data_records` tabelu u S2-G2 scope-u -- koordinator
+ju je izbacio iz OVOG taska jer je nijedan trenutno kontraktovan gate
+ne konzumira (S2-G4/G5 nisu otvoreni) -- doći će kao aditivna migracija
+kad S2-G4 (Content Extraction, JSON-LD) stvarno stigne do toga.
+
+**Najveći rizik u tasku**: `claim_next_crawl_target` MORA biti dokazano
+atomsko pod konkurencijom (2+ thread test, isti stil kao
+ACS-HOTFIX-001 race-condition test) -- G-WI-RECOVER hard gate
+(kanonski plan §11) zavisi od ovoga kad S2-G6 stigne.
+
+Nema trenutno otvorenog nezavisnog paralelnog kandidata.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-09 (coordinator: claude) — **ACS-MAINT-001
 MERGED (PR #24, squash `452ab0b`) -- gate-report `_run_python()` sada
 perzistira pytest stdout tail (zadnjih 15 linija) u `notes[].detail`,
 ne samo stderr.** [Task contract](../agent_reports/ACS-MAINT-001-task-contract.md)
