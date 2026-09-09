@@ -52,8 +52,15 @@ class PdfSource:
                 f"Cannot open PDF (type={type(exc).__name__})"
             ) from exc
 
-        chunks: list[SourceChunk] = []
         try:
+            # BF-2 (Codex): a truncated/corrupt PDF can open as a 0-page
+            # document. That is NOT a scanned image-only PDF (D23) — it must
+            # not silently return an empty tuple.
+            if doc.page_count == 0:  # type: ignore[union-attr]
+                raise DocumentParseError(
+                    "PDF has zero pages (truncated or corrupted); cannot extract."
+                )
+            chunks: list[SourceChunk] = []
             for page_index in range(doc.page_count):  # type: ignore[union-attr]
                 page = doc.load_page(page_index)  # type: ignore[union-attr]
                 text = page.get_text().strip()  # type: ignore[union-attr]
@@ -66,7 +73,7 @@ class PdfSource:
                 locator = f"p{page_index + 1}"
                 chunks.append(
                     SourceChunk(
-                        id=SourceChunkId(f"{run_id}:{locator}"),
+                        id=SourceChunkId(f"{run_id}:{snapshot_id}:{locator}"),
                         snapshot_id=snapshot_id,
                         locator_type="pdf_page",
                         locator=locator,

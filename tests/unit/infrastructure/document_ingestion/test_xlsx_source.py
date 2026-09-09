@@ -77,3 +77,27 @@ def test_extract_missing_snapshot_id_raises(tmp_path: Path) -> None:
 
     with pytest.raises(DocumentParseError):
         XlsxSource().extract(str(path), IngestionRunId("run-1"))
+
+
+def test_extract_two_documents_in_same_run_produce_distinct_ids(
+    tmp_path: Path,
+) -> None:
+    """BF-1 (Codex): distinct chunk ids across two snapshots in one run."""
+    path_a = tmp_path / "a.xlsx"
+    path_b = tmp_path / "b.xlsx"
+    _make_xlsx(path_a)
+    _make_xlsx(path_b)
+
+    chunks_a = XlsxSource().extract(
+        str(path_a), IngestionRunId("run-1"), SourceSnapshotId("snap-1")
+    )
+    chunks_b = XlsxSource().extract(
+        str(path_b), IngestionRunId("run-1"), SourceSnapshotId("snap-2")
+    )
+
+    locator = "sSheet1!r1c1"
+    ids_a = {c.id for c in chunks_a}
+    ids_b = {c.id for c in chunks_b}
+    assert f"run-1:snap-1:{locator}" in ids_a
+    assert f"run-1:snap-2:{locator}" in ids_b
+    assert ids_a.isdisjoint(ids_b)

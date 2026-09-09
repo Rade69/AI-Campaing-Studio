@@ -60,7 +60,7 @@ class DocxSource:
             locator = f"p{index}"
             chunks.append(
                 SourceChunk(
-                    id=SourceChunkId(f"{run_id}:{locator}"),
+                    id=SourceChunkId(f"{run_id}:{snapshot_id}:{locator}"),
                     snapshot_id=snapshot_id,
                     locator_type="docx_para",
                     locator=locator,

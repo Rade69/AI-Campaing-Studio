@@ -72,7 +72,7 @@ class XlsxSource:
                         locator = f"s{sheet_name}!r{row_index}c{column_index}"
                         chunks.append(
                             SourceChunk(
-                                id=SourceChunkId(f"{run_id}:{locator}"),
+                                id=SourceChunkId(f"{run_id}:{snapshot_id}:{locator}"),
                                 snapshot_id=snapshot_id,
                                 locator_type="xlsx_sheet_cell",
                                 locator=locator,

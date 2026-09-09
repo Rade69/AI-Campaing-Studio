@@ -68,3 +68,25 @@ def test_extract_missing_snapshot_id_raises(tmp_path: Path) -> None:
 
     with pytest.raises(DocumentParseError):
         DocxSource().extract(str(path), IngestionRunId("run-1"))
+
+
+def test_extract_two_documents_in_same_run_produce_distinct_ids(
+    tmp_path: Path,
+) -> None:
+    """BF-1 (Codex): distinct chunk ids across two snapshots in one run."""
+    path_a = tmp_path / "a.docx"
+    path_b = tmp_path / "b.docx"
+    _make_docx(path_a, ["document one"])
+    _make_docx(path_b, ["document two"])
+
+    chunks_a = DocxSource().extract(
+        str(path_a), IngestionRunId("run-1"), SourceSnapshotId("snap-1")
+    )
+    chunks_b = DocxSource().extract(
+        str(path_b), IngestionRunId("run-1"), SourceSnapshotId("snap-2")
+    )
+
+    assert chunks_a[0].locator == chunks_b[0].locator == "p1"
+    assert chunks_a[0].id == "run-1:snap-1:p1"
+    assert chunks_b[0].id == "run-1:snap-2:p1"
+    assert chunks_a[0].id != chunks_b[0].id

@@ -43,8 +43,8 @@ def test_extract_valid_pdf_two_text_pages_one_blank(tmp_path: Path) -> None:
     assert [c.locator for c in chunks] == ["p1", "p2"]
     assert chunks[0].text == "Page 1 text content"
     assert chunks[1].text == "Page 2 text content"
-    # Deterministic chunk id from run_id + locator.
-    assert chunks[0].id == "run-1:p1"
+    # Deterministic chunk id from run_id + snapshot_id + locator.
+    assert chunks[0].id == "run-1:snap-1:p1"
 
 
 def test_extract_scanned_pdf_returns_empty_tuple(tmp_path: Path) -> None:
@@ -85,3 +85,50 @@ def test_extract_missing_snapshot_id_raises(tmp_path: Path) -> None:
 
     with pytest.raises(DocumentParseError):
         PdfSource().extract(str(path), IngestionRunId("run-1"))
+
+
+def test_extract_truncated_pdf_raises_document_parse_error(
+    tmp_path: Path,
+) -> None:
+    """BF-2 (Codex): a truncated PDF that opens with ZERO pages must
+    raise, NOT silently return an empty tuple (that is reserved for a real
+    scanned/image-only PDF, D23)."""
+    path = tmp_path / "truncated.pdf"
+    # A minimal PDF header + catalog object but NO page objects: PyMuPDF
+    # opens it successfully with page_count == 0.
+    path.write_bytes(
+        b"%PDF-1.7\n1 0 obj\n<</Type/Catalog>>\nendobj\n%%EOF"
+    )
+
+    with pytest.raises(DocumentParseError):
+        PdfSource().extract(
+            str(path), IngestionRunId("run-1"), SourceSnapshotId("snap-1")
+        )
+
+
+def test_extract_two_documents_in_same_run_produce_distinct_ids(
+    tmp_path: Path,
+) -> None:
+    """BF-1 (Codex): two documents in the SAME run with the SAME locator
+    must yield DISTINCT chunk ids (snapshot_id disambiguates)."""
+    path_a = tmp_path / "a.pdf"
+    path_b = tmp_path / "b.pdf"
+    _make_pdf(path_a, text_pages=1, blank_pages=0)
+    _make_pdf(path_b, text_pages=1, blank_pages=0)
+
+    chunks_a = PdfSource().extract(
+        str(path_a), IngestionRunId("run-1"), SourceSnapshotId("snap-1")
+    )
+    chunks_b = PdfSource().extract(
+        str(path_b), IngestionRunId("run-1"), SourceSnapshotId("snap-2")
+    )
+
+    assert chunks_a[0].locator == chunks_b[0].locator == "p1"
+    assert chunks_a[0].id == "run-1:snap-1:p1"
+    assert chunks_b[0].id == "run-1:snap-2:p1"
+    assert chunks_a[0].id != chunks_b[0].id
+    # Idempotent: same (run, snapshot, locator) -> same id.
+    chunks_a_again = PdfSource().extract(
+        str(path_a), IngestionRunId("run-1"), SourceSnapshotId("snap-1")
+    )
+    assert chunks_a_again[0].id == chunks_a[0].id
