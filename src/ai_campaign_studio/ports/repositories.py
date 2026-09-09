@@ -8,6 +8,7 @@ leak through these signatures. The concrete adapters live in
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, Protocol, runtime_checkable
 
 from ai_campaign_studio.domain.brand.entities import Brand, BrandSnapshot
@@ -21,6 +22,7 @@ from ai_campaign_studio.domain.common.ids import (
     BrandSnapshotId,
     CampaignId,
     CampaignPlanId,
+    CrawlTargetId,
     DistributionInstanceId,
     FactCandidateId,
     FactId,
@@ -39,11 +41,13 @@ from ai_campaign_studio.domain.content.entities import ContentPiece
 from ai_campaign_studio.domain.content.revisions import Revision
 from ai_campaign_studio.domain.facts.entities import ApprovedFact, FactCandidate
 from ai_campaign_studio.domain.ingestion.entities import (
+    CrawlTarget,
     IngestionCheckpoint,
     IngestionRun,
     SourceChunk,
     SourceSnapshot,
 )
+from ai_campaign_studio.domain.ingestion.enums import CrawlTargetState
 from ai_campaign_studio.domain.performance.entities import (
     DistributionInstance,
     PerformanceImportBatch,
@@ -327,6 +331,35 @@ class IngestionRepositoryPort(Protocol):
     def list_fact_candidates_by_snapshot(
         self, snapshot_id: SourceSnapshotId
     ) -> tuple[FactCandidate, ...]: ...
+
+    # --- CrawlTarget lease queue (S2-G2, canonical plan §7) ---
+
+    def register_crawl_targets(
+        self, targets: Sequence[CrawlTarget]
+    ) -> int: ...
+
+    def claim_next_crawl_target(
+        self, run_id: IngestionRunId, lease_duration_seconds: int
+    ) -> CrawlTarget | None: ...
+
+    def update_crawl_target_state(
+        self,
+        target_id: CrawlTargetId,
+        state: CrawlTargetState,
+        *,
+        last_error: str | None = None,
+        snapshot_id: SourceSnapshotId | None = None,
+    ) -> None: ...
+
+    def recover_expired_leases(self, run_id: IngestionRunId) -> int: ...
+
+    def get_crawl_target(
+        self, target_id: CrawlTargetId
+    ) -> CrawlTarget | None: ...
+
+    def list_crawl_targets_by_run(
+        self, run_id: IngestionRunId
+    ) -> tuple[CrawlTarget, ...]: ...
 
 
 @runtime_checkable

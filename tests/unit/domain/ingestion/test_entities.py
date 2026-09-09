@@ -7,12 +7,14 @@ import pytest
 
 from ai_campaign_studio.domain.common.ids import (
     BrandId,
+    CrawlTargetId,
     IngestionCheckpointId,
     IngestionRunId,
     SourceChunkId,
     SourceSnapshotId,
 )
 from ai_campaign_studio.domain.ingestion.entities import (
+    CrawlTarget,
     IngestionCheckpoint,
     IngestionRun,
     IngestionRunStats,
@@ -20,8 +22,10 @@ from ai_campaign_studio.domain.ingestion.entities import (
     SourceSnapshot,
 )
 from ai_campaign_studio.domain.ingestion.enums import (
+    CrawlTargetState,
     IngestionPhase,
     IngestionRunStatus,
+    PageType,
 )
 
 _CREATED_AT = datetime(2026, 1, 1, tzinfo=UTC)
@@ -93,7 +97,6 @@ def test_ingestion_checkpoint_records_last_completed_phase() -> None:
 def test_page_type_covers_canonical_plan_vocabulary() -> None:
     """PageType exposes every bucket from canonical plan §8 (ARTICLE/BLOG
     kept as two separate values)."""
-    from ai_campaign_studio.domain.ingestion.enums import PageType
 
     values = {p.value for p in PageType}
     expected = {
@@ -113,3 +116,48 @@ def test_page_type_covers_canonical_plan_vocabulary() -> None:
         "OTHER",
     }
     assert expected <= values
+
+
+def _crawl_target(state: CrawlTargetState = CrawlTargetState.PENDING) -> CrawlTarget:
+    return CrawlTarget(
+        id=CrawlTargetId("ct-1"),
+        run_id=IngestionRunId("run-1"),
+        normalized_url="https://example.com/about",
+        depth=1,
+        priority=0,
+        state=state,
+        attempts=0,
+    )
+
+
+def test_crawl_target_is_frozen() -> None:
+    target = _crawl_target()
+    with pytest.raises(FrozenInstanceError):
+        target.state = CrawlTargetState.LEASED
+    with pytest.raises(FrozenInstanceError):
+        target.priority = 5
+
+
+def test_crawl_target_optional_fields_default_to_none() -> None:
+    target = _crawl_target()
+    assert target.page_type_hint is None
+    assert target.lease_until is None
+    assert target.next_attempt_at is None
+    assert target.last_error is None
+
+
+def test_crawl_target_state_covers_lease_queue_machine() -> None:
+    expected = {
+        "PENDING",
+        "LEASED",
+        "FETCHED",
+        "EXTRACTED",
+        "DONE",
+        "FAILED_RETRYABLE",
+        "FAILED",
+        "SKIPPED_ROBOTS",
+        "SKIPPED_UNSAFE",
+        "TOO_LARGE",
+        "CANCELLED",
+    }
+    assert {s.value for s in CrawlTargetState} == expected

@@ -40,3 +40,17 @@ def test_ports_are_runtime_checkable() -> None:
 
     # structural isinstance check works because the Protocol is runtime_checkable
     assert isinstance(_FakeBrandRepository(), repositories.BrandRepositoryPort)
+
+
+def test_ingestion_port_declares_lease_queue_methods() -> None:
+    """S2-G2: the crawl-target lease queue surface is part of the port."""
+    port = repositories.IngestionRepositoryPort
+    for method in (
+        "register_crawl_targets",
+        "claim_next_crawl_target",
+        "update_crawl_target_state",
+        "recover_expired_leases",
+        "get_crawl_target",
+        "list_crawl_targets_by_run",
+    ):
+        assert hasattr(port, method), f"missing lease-queue method: {method}"

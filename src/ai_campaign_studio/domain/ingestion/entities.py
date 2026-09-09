@@ -21,14 +21,17 @@ from datetime import datetime
 
 from ai_campaign_studio.domain.common.ids import (
     BrandId,
+    CrawlTargetId,
     IngestionCheckpointId,
     IngestionRunId,
     SourceChunkId,
     SourceSnapshotId,
 )
 from ai_campaign_studio.domain.ingestion.enums import (
+    CrawlTargetState,
     IngestionPhase,
     IngestionRunStatus,
+    PageType,
 )
 
 
@@ -109,3 +112,28 @@ class IngestionCheckpoint:
     run_id: IngestionRunId
     phase: IngestionPhase
     finished_at: datetime
+
+
+@dataclass(frozen=True)
+class CrawlTarget:
+    """One lease-queue row for a URL to crawl (canonical plan §7, S2-G2).
+
+    Type-level state machine: ``CrawlTargetState`` holds the queue lifecycle
+    (``PENDING → LEASED → FETCHED → EXTRACTED → DONE``, plus retryable and
+    terminal states) so S2-G6 orchestrates over typed values, not raw SQL
+    rows. ``UNIQUE(run_id, normalized_url)`` idempotency is a persistence
+    concern (the adapter's ``register_crawl_targets``), not enforced here.
+    """
+
+    id: CrawlTargetId
+    run_id: IngestionRunId
+    normalized_url: str
+    depth: int
+    priority: int
+    state: CrawlTargetState
+    attempts: int
+    page_type_hint: PageType | None = None
+    lease_until: datetime | None = None
+    next_attempt_at: datetime | None = None
+    last_error: str | None = None
+    snapshot_id: SourceSnapshotId | None = None

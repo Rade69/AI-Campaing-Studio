@@ -163,3 +163,29 @@ def test_fresh_db_applies_performance_migration(tmp_path: Path) -> None:
     }
     conn2.close()
     assert 6 in versions
+
+
+def test_fresh_db_applies_ingestion_migration(tmp_path: Path) -> None:
+    db_path = tmp_path / "test.db"
+    conn = create_connection(db_path)
+    applied = run_migrations(conn, MIGRATIONS_DIR)
+    conn.close()
+
+    assert 9 in applied
+
+    conn2 = create_connection(db_path)
+    tables = _table_names(conn2)
+    assert {
+        "source_snapshots",
+        "source_chunks",
+        "ingestion_runs",
+        "ingestion_checkpoints",
+        "fact_candidates",
+        "crawl_targets",
+    } <= tables
+    versions = {
+        row["version"]
+        for row in conn2.execute("SELECT version FROM schema_migrations").fetchall()
+    }
+    conn2.close()
+    assert 9 in versions

@@ -61,3 +61,25 @@ class IngestionPhase(StrEnum):
     EXTRACT = "EXTRACT"
     BUILD_FACTS = "BUILD_FACTS"
     DONE = "DONE"
+
+
+class CrawlTargetState(StrEnum):
+    """Lease-queue state machine for one crawl target (canonical plan §7).
+
+    Flow: ``PENDING → LEASED → FETCHED → EXTRACTED → DONE``; a retryable
+    failure goes ``LEASED → FAILED_RETRYABLE → PENDING``. Terminal states are
+    ``FAILED``, ``SKIPPED_ROBOTS``, ``SKIPPED_UNSAFE``, ``TOO_LARGE`` and
+    ``CANCELLED``.
+    """
+
+    PENDING = "PENDING"
+    LEASED = "LEASED"
+    FETCHED = "FETCHED"
+    EXTRACTED = "EXTRACTED"
+    DONE = "DONE"
+    FAILED_RETRYABLE = "FAILED_RETRYABLE"
+    FAILED = "FAILED"
+    SKIPPED_ROBOTS = "SKIPPED_ROBOTS"
+    SKIPPED_UNSAFE = "SKIPPED_UNSAFE"
+    TOO_LARGE = "TOO_LARGE"
+    CANCELLED = "CANCELLED"
