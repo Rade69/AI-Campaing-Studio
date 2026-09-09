@@ -107,20 +107,32 @@ Ne oslanjaj se na starije Faza 0/Faza 1 verzije ako CURRENT_STATE kaže da su su
 - Relevantni source fajlovi imaju kratak "owns / does not own" header na
   vrhu (workflow §30) — navigaciona pomoć za agente, ne source of truth.
 
-## GitNexus
+## GitNexus i Graft
 
-GitNexus nije opciona pomoć.
+GitNexus nije opciona pomoć. Graft je dodatni, preporučen code
+intelligence alat (CLI + MCP; identična odluka kao na FlowOS-u,
+2026-09-09) — ne zamjenjuje GitNexus §5-§9 pre/post-change protokol,
+koristi se kao dodatni, brži prvi prolaz.
 
 Nakon foundation skeletona repo mora biti indeksiran i održavan svježim.
 
-Detaljan protocol:
+**"Zero callers" nije dokaz bezbjednosti** — potvrđena rupa za pozive kroz
+kompozitni/atributni objekat (`self._api.X()`), čak i na svježem, ne
+stale indeksu, na OBA alata (cross-project dokaz, ne još lokalno
+potvrđeno na ovom kodu). Uvijek grep provjera prije zaključka o niskom
+riziku.
 
-`.agent/GITNEXUS_PROTOCOL.md`
+Detaljni protokoli:
+
+```text
+.agent/GITNEXUS_PROTOCOL.md   (§13 caller-graph ograničenja)
+.agent/GRAFT_PROTOCOL.md      (kompletna Graft odluka, dokazi, zabranjeni obrasci)
+```
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **AI-Campaing-Studio** (14650 symbols, 21443 relationships, 168 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **AI-Campaing-Studio** (15249 symbols, 22523 relationships, 167 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

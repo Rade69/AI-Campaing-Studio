@@ -3,7 +3,50 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-09 (coordinator: claude) — **ACS-S2-002
+**Zadnje ažurirano:** 2026-09-09 (coordinator: MiniMax) — **ACS-S2-002
+MERGED (PR #25, squash `00bbc89`).** Codex round 3 PASS
+(`verdict: PASS`, `blocking_findings: []`), Human Owner eksplicitno
+odobrio merge. Codex verbatim: *"Proba s odgodom BEGIN-a 1.5 s ostavila
+je 0.985641 s od leasea 1 s. No confirmed code defect found in the
+reviewed fix scope."* BF-2 (scope propust na
+`domain/ingestion/__init__.py`) zatvoren retroaktivnom koordinatorovom
+odlukom (čisto aditivan re-export, dokumentovan u contract §1).
+[Task contract](../agent_reports/ACS-S2-002-task-contract.md) ·
+[Codex review round 1](../agent_reports/2026-09-09-ACS-S2-002-review-codex.md)
+· [Codex re-review round 3 (PASS)](../agent_reports/2026-09-09-ACS-S2-002-rereview-codex.md)
+· [Implementer evidence (Pi, uklj. oba fixa)](../agent_reports/2026-09-09-ACS-S2-002-pi.md).
+[PR #25](https://github.com/Rade69/AI-Campaing-Studio/pull/25) MERGED,
+squash commit `00bbc89`. Post-merge CI na `main` SUCCESS (run
+`34355401783`). GitNexus osvježen: 15.249 nodes / 22.523 edges / 332
+clusters / 167 flows.
+
+**Slice 2 napredak**: S2-G1 (ACS-S2-001, PR #23) i S2-G2 (ACS-S2-002,
+PR #25) MERGED. **S2-G3/G4/G5/G9 su sada odblokirani** po kanonskom
+planu DAG §3 — svaki od njih može se otvoriti kao Task Contract čim
+Human Owner odobri start. Pre nego otvorite bilo koji, pročitajte
+kanonski plan §10 za taj specifičan gate + obavezno
+[`.agent/TASK_ROUTING.md`](../.agent/TASK_ROUTING.md) sekciju
+"Website Ingestion task".
+
+**Risk klasifikacija za S2-G3/G4/G5/G9**: ako gate uvodi NOVU shemu
+(migraciju), HIGH, pun ciklus (Claude + Codex + Human Owner). Ako je
+test-only / wiring-only / sinteza već pregledanih delova bez GUI
+lifecycle rizika — MEDIUM/§29 (Claude-only review, odmah merge ako
+PASS, BEZ Codex round, BEZ posebnog Human Owner odobrenja). Bilo šta
+sa GUI lifecycle rizikom (pywebview, js_api bridge state) ili
+bezbjednosnim implikacijama — HIGH, pun ciklus.
+
+**Coordinator handoff preuzet**: Claude je blizu limita tokena u
+tekućoj sesiji (handoff detalji u
+[`agent_reports/2026-09-09-coordinator-handoff-to-minimax.md`](../agent_reports/2026-09-09-coordinator-handoff-to-minimax.md),
+uključuje 12 operativnih lekcija iz prethodne sesije). MiniMax
+preuzima koordinatorsku ulogu do daljnjeg. Standardni workflow +
+`.agent/TASK_ROUTING.md` + `docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md`
+i dalje važe — handoff je DODATAK, ne zamjena.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-09 (coordinator: claude) — **ACS-S2-002
 BF-1 (lease_until timing) POPRAVLJEN, Claude review = PASS, poslato
 Codex-u na TREĆI review krug** (Codex je eksplicitno tražio re-review
 nakon BF-1). [Task contract](../agent_reports/ACS-S2-002-task-contract.md)

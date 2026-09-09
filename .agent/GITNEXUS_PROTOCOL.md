@@ -294,8 +294,40 @@ Ne prihvataj:
 ```text
 "GitNexus kaže low risk pa test nije potreban"
 "zero impact" iz stale indexa
+"zero callers" kao dokaz bezbjednosti bez grep provjere — čak i na
+  svježem indeksu (vidi §13, potvrđena rupa za kompozitne/atributne pozive)
 impact bez vezanog repo/worktree identiteta
 impact samo za jedan simbol kada diff mijenja više shared simbola
 MCP rezultat iz main checkouta za feature worktree
 preskakanje detect-changes prije HIGH reviewa
 ```
+
+---
+
+# 13. Poznata ograničenja caller grafa (cross-project dokaz)
+
+Na sibling projektu (FlowOS, isti GitNexus 1.6.5) nezavisno je potvrđeno,
+na SVJEŽE reindeksiranom (ne stale) indeksu:
+
+- `impact()`/`context()` promašuju pozive kroz kompozitni/atributni objekat
+  (`self._api.X()`, `Service(self._db).Y()`) — poziv stvarno postoji u
+  kodu (potvrđeno grep-om), ali graf prijavljuje nula callera. Isti
+  obrazac je dominantan u svakoj Clean/Hexagonal arhitekturi gdje
+  Application sloj poziva Ports/Adapters preko composed objekta, pa
+  rizik nije ograničen na FlowOS-ov specifičan kod;
+- `gitnexus analyze --force` ne popravlja FTS "indexes missing" upozorenje
+  ni na produkcijskom indeksu — tretirati `query()` rezultate kao
+  nepouzdane dok se lokalno ne potvrdi drugačije (`npx gitnexus status`
+  poslije force rebuild-a i dalje mora pokazati FTS status).
+
+Dokazi (drugi repo, čitati kao evidenciju o alatu, ne o ovom kodu):
+`H:\FolowOS\docs\graft-vs-gitnexus-benchmark-2026-09-09.md` i
+`H:\FolowOS\docs\graft-vs-gitnexus-verification-claude-2026-09-09.md`.
+
+**Nije nezavisno potvrđeno na AI Campaign Studio kodu.** Obrazac (poziv
+kroz atribut/kompoziciju) je generički za static-analysis alate, ne
+FlowOS-specifičan, pa se preporučuje ista opreznost dok se lokalno ne
+provjeri. Kad god `impact`/`context` vrati nula callera za simbol koji
+"po osjećaju" treba imati pozivaoce (Application use case, Port
+implementacija), potvrditi sa `grep -rn "<symbol>"` prije zaključka o
+riziku — ne tretirati odsustvo grafa-edge kao dokaz odsustva poziva.

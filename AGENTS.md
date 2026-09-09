@@ -68,7 +68,7 @@ navigaciona pomoć (progressive disclosure), ne source of truth — stvaran kod
 je autoritet. Puno pravilo, format po jeziku i touched-file politika:
 `docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md` §30.
 
-## GitNexus — obavezno
+## GitNexus i Graft — obavezno
 
 Ako repo još nije indeksiran, nakon početnog foundation skeletona:
 
@@ -76,9 +76,17 @@ Ako repo još nije indeksiran, nakon početnog foundation skeletona:
 npx gitnexus analyze --skip-agents-md
 ```
 
-Za svakodnevni rad koristi `.agent/GITNEXUS_PROTOCOL.md`.
+Za svakodnevni rad koristi `.agent/GITNEXUS_PROTOCOL.md`. Graft (CLI +
+MCP) je dodatni preporučen alat, isti obrazac kao FlowOS — vidi
+`.agent/GRAFT_PROTOCOL.md`. Graft ne zamjenjuje GitNexus obavezan
+pre/post-change protokol za MEDIUM/HIGH.
 
-Ne dozvoli GitNexusu da zamijeni ovaj fajl kao projektni source of truth.
+Nula callera ≠ bezbjedno, na oba alata — potvrđena rupa za kompozitne/
+atributne pozive, čak i na svježem indeksu; grep provjera obavezna prije
+zaključka o niskom riziku.
+
+Ne dozvoli GitNexusu ni Graftu da zamijene ovaj fajl kao projektni source
+of truth.
 
 ## Uloge
 
@@ -97,7 +105,7 @@ Tačna uloga za konkretan task mora stajati u Task Contractu.
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **AI-Campaing-Studio** (14650 symbols, 21443 relationships, 168 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **AI-Campaing-Studio** (15249 symbols, 22523 relationships, 167 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
