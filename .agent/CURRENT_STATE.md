@@ -3,7 +3,55 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-08 (coordinator: claude) — **ACS-F1-057
+**Zadnje ažurirano:** 2026-09-09 (coordinator: claude) — **ACS-F1-056
+MERGED (PR #22, squash `ef05b59`) -- P1.5-G8 PASS. Slice 1.5
+(Performance/Analytics) ZVANIČNO ZATVOREN. Slice 2 (Website Ingestion)
+može krenuti.** [Task contract](../agent_reports/ACS-F1-056-task-contract.md)
+· [Implementer evidence (Pi)](../agent_reports/2026-09-08-ACS-F1-056-pi.md).
+
+Test-only (nula produkcijskog koda, potvrđeno `git diff --stat`):
+`tests/integration/presentation_webview/bridge/test_campaign_bridge_g8_acceptance.py`
+-- jedan deterministički scenario test cijelog Performance lanca preko
+bridge-a: create campaign → generate plan → generate content (job-backed)
+→ export (ZIP+manifest) → izvući `analytics_match_key` po stavci →
+sintetički CSV (2 reda, TAČNI ključevi) → `confirm_performance_import`
+(import+match+materialize u jednom pozivu) → `get_campaign_performance`
+→ `get_campaign_content_performance`. Fake `TextGenerationPort`
+dispatch-uje na STVARNE `AIRequest.purpose` vrijednosti
+(`campaign_plan`/`post_generation`/`visual_direction`/`post_layout`,
+nezavisno grep-om potvrđene protiv produkcijskog koda) -- nula mrežnog
+poziva, `get_secret` patch-ovan, test radi bez ijednog API ključa u
+okruženju. Sve asercije su ručno izračunate vrijednosti (suma 2 CSV
+reda → 6 derived metrika), ne "nije None".
+
+**Independent Claude review (§29, MEDIUM, bez Codexa):** kod pročitan u
+cjelini; `purpose` vrijednosti nezavisno grep-om potvrđene tačne;
+mutation test na materializaciju (privremeno zamijenjen stvaran
+`MaterializePerformanceSnapshots.execute(...)` poziv u već pregledanoj
+bridge metodi sa hardkodovanim `MaterializeResult(0, 0)` preko Edit
+alata -- test odmah pao na `materialized_count == 2` aserciji kako se
+očekivalo, restauracija preko Edit alata potvrđena čistom
+`git diff --stat src/`) dokazuje da test stvarno zavisi o
+materializaciji, ne prolazi slučajno; mypy/ruff čisto; determinizam
+nezavisno potvrđen 3x zaredom. Nezavisan pun test suite run: **1224
+passed** + isti poznati FLAKY fail
+(`test_gate_report_against_current_repo_passes`, F1-052/F1-057 klasa
+flake-a pod opterećenjem odmah nakon punog suite runa -- izolovano
+ponovljen PASS oba puta, potvrđeno nepovezan sa F1-056 izmjenama; ovaj
+flake se sada ponovio 2x zaredom preko dva odvojena taska -- vrijedan
+kandidat za budući dedicated fix task, ne blokira ovaj review). PR #22
+CI zeleno, post-merge CI na `main` (run `34314035430`) zeleno. GitNexus
+osvježen (`npx gitnexus analyze`, 14.799 nodes/21.671 edges/170 flows).
+
+**Slice 2 (Website Ingestion) je sada otvoren za start** po ranijoj
+Human Owner odluci, koristeći
+[docs/AI_Campaign_Studio_Slice_2_Canonical_Plan.md](../docs/AI_Campaign_Studio_Slice_2_Canonical_Plan.md)
+kao polazni referentni dokument (S2-G1 domain+ports kontrakt je prvi
+realan task ako/kad Human Owner odobri start).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-08 (coordinator: claude) — **ACS-F1-057
 MERGED (PR #21, squash `898bb8d`) -- gap zatvoren, G8 (ACS-F1-056) sada
 ODBLOKIRAN.** [Task contract](../agent_reports/ACS-F1-057-task-contract.md)
 · [Implementer evidence (Pi)](../agent_reports/2026-09-08-ACS-F1-057-pi.md).
