@@ -10,6 +10,7 @@ from .sqlite_brand_repository import SqliteBrandRepository
 from .sqlite_campaign_repository import SqliteCampaignRepository
 from .sqlite_content_repository import SqliteContentRepository
 from .sqlite_fact_repository import SqliteFactRepository
+from .sqlite_ingestion_repository import SqliteIngestionRepository
 from .sqlite_performance_repository import SqlitePerformanceRepository
 from .sqlite_provider_config_repository import (
     SqliteModelSelectionRepository,
@@ -23,6 +24,7 @@ __all__ = [
     "SqliteCampaignRepository",
     "SqliteContentRepository",
     "SqliteFactRepository",
+    "SqliteIngestionRepository",
     "SqliteModelSelectionRepository",
     "SqlitePerformanceRepository",
     "SqliteProviderConfigRepository",

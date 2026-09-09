@@ -30,6 +30,8 @@ SourceChunkId = NewType("SourceChunkId", str)
 IngestionRunId = NewType("IngestionRunId", str)
 IngestionCheckpointId = NewType("IngestionCheckpointId", str)
 FactCandidateId = NewType("FactCandidateId", str)
+# Slice 2 (Website/Brand Ingestion) — S2-G2 lease queue.
+CrawlTargetId = NewType("CrawlTargetId", str)
 
 
 def new_id() -> str:
