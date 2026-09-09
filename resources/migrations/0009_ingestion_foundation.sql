@@ -58,6 +58,7 @@ CREATE TABLE crawl_targets (
     lease_until TEXT NULL,
     next_attempt_at TEXT NULL,
     last_error TEXT NULL,
+    snapshot_id TEXT NULL REFERENCES source_snapshots(id),
     UNIQUE(run_id, normalized_url)
 );
 

@@ -116,16 +116,19 @@ def _crawl_target(
     priority: int = 0,
     state: CrawlTargetState = CrawlTargetState.PENDING,
     lease_until: datetime | None = None,
+    snapshot_id: SourceSnapshotId | None = None,
+    run_id: str = "run-1",
 ) -> CrawlTarget:
     return CrawlTarget(
         id=CrawlTargetId(target_id),
-        run_id=IngestionRunId("run-1"),
+        run_id=IngestionRunId(run_id),
         normalized_url=url or f"https://example.com/{target_id}",
         depth=1,
         priority=priority,
         state=state,
         attempts=0,
         lease_until=lease_until,
+        snapshot_id=snapshot_id,
     )
 
 
@@ -378,4 +381,89 @@ def test_update_crawl_target_state(tmp_path: Path) -> None:
     assert loaded is not None
     assert loaded.state is CrawlTargetState.FAILED_RETRYABLE
     assert loaded.last_error == "timeout"
+    connection.close()
+
+
+def test_list_source_snapshots_by_run_has_no_cross_run_leak(
+    tmp_path: Path,
+) -> None:
+    """The Claude-review blocking finding: two runs crawling the SAME URL,
+    each with its own snapshot, must NOT leak into each other's list."""
+    connection = _setup_db(tmp_path)
+    _seed_brand(connection)
+    repo = SqliteIngestionRepository(connection)
+
+    repo.save_ingestion_run(_run("run-a"))
+    repo.save_ingestion_run(_run("run-b"))
+    repo.save_source_snapshot(
+        SourceSnapshot(
+            id=SourceSnapshotId("snap-a"),
+            url="https://x/page",
+            fetched_at=_CREATED_AT,
+            content_hash="a",
+        )
+    )
+    repo.save_source_snapshot(
+        SourceSnapshot(
+            id=SourceSnapshotId("snap-b"),
+            url="https://x/page",
+            fetched_at=_CREATED_AT,
+            content_hash="b",
+        )
+    )
+    repo.register_crawl_targets(
+        [
+            _crawl_target(
+                "ct-a",
+                url="https://x/page",
+                snapshot_id=SourceSnapshotId("snap-a"),
+                run_id="run-a",
+            ),
+            _crawl_target(
+                "ct-b",
+                url="https://x/page",
+                snapshot_id=SourceSnapshotId("snap-b"),
+                run_id="run-b",
+            ),
+        ]
+    )
+
+    only_a = repo.list_source_snapshots_by_run(IngestionRunId("run-a"))
+    only_b = repo.list_source_snapshots_by_run(IngestionRunId("run-b"))
+    assert [str(s.id) for s in only_a] == ["snap-a"]
+    assert [str(s.id) for s in only_b] == ["snap-b"]
+    connection.close()
+
+
+def test_update_crawl_target_state_keeps_snapshot_when_not_passed(
+    tmp_path: Path,
+) -> None:
+    """COALESCE semantics: a missing snapshot_id kwarg must NOT wipe an
+    already-set snapshot (last_error=None DOES clear, snapshot_id=None does
+    not — deliberate asymmetry)."""
+    connection = _setup_db(tmp_path)
+    _seed_brand(connection)
+    repo = SqliteIngestionRepository(connection)
+    repo.save_ingestion_run(_run())
+    repo.save_source_snapshot(_snapshot("snap-1"))
+    repo.save_source_snapshot(_snapshot("snap-2"))
+    repo.register_crawl_targets(
+        [_crawl_target("ct-1", snapshot_id=SourceSnapshotId("snap-1"))]
+    )
+
+    repo.update_crawl_target_state(
+        CrawlTargetId("ct-1"), CrawlTargetState.FETCHED
+    )
+    loaded = repo.get_crawl_target(CrawlTargetId("ct-1"))
+    assert loaded is not None
+    assert loaded.snapshot_id == SourceSnapshotId("snap-1")  # kept
+
+    repo.update_crawl_target_state(
+        CrawlTargetId("ct-1"),
+        CrawlTargetState.EXTRACTED,
+        snapshot_id=SourceSnapshotId("snap-2"),
+    )
+    overwritten = repo.get_crawl_target(CrawlTargetId("ct-1"))
+    assert overwritten is not None
+    assert overwritten.snapshot_id == SourceSnapshotId("snap-2")
     connection.close()

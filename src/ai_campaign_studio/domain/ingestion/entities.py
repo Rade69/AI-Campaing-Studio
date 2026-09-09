@@ -136,3 +136,4 @@ class CrawlTarget:
     lease_until: datetime | None = None
     next_attempt_at: datetime | None = None
     last_error: str | None = None
+    snapshot_id: SourceSnapshotId | None = None

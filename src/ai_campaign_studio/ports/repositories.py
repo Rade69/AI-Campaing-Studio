@@ -348,6 +348,7 @@ class IngestionRepositoryPort(Protocol):
         state: CrawlTargetState,
         *,
         last_error: str | None = None,
+        snapshot_id: SourceSnapshotId | None = None,
     ) -> None: ...
 
     def recover_expired_leases(self, run_id: IngestionRunId) -> int: ...

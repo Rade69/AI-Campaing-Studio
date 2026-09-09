@@ -87,14 +87,13 @@ class SqliteIngestionRepository:
     def list_source_snapshots_by_run(
         self, run_id: IngestionRunId
     ) -> tuple[SourceSnapshot, ...]:
-        # ``source_snapshots`` has no ``run_id`` column (snapshots are URL-
-        # scoped, not run-scoped); the run association is IMPLICIT through
-        # ``crawl_targets.normalized_url == source_snapshots.url``. This is a
-        # best-effort lookup over that URL join, not a foreign-key relation.
+        # Snapshots are associated to a run through ``crawl_targets.snapshot_id``
+        # (set when FETCH completes, S2-G6). Before any target in the run has
+        # a snapshot_id this returns an EMPTY tuple — correct, not a bug.
         rows = self._connection.execute(
             "SELECT source_snapshots.* FROM source_snapshots"
             " JOIN crawl_targets"
-            "   ON crawl_targets.normalized_url = source_snapshots.url"
+            "   ON crawl_targets.snapshot_id = source_snapshots.id"
             " WHERE crawl_targets.run_id = ?"
             " ORDER BY source_snapshots.id",
             (run_id,),
@@ -257,8 +256,8 @@ class SqliteIngestionRepository:
             cursor = self._connection.execute(
                 "INSERT INTO crawl_targets (id, run_id, normalized_url, depth,"
                 " page_type_hint, priority, state, attempts, lease_until,"
-                " next_attempt_at, last_error) VALUES (?, ?, ?, ?, ?, ?, ?, ?,"
-                " ?, ?, ?)"
+                " next_attempt_at, last_error, snapshot_id)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT(run_id, normalized_url) DO NOTHING",
                 (
                     target.id,
@@ -278,6 +277,7 @@ class SqliteIngestionRepository:
                     if target.next_attempt_at is not None
                     else None,
                     target.last_error,
+                    target.snapshot_id,
                 ),
             )
             # SQLite reports 1 for an inserted row, 0 for a DO-NOTHING skip.
@@ -327,16 +327,19 @@ class SqliteIngestionRepository:
         state: CrawlTargetState,
         *,
         last_error: str | None = None,
+        snapshot_id: SourceSnapshotId | None = None,
     ) -> None:
-        """Set the target's state (and optionally ``last_error``).
+        """Set the target's state (and optionally ``last_error``/``snapshot_id``).
 
-        ``last_error=None`` writes SQL ``NULL`` (clears a previous error) — a
-        deliberately simple, predictable contract; S2-G6 can add a dedicated
-        "clear error" path if it needs to preserve the old error.
+        ASYMMETRY (deliberate): ``last_error=None`` writes SQL ``NULL``
+        (clears a previous error), but ``snapshot_id=None`` KEEPS the existing
+        value (``COALESCE``) — the snapshot is set once when FETCH completes
+        and most callers never pass it, so a missing kwarg must not wipe it.
         """
         self._connection.execute(
-            "UPDATE crawl_targets SET state = ?, last_error = ? WHERE id = ?",
-            (state.value, last_error, target_id),
+            "UPDATE crawl_targets SET state = ?, last_error = ?,"
+            " snapshot_id = COALESCE(?, snapshot_id) WHERE id = ?",
+            (state.value, last_error, snapshot_id, target_id),
         )
 
     def recover_expired_leases(self, run_id: IngestionRunId) -> int:
@@ -466,6 +469,11 @@ def _crawl_target_from_row(row: sqlite3.Row) -> CrawlTarget:
             else None
         ),
         last_error=row["last_error"],
+        snapshot_id=(
+            SourceSnapshotId(row["snapshot_id"])
+            if row["snapshot_id"] is not None
+            else None
+        ),
     )
 
 
