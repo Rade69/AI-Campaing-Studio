@@ -3,7 +3,46 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-09 (coordinator: MiniMax) — **ACS-S2-002
+**Zadnje ažurirano:** 2026-09-10 (coordinator: MiniMax) — **ACS-S2-009
+(S2-G9, Document parsers) MERGED (PR #26, squash `405b4139`).**
+[Codex re-review round 2 PASS](../agent_reports/2026-09-09-ACS-S2-009-rereview-codex.md)
+(`verdict: PASS`, `blocking_findings: []`) — BF-1 (cross-document
+chunk-ID kolizija) i BF-2 (truncated-PDF D23 klasifikacija) oba
+zatvorena. Codex verbatim: *"PASS — oba originalna reproduktera su
+zatvorena na HEAD-u 9d247b4. NE DIRATI: D23 no-OCR ponašanje, DOCX
+tables/helper i CI-extra follow-up."* [Task contract](../agent_reports/ACS-S2-009-task-contract.md)
+· [Implementer evidence (Pi)](../agent_reports/2026-09-09-ACS-S2-009-pi.md)
+· [Codex review round 1 (REJECT, BF-1+BF-2)](../agent_reports/2026-09-09-ACS-S2-009-review-codex.md)
+· [Fix-brief za Pi-ja (Codex round 1)](../agent_reports/2026-09-09-ACS-S2-009-fix-brief-za-pi.md).
+[PR #26](https://github.com/Rade69/AI-Campaing-Studio/pull/26) MERGED,
+squash commit `405b4139`. Post-merge CI na `main` pokrenut (run
+`34435930825`). GitNexus osvježen: 15.401 nodes / 22.716 edges / 336
+clusters / 167 flows.
+
+**Slice 2 napredak**: S2-G1 (ACS-S2-001, PR #23), S2-G2 (ACS-S2-002,
+PR #25) i S2-G9 (ACS-S2-009, PR #26) MERGED. **S2-G3/G4/G5/G6 ostaju
+otvoreni** (po kanonskom plan DAG §3). S2-G6 zavisi od G3+G4+G5+G9 —
+sada kada je G9 merged, G6 je blizu ready (još treba G3+G4+G5).
+
+**Risk klasifikacija za S2-G3/G4/G5/G6**: ako gate uvodi NOVU shemu
+(migraciju), HIGH, pun ciklus (Claude + Codex + Human Owner).
+Ako je test-only / wiring-only / sinteza već pregledanih delova bez
+GUI lifecycle rizika — MEDIUM/§29 (Claude-only review, odmah merge
+ako PASS, BEZ Codex round, BEZ posebnog Human Owner odobrenja za
+LOW/MEDIUM). Bilo šta sa GUI lifecycle rizikom (pywebview, js_api
+bridge state) ili bezbjednosnim implikacijama — HIGH, pun ciklus.
+
+**Coordinator handoff preuzet** (ACS-S2-002 round): Claude je
+blizu limita tokena u tekućoj sesiji (handoff detalji u
+[`agent_reports/2026-09-09-coordinator-handoff-to-minimax.md`](agent_reports/2026-09-09-coordinator-handoff-to-minimax.md),
+uključuje 12 operativnih lekcija iz prethodne sesije). MiniMax
+preuzima koordinatorsku ulogu do daljnjeg. Standardni workflow +
+`.agent/TASK_ROUTING.md` + `docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md`
+i dalje važe — handoff je DODATAK, ne zamjena.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-09 (coordinator: MiniMax) — **ACS-S2-002
 MERGED (PR #25, squash `00bbc89`).** Codex round 3 PASS
 (`verdict: PASS`, `blocking_findings: []`), Human Owner eksplicitno
 odobrio merge. Codex verbatim: *"Proba s odgodom BEGIN-a 1.5 s ostavila
