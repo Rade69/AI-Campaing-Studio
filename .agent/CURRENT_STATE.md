@@ -3,7 +3,32 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-10 (coordinator: claude) — **ACS-S2-014
+**Zadnje ažurirano:** 2026-09-10 (coordinator: claude) — **ACS-S2-015
+(S2-G7a, Approve/Reject FactCandidate) MERGED (PR #31, squash `37af25b`).**
+[Task contract](../agent_reports/ACS-S2-015-task-contract.md) ·
+[Implementer evidence (OpenCode)](../agent_reports/2026-09-10-ACS-S2-015-opencode.md).
+Uspješan paralelan rad sa G6 potvrđen u praksi — implementiran i
+merge-ovan bez čekanja na G6 fix. §29 MEDIUM.
+
+Provenance invarijanta (dvostruki approve/reject MORA pasti) nezavisno
+mutation-testirana na OBA puta — implementer je testirao APPROVE
+(uklonjen `assert_candidate_proposed`, 2 testa pala), koordinator
+nezavisno testirao REJECT put istom tehnikom (1 test pao), oba
+restaurisana čisto. UnitOfWork atomicity potvrđena. v1 granica
+("ApprovedFact nije linkovan na BrandSnapshot") eksplicitno testirana.
+Pun suite 1431 passed nakon rebase-a na main, 0 regresija.
+
+**Reconciliation napomena za kad G6 (ACS-S2-014, u fix-round-u zbog
+DISCOVER checkpoint nalaza) sljedeći put merguje**:
+`application/ingestion/__init__.py` će imati trivijalan rebase/merge
+konflikt (obje grane su nezavisno kreirale ovaj fajl) — spojiti export
+liste (`ApproveFactCandidate`/`RejectFactCandidate` iz ovog merge-a +
+`IngestBrandSources` iz G6), samo mehanički detalj, ne zahtijeva novi
+review krug za taj dio.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-10 (coordinator: claude) — **ACS-S2-014
 (S2-G6) evidence pregledan -- 1 konkretan nalaz, vraćeno Pi-ju na
 popravku.** [Task contract](../agent_reports/ACS-S2-014-task-contract.md)
 · [Implementer evidence (Pi)](../agent_reports/2026-09-10-ACS-S2-014-pi.md).
