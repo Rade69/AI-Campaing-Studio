@@ -4,6 +4,45 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-10 (coordinator: MiniMax) — **ACS-S2-010
+(S2-G3, HTTP Fetch + Discovery) MERGED (PR #27, squash `c0501ad`).**
+§29 MEDIUM (po koordinatorovoj odluci u ovoj sesiji — workflow #11
+strožije tumači SSRF guard kao HIGH, ali koordinator odlučio NE Codex
+round). Implementacija 22 fajla, +2283 insertions, scope čist (sve u
+`infrastructure/web_ingestion/`, zero forbidden paths). [Task contract](../agent_reports/ACS-S2-010-task-contract.md)
+· [Implementer evidence (Pi)](agent_reports/2026-09-10-ACS-S2-010-pi.md) ·
+[PR #27](https://github.com/Rade69/AI-Campaing-Studio/pull/27).
+Post-merge CI na `main` uspješan. GitNexus osvježen: 15.785 nodes
+/ 23.415 edges / 354 clusters / 176 flows (+384/+699/+18/+9 od G3).
+
+**Transparentna ograničenja** (dokumentovana u evidence, NE
+blokiraju merge, follow-up ako se pokaže potreba):
+1. **DNS anti-TOCTOU pinning NIJE u v1.** `SafeHttpAdapter.send`
+   validira DNS neposredno pre urllib3, ALI ne pin-uje IP u
+   `socket.create_connection`. Thread-safe pinning preko
+   `socket.getaddrinfo` monkeypatch-a odbačen (crawl je
+   `ThreadPoolExecutor`, IP-swap razbija HTTPS SNI). Uski TOCTOU
+   prozor. Ako review zahtijeva pinning, follow-up fix.
+2. **Sitemap index rekurzija (`<sitemapindex>`) NIJE implementirana.**
+   Contract traži `sitemap.xml` `<url><loc>`; ako G6 traži index
+   rekurziju, prijaviti kao follow-up.
+
+**Slice 2 napredak**: S2-G1 (PR #23), S2-G2 (PR #25), S2-G9
+(PR #26), S2-G3 (PR #27) MERGED. S2-G4 (Content Extract,
+OpenCode) + S2-G5 (Visual Extract, Pi) u toku. S2-G6 draft
+(čeka Claude). Čekam S2-G4 + S2-G5 evidence, pa Claude re-review
+(§29, bez Codex round-a po koordinatorovoj odluci).
+
+**Coordinator handoff preuzet** (ACS-S2-002 round): Claude je
+blizu limita tokena u tekućoj sesiji (handoff detalji u
+[`agent_reports/2026-09-09-coordinator-handoff-to-minimax.md`](agent_reports/2026-09-09-coordinator-handoff-to-minimax.md),
+uključuje 12 operativnih lekcija iz prethodne sesije). MiniMax
+preuzima koordinatorsku ulogu do daljnjeg. Standardni workflow +
+`.agent/TASK_ROUTING.md` + `docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md`
+i dalje važe — handoff je DODATAK, ne zamjena.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-10 (coordinator: MiniMax) — **ACS-S2-010
 (S2-G3, HTTP Fetch + Discovery) + ACS-S2-011 (S2-G4, Content
 Extraction) + ACS-S2-012 (S2-G5, Visual Identity Extraction)
 Task Contract-i push-ovani, čekaju implementaciju.** Sva tri
@@ -24,12 +63,6 @@ je GREŠKA — trebao je `risk: HIGH` (eksplicitno "Human Owner
 approval required"). S2-G4 MEDIUM (po planu §10), S2-G5 MEDIUM
 (sinteza postojećeg VO + port). S2-G6 HIGH (concurrency, F1-047
 klasa).
-
-**Trenutni tok**: Pi implementira S2-G3 (HIGH), OpenCode
-implementira S2-G4 (Q12 spike + extraction), čekam njihove
-evidence. G5 contract spreman push-ovan; Pi može odmah nastaviti
-na G5 kad završi G3. G6 contract draft čeka Claude (HIGH
-zahtijeva konzultaciju sa koordinatorom najviše razine).
 
 **Slice 2 napredak**: S2-G1 (ACS-S2-001, PR #23), S2-G2 (ACS-S2-002,
 PR #25) i S2-G9 (ACS-S2-009, PR #26) MERGED. S2-G3/G4/G5 u toku
