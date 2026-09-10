@@ -14,7 +14,6 @@ parse HTML, or persist SQL itself — never bypasses those reviewed layers.
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import logging
 import tempfile
@@ -332,6 +331,22 @@ class IngestBrandSources:
         fetched = 0
         failed = 0
         processed = 0
+        # R2-BF-1 (opcija A): the raw body is deliberately NOT persisted in
+        # ``raw_content_ref`` (that field is a reference, not inline payload),
+        # so a resume has no in-memory bytes for any target an earlier run
+        # left FETCHED. Requeue those targets to PENDING so the claim loop
+        # below refetches them (``save_source_snapshot`` upserts on the same
+        # deterministic id).
+        for stale in self._repository.list_crawl_targets_by_run(run_id):
+            if (
+                stale.state is CrawlTargetState.FETCHED
+                and stale.snapshot_id is not None
+            ):
+                self._repository.update_crawl_target_state(
+                    stale.id,
+                    CrawlTargetState.PENDING,
+                    last_error="missing_raw_body_refetch",
+                )
         while True:
             self._raise_if_cancelled(token)
             target = self._repository.claim_next_crawl_target(
@@ -385,7 +400,6 @@ class IngestBrandSources:
                 url=target.normalized_url,
                 fetched_at=self._clock(),
                 content_hash=hashlib.sha256(content).hexdigest(),
-                raw_content_ref=base64.b64encode(content).decode("ascii"),
                 content_type=result.content_type,
                 status_code=result.status_code,
             )
@@ -440,19 +454,12 @@ class IngestBrandSources:
         token: CancellationToken | None,
     ) -> tuple[SourceChunk, ...]:
         content = self._raw_bodies.get(str(snapshot.id))
-        if content is None and snapshot.raw_content_ref:
-            # BF-1: raw body is durable in ``source_snapshots.raw_content_ref``
-            # (base64), so a resume after FETCH no longer loses the bytes.
-            try:
-                content = base64.b64decode(snapshot.raw_content_ref)
-            except Exception as exc:  # noqa: BLE001 - corrupt ref must not kill run
-                _LOGGER.warning(
-                    "extract_invalid_raw_content_ref snapshot=%s error=%s",
-                    snapshot.id,
-                    exc,
-                )
-                return ()
         if content is None:
+            # R2-BF-1: the raw body is never stored inline in
+            # ``raw_content_ref`` (that field is a reference), so a resume
+            # recovers the bytes via refetch (see ``_fetch`` requeue). A
+            # missing in-memory body here is a defensive no-op — we never
+            # decode ``raw_content_ref`` as if it were a payload.
             _LOGGER.warning("extract_missing_raw_body snapshot=%s", snapshot.id)
             return ()
 
@@ -578,6 +585,10 @@ class IngestBrandSources:
         fetched = 0
         failed = 0
         for target in targets:
+            # ``fetched_pages`` = unique URLs whose fetch produced a durable
+            # snapshot. In a SUCCEEDED run every such target has reached DONE
+            # (``_build_facts`` marks every snapshot-bearing target DONE), so
+            # this equals the count of DONE targets with a snapshot.
             if target.snapshot_id is not None:
                 fetched += 1
             if target.state in (

@@ -50,6 +50,14 @@ def test_build_facts_is_deterministic_no_llm() -> None:
         assert forbidden not in source
 
 
+def test_ingest_brand_sources_never_inlines_base64_body() -> None:
+    """R2-BF-1: the raw body is never base64-inlined into ``raw_content_ref``."""
+    source = (_PACKAGE_DIR / "ingest_brand_sources.py").read_text(encoding="utf-8")
+    assert "base64" not in source
+    assert "b64encode" not in source
+    assert "b64decode" not in source
+
+
 def test_submit_without_job_manager_raises() -> None:
     use_case = _use_case()
     with pytest.raises(RuntimeError):

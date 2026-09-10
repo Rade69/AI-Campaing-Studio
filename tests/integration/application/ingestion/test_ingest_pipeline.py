@@ -505,6 +505,75 @@ def test_hard_kill_after_first_fetch_resumes_both_targets(tmp_path: Path) -> Non
     assert run.stats.built_candidates == 4
 
 
+def test_raw_content_ref_is_never_inline_body(tmp_path: Path) -> None:
+    """R2-BF-1: ``raw_content_ref`` stays a reference (None) — the raw body
+    is never base64-inlined into the snapshot value object / SQLite TEXT."""
+    connection = _setup_db(tmp_path)
+    repository = SqliteIngestionRepository(connection)
+    fetcher = _FakeFetcher({_START: _ok(_START), _ABOUT: _ok(_ABOUT)})
+    use_case = _make_use_case(
+        connection,
+        discovery=_FakeDiscovery({_START: (_START, _ABOUT)}),
+        fetcher=fetcher,
+    )
+
+    run = use_case.execute(_BRAND_ID, (_START,))
+
+    assert run.status is IngestionRunStatus.SUCCEEDED
+    snapshots = repository.list_source_snapshots_by_run(run.id)
+    assert len(snapshots) == 2
+    for snapshot in snapshots:
+        assert snapshot.raw_content_ref is None
+    rows = connection.execute(
+        "SELECT raw_content_ref FROM source_snapshots"
+    ).fetchall()
+    assert all(row["raw_content_ref"] is None for row in rows)
+
+
+def test_refetch_path_recovers_body_on_resume(tmp_path: Path) -> None:
+    """R2-BF-1: a cancel between ``fetcher.fetch()`` and EXTRACT leaves a
+    FETCHED target with no inline body; resume refetches it (never
+    ``b64decode``) and finishes DONE with chunks/candidates."""
+    connection = _setup_db(tmp_path)
+    repository = SqliteIngestionRepository(connection)
+    token = CancellationToken(job_id="job-r2bf1")
+    fetcher = _CancelOnceFetcher({_START: _ok(_START)}, token)
+    use_case = _make_use_case(
+        connection,
+        discovery=_FakeDiscovery({_START: (_START,)}),
+        fetcher=fetcher,
+    )
+
+    with pytest.raises(CancellationError):
+        use_case.execute(_BRAND_ID, (_START,), run_id="run-r2bf1", token=token)
+
+    snapshots = repository.list_source_snapshots_by_run(
+        IngestionRunId("run-r2bf1")
+    )
+    assert len(snapshots) == 1
+    assert snapshots[0].raw_content_ref is None
+
+    calls_before = len(fetcher.calls)
+    run = use_case.execute(_BRAND_ID, (_START,), run_id="run-r2bf1")
+    assert len(fetcher.calls) > calls_before  # refetch, not b64decode
+
+    assert run.status is IngestionRunStatus.SUCCEEDED
+    targets = repository.list_crawl_targets_by_run(run.id)
+    assert len(targets) == 1
+    assert targets[0].state is CrawlTargetState.DONE
+    assert targets[0].snapshot_id is not None
+    assert (
+        len(repository.list_source_chunks_by_snapshot(targets[0].snapshot_id)) == 2
+    )
+    assert (
+        len(repository.list_fact_candidates_by_snapshot(targets[0].snapshot_id))
+        == 2
+    )
+    assert run.stats.fetched_pages == 1
+    assert run.stats.extracted_chunks == 2
+    assert run.stats.built_candidates == 2
+
+
 def test_chunk_loop_checks_cancellation_per_iteration(tmp_path: Path) -> None:
     """BF-2(a): cancellation is checked before every chunk save."""
     connection = _setup_db(tmp_path)
