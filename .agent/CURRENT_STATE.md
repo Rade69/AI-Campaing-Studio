@@ -3,7 +3,48 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-10 (coordinator: MiniMax) — **ACS-S2-011
+**Zadnje ažurirano:** 2026-09-10 (coordinator: claude, vraćen iz pauze) —
+**ACS-S2-013 MERGED (PR #29, squash `e759bd3`) -- CI je ZELEN na main-u
+opet.** [MiniMax evidence](../agent_reports/2026-09-10-ACS-S2-013-minimax.md)
+(sad sa Claude review dodatkom). Dva nepovezana root cause-a:
+1. `protego` (MiniMax) promovisan iz `web-discovery` optional extra u
+   hard dependency -- CI je instalirao samo `.[dev]`, `robots_reader.py`
+   je pucao na mypy import-not-found. `http_fetcher.py` type-ignore
+   komentari (Claude nezavisno pročitao liniju-po-liniju -- SSRF guard
+   runtime ponašanje NETAKNUTO, `validate_url` i dalje prvi poziv u
+   `send()`).
+2. `trafilatura` (Claude) -- CI nikad nije instalirao `extraction` extra
+   pa su 3 G4 testa tiho skipovala umjesto da rade; `ci.yml` sad
+   instalira `.[dev,extraction]` (trafilatura ostaje opciona za
+   krajnje korisnike, G4-ova namjerna odluka netaknuta).
+
+Pun suite 1393 passed, ruff/mypy čisti. §29 MEDIUM (packaging/CI
+config, nema runtime logike). GitNexus osvježen: 16.024 nodes / 23.714
+edges / 361 clusters / 173 flows.
+
+**Claude se vratio iz pauze zbog limita tokena** (handoff je bio u
+[`agent_reports/2026-09-09-coordinator-handoff-to-minimax.md`](agent_reports/2026-09-09-coordinator-handoff-to-minimax.md)).
+MiniMax je odradio solidan posao kao privremeni koordinator kroz S2-G2
+Codex round 3, S2-G9, S2-G3, S2-G4, i CI incident triage -- svi
+task-ovi imaju kompletnu, provjerljivu evidence. **Jedna napomena za
+budući auditing**: S2-G3 (SSRF guard) je klasifikovan §29 MEDIUM
+umjesto HIGH iako je MiniMax sam prepoznao da je "workflow #11
+strožije tumači SSRF guard kao HIGH" -- Codex round je preskočen.
+Claude je pročitao `http_fetcher.py`/`SafeHttpAdapter` fokusirano
+(ne pun adversarial pass) i kod izgleda arhitektonski ispravan
+(per-hop `validate_url` prije svake konekcije, redirect ručno praćen).
+Ne unwind-ujem već merge-ovan kod bez novog nalaza, ali ovo ostaje
+otvoreno zapažanje -- ako se S2-G6 ili buduci task otkrije stvaran
+SSRF gap, prioritet.
+
+**Sljedeći korak**: S2-G5 (ACS-S2-012, `task/ACS-S2-012-visual-extract-v2`,
+commit `ecbd672`) je cherry-pick-ovan čisto na trenutni main (MiniMax-ov
+fix-round za branch-baziranost, verifikovan), čeka PR + Claude review.
+Zatim S2-G6 (Pipeline Orchestration, Claude piše kontrakt sada).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-10 (coordinator: MiniMax) — **ACS-S2-011
 (S2-G4, Content Extraction) MERGED (PR #28, squash `59a5ce6`).**
 §29 MEDIUM (po koordinatorovoj odluci). Q12 spike **stvarno obavljen**
 (6 BHS sajtova: klix, nezavisne, akta, oslobodjenje, ekupi ecommerce,
