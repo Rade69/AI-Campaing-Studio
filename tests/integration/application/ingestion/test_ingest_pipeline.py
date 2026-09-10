@@ -19,11 +19,14 @@ from ai_campaign_studio.domain.common.ids import (
     BrandId,
     CrawlTargetId,
     IngestionRunId,
+    SourceChunkId,
     SourceSnapshotId,
 )
+from ai_campaign_studio.domain.facts.entities import FactCandidate
 from ai_campaign_studio.domain.ingestion.entities import (
     CrawlTarget,
     IngestionRun,
+    SourceChunk,
     SourceSnapshot,
 )
 from ai_campaign_studio.domain.ingestion.enums import (
@@ -43,7 +46,10 @@ from ai_campaign_studio.infrastructure.extraction import (
 )
 from ai_campaign_studio.infrastructure.web_ingestion import UrlClassifier, normalize_url
 from ai_campaign_studio.jobs.cancellation import CancellationError, CancellationToken
-from ai_campaign_studio.ports.web_ingestion import FetchResult
+from ai_campaign_studio.ports.web_ingestion import (
+    FetchResult,
+    VisualIdentityExtractorPort,
+)
 
 _MIGRATIONS_DIR = Path(__file__).resolve().parents[4] / "resources" / "migrations"
 _BRAND_ID = BrandId("brand-1")
@@ -92,6 +98,64 @@ class _FakeVisual:
         return VisualIdentity()
 
 
+class _SpyVisual:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def extract(self, html: str, base_url: str) -> VisualIdentity:
+        self.calls.append(base_url)
+        return VisualIdentity(logo_path="/logo.png", primary_colors=("#000000",))
+
+
+class _CancelOnceFetcher(_FakeFetcher):
+    """Fetcher that requests cancellation during the FIRST successful fetch.
+
+    Models a hard kill that lands right after one page was fetched (BF-1):
+    the fetch itself returns a 200 body, then the run cancels.
+    """
+
+    def __init__(
+        self, mapping: dict[str, FetchResult], token: CancellationToken
+    ) -> None:
+        super().__init__(mapping)
+        self._token = token
+        self._armed = True
+
+    def fetch(self, url: str) -> FetchResult:
+        if self._armed:
+            self._armed = False
+            self._token.request_cancel()
+        return super().fetch(url)
+
+
+class _CancelOnFirstSaveRepository(SqliteIngestionRepository):
+    """Repository wrapper that cancels on the first chunk/candidate save."""
+
+    def __init__(
+        self,
+        connection: sqlite3.Connection,
+        token: CancellationToken,
+        *,
+        method: str,
+    ) -> None:
+        super().__init__(connection)
+        self._token = token
+        self._method = method
+        self._armed = True
+
+    def save_source_chunk(self, chunk: SourceChunk) -> None:
+        if self._method == "chunk" and self._armed:
+            self._armed = False
+            self._token.request_cancel()
+        super().save_source_chunk(chunk)
+
+    def save_fact_candidate(self, candidate: FactCandidate) -> None:
+        if self._method == "candidate" and self._armed:
+            self._armed = False
+            self._token.request_cancel()
+        super().save_fact_candidate(candidate)
+
+
 class _FakeBudget:
     def can_crawl(self, domain: str) -> bool:
         return True
@@ -122,15 +186,17 @@ def _make_use_case(
     *,
     discovery: _FakeDiscovery,
     fetcher: _FakeFetcher,
+    repository: SqliteIngestionRepository | None = None,
+    visual: VisualIdentityExtractorPort | None = None,
 ) -> IngestBrandSources:
     return IngestBrandSources(
-        repository=SqliteIngestionRepository(connection),
+        repository=repository or SqliteIngestionRepository(connection),
         fetcher=fetcher,
         classifier=UrlClassifier(),
         discovery=discovery,
         budget=_FakeBudget(),
         normalizer=normalize_url,
-        visual_identity_extractor=_FakeVisual(),
+        visual_identity_extractor=visual or _FakeVisual(),
         content_extractor=_content_extractor,
         boilerplate_filter=BoilerplateFilter().filter,
         deduplicator=Deduplicator().deduplicate,
@@ -379,3 +445,193 @@ def test_discover_checkpoint_not_written_when_cancelled_during_discover(
         for row in connection.execute("SELECT phase FROM ingestion_checkpoints")
     }
     assert IngestionPhase.DISCOVER.value not in phases
+
+
+def test_cancel_after_fetch_recovers_body_on_resume(tmp_path: Path) -> None:
+    """BF-1(a): a cancel after a successful FETCH must not lose the body."""
+    connection = _setup_db(tmp_path)
+    repository = SqliteIngestionRepository(connection)
+    token = CancellationToken(job_id="job-bf1a")
+    fetcher = _CancelOnceFetcher({_START: _ok(_START)}, token)
+    use_case = _make_use_case(
+        connection, discovery=_FakeDiscovery({_START: (_START,)}), fetcher=fetcher
+    )
+
+    with pytest.raises(CancellationError):
+        use_case.execute(_BRAND_ID, (_START,), run_id="run-bf1a", token=token)
+
+    # Resume: no in-memory body, but the snapshot persisted raw_content_ref.
+    run = use_case.execute(_BRAND_ID, (_START,), run_id="run-bf1a")
+
+    assert run.status is IngestionRunStatus.SUCCEEDED
+    targets = repository.list_crawl_targets_by_run(run.id)
+    assert len(targets) == 1
+    assert targets[0].state is CrawlTargetState.DONE
+    assert targets[0].snapshot_id is not None
+    assert (
+        len(repository.list_source_chunks_by_snapshot(targets[0].snapshot_id)) == 2
+    )
+    assert (
+        len(repository.list_fact_candidates_by_snapshot(targets[0].snapshot_id)) == 2
+    )
+    assert run.stats.fetched_pages == 1
+    assert run.stats.extracted_chunks == 2
+    assert run.stats.built_candidates == 2
+
+
+def test_hard_kill_after_first_fetch_resumes_both_targets(tmp_path: Path) -> None:
+    """BF-1(b): kill after the first of two fetches; resume must count both."""
+    connection = _setup_db(tmp_path)
+    repository = SqliteIngestionRepository(connection)
+    token = CancellationToken(job_id="job-bf1b")
+    fetcher = _CancelOnceFetcher({_START: _ok(_START), _ABOUT: _ok(_ABOUT)}, token)
+    use_case = _make_use_case(
+        connection,
+        discovery=_FakeDiscovery({_START: (_START, _ABOUT)}),
+        fetcher=fetcher,
+    )
+
+    with pytest.raises(CancellationError):
+        use_case.execute(_BRAND_ID, (_START,), run_id="run-bf1b", token=token)
+
+    run = use_case.execute(_BRAND_ID, (_START,), run_id="run-bf1b")
+
+    assert run.status is IngestionRunStatus.SUCCEEDED
+    targets = repository.list_crawl_targets_by_run(run.id)
+    assert len(targets) == 2
+    assert all(t.state is CrawlTargetState.DONE for t in targets)
+    assert run.stats.fetched_pages == 2
+    assert run.stats.extracted_chunks == 4
+    assert run.stats.built_candidates == 4
+
+
+def test_chunk_loop_checks_cancellation_per_iteration(tmp_path: Path) -> None:
+    """BF-2(a): cancellation is checked before every chunk save."""
+    connection = _setup_db(tmp_path)
+    token = CancellationToken(job_id="job-bf2c")
+    repo = _CancelOnFirstSaveRepository(connection, token, method="chunk")
+    fetcher = _FakeFetcher({_START: _ok(_START)})
+    use_case = _make_use_case(
+        connection,
+        discovery=_FakeDiscovery({_START: (_START,)}),
+        fetcher=fetcher,
+        repository=repo,
+    )
+
+    with pytest.raises(CancellationError):
+        use_case.execute(_BRAND_ID, (_START,), run_id="run-bf2c", token=token)
+
+    targets = repo.list_crawl_targets_by_run(IngestionRunId("run-bf2c"))
+    assert len(targets) == 1
+    assert targets[0].state is CrawlTargetState.FETCHED  # not EXTRACTED
+    assert targets[0].snapshot_id is not None
+    assert len(repo.list_source_chunks_by_snapshot(targets[0].snapshot_id)) == 1
+
+
+def test_candidate_loop_checks_cancellation_per_iteration(tmp_path: Path) -> None:
+    """BF-2(b): cancellation is checked before every candidate save."""
+    connection = _setup_db(tmp_path)
+    token = CancellationToken(job_id="job-bf2f")
+    repo = _CancelOnFirstSaveRepository(connection, token, method="candidate")
+    fetcher = _FakeFetcher({_START: _ok(_START)})
+    use_case = _make_use_case(
+        connection,
+        discovery=_FakeDiscovery({_START: (_START,)}),
+        fetcher=fetcher,
+        repository=repo,
+    )
+
+    with pytest.raises(CancellationError):
+        use_case.execute(_BRAND_ID, (_START,), run_id="run-bf2f", token=token)
+
+    targets = repo.list_crawl_targets_by_run(IngestionRunId("run-bf2f"))
+    assert len(targets) == 1
+    assert targets[0].state is CrawlTargetState.EXTRACTED  # not DONE
+    assert targets[0].snapshot_id is not None
+    assert len(repo.list_fact_candidates_by_snapshot(targets[0].snapshot_id)) == 1
+
+
+def test_extensionless_pdf_url_with_content_type_produces_chunks(
+    tmp_path: Path,
+) -> None:
+    """BF-3: a PDF Content-Type maps to the pdf extractor without a suffix."""
+    connection = _setup_db(tmp_path)
+    repository = SqliteIngestionRepository(connection)
+    pdf_url = "https://example.com/download?id=123"
+
+    def fake_pdf(
+        path: str,
+        run_id: IngestionRunId,
+        snapshot_id: SourceSnapshotId,
+    ) -> tuple[SourceChunk, ...]:
+        return (
+            SourceChunk(
+                id=SourceChunkId(f"{snapshot_id}:c0"),
+                snapshot_id=snapshot_id,
+                locator_type="pdf_page",
+                locator="p1",
+                text="PDF sadrzaj prve strane.",
+            ),
+        )
+
+    fetcher = _FakeFetcher(
+        {
+            pdf_url: FetchResult(
+                url=pdf_url,
+                final_url=pdf_url,
+                status_code=200,
+                content=b"%PDF-1.4 fake",
+                content_type="application/pdf",
+            )
+        }
+    )
+    use_case = IngestBrandSources(
+        repository=repository,
+        fetcher=fetcher,
+        classifier=UrlClassifier(),
+        discovery=_FakeDiscovery({pdf_url: (pdf_url,)}),
+        budget=_FakeBudget(),
+        normalizer=normalize_url,
+        visual_identity_extractor=_FakeVisual(),
+        content_extractor=_content_extractor,
+        boilerplate_filter=BoilerplateFilter().filter,
+        deduplicator=Deduplicator().deduplicate,
+        document_extractors={"pdf": fake_pdf},
+    )
+
+    run = use_case.execute(_BRAND_ID, (pdf_url,))
+
+    assert run.status is IngestionRunStatus.SUCCEEDED
+    targets = repository.list_crawl_targets_by_run(run.id)
+    assert targets[0].state is CrawlTargetState.DONE
+    assert targets[0].snapshot_id is not None
+    chunks = repository.list_source_chunks_by_snapshot(targets[0].snapshot_id)
+    assert len(chunks) == 1
+    assert chunks[0].locator_type == "pdf_page"
+    assert run.stats.extracted_chunks == 1
+    assert run.stats.built_candidates == 1
+
+
+def test_visual_identity_called_only_for_home_and_about(tmp_path: Path) -> None:
+    """BF-4: visual identity extractor runs for HOME/ABOUT only."""
+    connection = _setup_db(tmp_path)
+    spy = _SpyVisual()
+    urls = (
+        _START,
+        _ABOUT,
+        "https://example.com/proizvod/x",
+        "https://example.com/vijesti/1",
+        "https://example.com/clanak/1",
+    )
+    fetcher = _FakeFetcher({u: _ok(u) for u in urls})
+    use_case = _make_use_case(
+        connection,
+        discovery=_FakeDiscovery({_START: urls}),
+        fetcher=fetcher,
+        visual=spy,
+    )
+
+    run = use_case.execute(_BRAND_ID, (_START,))
+
+    assert run.status is IngestionRunStatus.SUCCEEDED
+    assert set(spy.calls) == {_START, _ABOUT}

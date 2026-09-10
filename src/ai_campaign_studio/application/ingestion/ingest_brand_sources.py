@@ -14,6 +14,7 @@ parse HTML, or persist SQL itself — never bypasses those reviewed layers.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import logging
 import tempfile
@@ -72,6 +73,13 @@ _DEFAULT_LEASE_SECONDS = 120
 _DEFAULT_MAX_FETCH_ATTEMPTS = 3
 _DOCUMENT_EXTENSIONS = frozenset({"pdf", "docx", "xlsx"})
 
+# Content-Type → document extractor key for extensionless URLs (BF-3).
+_DOCUMENT_MIME_TYPES: dict[str, str] = {
+    "application/pdf": "pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+}
+
 # Coarse fetch priority by page type (higher = claimed first).
 _PRIORITY_BY_PAGE_TYPE: dict[PageType, int] = {
     PageType.HOME: 100,
@@ -104,6 +112,13 @@ def _document_extension(url: str) -> str | None:
     path = urlsplit(url).path.lower()
     suffix = Path(path).suffix.lstrip(".")
     return suffix if suffix in _DOCUMENT_EXTENSIONS else None
+
+
+def _document_mime_extension(content_type: str | None) -> str | None:
+    if content_type is None:
+        return None
+    mime = content_type.split(";")[0].strip().lower()
+    return _DOCUMENT_MIME_TYPES.get(mime)
 
 
 class IngestBrandSources:
@@ -216,7 +231,7 @@ class IngestBrandSources:
             # complete for later content-signal refinement.
             self._checkpoint(run, IngestionPhase.CLASSIFY, token)
 
-            fetched, failed = self._fetch(resolved_run_id, discovered, token)
+            _fetched, _failed = self._fetch(resolved_run_id, discovered, token)
             self._checkpoint(run, IngestionPhase.FETCH, token)
 
             # RENDER is a no-op in v1 (Playwright fallback is S2-G8).
@@ -225,7 +240,7 @@ class IngestBrandSources:
             chunks_saved = self._extract(resolved_run_id, token)
             self._checkpoint(run, IngestionPhase.EXTRACT, token)
 
-            candidates = self._build_facts(resolved_run_id, chunks_saved, token)
+            self._build_facts(resolved_run_id, chunks_saved, token)
             self._checkpoint(run, IngestionPhase.BUILD_FACTS, token)
 
             run = IngestionRun(
@@ -235,13 +250,7 @@ class IngestBrandSources:
                 started_at=run.started_at,
                 finished_at=self._clock(),
                 source_scope=run.source_scope,
-                stats=IngestionRunStats(
-                    discovered_urls=discovered,
-                    fetched_pages=fetched,
-                    extracted_chunks=chunks_saved,
-                    built_candidates=candidates,
-                    failed_pages=failed,
-                ),
+                stats=self._compute_run_stats(resolved_run_id),
             )
             self._repository.save_ingestion_run(run)
             self._checkpoint(run, IngestionPhase.DONE, token)
@@ -376,6 +385,7 @@ class IngestBrandSources:
                 url=target.normalized_url,
                 fetched_at=self._clock(),
                 content_hash=hashlib.sha256(content).hexdigest(),
+                raw_content_ref=base64.b64encode(content).decode("ascii"),
                 content_type=result.content_type,
                 status_code=result.status_code,
             )
@@ -385,6 +395,10 @@ class IngestBrandSources:
                 target.id, CrawlTargetState.FETCHED, snapshot_id=snapshot.id
             )
             fetched += 1
+            # Honest cancellation: a cancel requested DURING fetch propagates
+            # only AFTER the snapshot+state are durable, so the run reports
+            # CANCELLED while the persisted work is recoverable on resume (BF-1).
+            self._raise_if_cancelled(token)
             self._progress(token, processed, total, IngestionPhase.FETCH)
         return fetched, failed
 
@@ -409,6 +423,7 @@ class IngestBrandSources:
                 continue
             chunks = self._extract_snapshot(snapshot, run_id, target, token)
             for chunk in chunks:
+                self._raise_if_cancelled(token)
                 self._repository.save_source_chunk(chunk)
                 saved += 1
             self._repository.update_crawl_target_state(
@@ -425,15 +440,25 @@ class IngestBrandSources:
         token: CancellationToken | None,
     ) -> tuple[SourceChunk, ...]:
         content = self._raw_bodies.get(str(snapshot.id))
+        if content is None and snapshot.raw_content_ref:
+            # BF-1: raw body is durable in ``source_snapshots.raw_content_ref``
+            # (base64), so a resume after FETCH no longer loses the bytes.
+            try:
+                content = base64.b64decode(snapshot.raw_content_ref)
+            except Exception as exc:  # noqa: BLE001 - corrupt ref must not kill run
+                _LOGGER.warning(
+                    "extract_invalid_raw_content_ref snapshot=%s error=%s",
+                    snapshot.id,
+                    exc,
+                )
+                return ()
         if content is None:
-            # Restart between FETCH and EXTRACT: the reviewed S2-G1 snapshot
-            # value object intentionally does NOT inline raw bytes, so this
-            # process no longer has them. Skip (a follow-up may persist raw
-            # content via ``raw_content_ref``).
             _LOGGER.warning("extract_missing_raw_body snapshot=%s", snapshot.id)
             return ()
 
         extension = _document_extension(target.normalized_url)
+        if extension is None:
+            extension = _document_mime_extension(snapshot.content_type)
         if extension is not None and extension in self._document_extractors:
             return self._extract_document(
                 content, extension, run_id, snapshot.id, token
@@ -444,6 +469,8 @@ class IngestBrandSources:
             return ()
 
         html = content.decode("utf-8", errors="replace")
+        if target.page_type_hint in (PageType.HOME, PageType.ABOUT):
+            self._extract_visual_identity(html, snapshot.url)
         text = self._content_extractor(html, snapshot.url)
         text = self._boilerplate_filter(text)
         paragraphs = [part.strip() for part in text.split("\n\n") if part.strip()]
@@ -458,6 +485,25 @@ class IngestBrandSources:
             for position, paragraph in enumerate(paragraphs)
         )
         return self._deduplicator(chunks)
+
+    def _extract_visual_identity(self, html: str, url: str) -> None:
+        """Call the injected visual-identity extractor for HOME/ABOUT (BF-4).
+
+        G6 scope is only to invoke and log the signal — NOT to persist it.
+        """
+        try:
+            identity = self._visual_identity.extract(html, url)
+        except Exception as exc:  # noqa: BLE001 - visual signal must not kill run
+            _LOGGER.warning(
+                "visual_identity_extraction_failed url=%s error=%s", url, exc
+            )
+            return
+        _LOGGER.info(
+            "visual_identity_extracted url=%s logo=%s colors=%d",
+            url,
+            identity.logo_path,
+            len(identity.primary_colors) + len(identity.secondary_colors),
+        )
 
     def _extract_document(
         self,
@@ -509,6 +555,7 @@ class IngestBrandSources:
             assert target.snapshot_id is not None
             chunks = self._repository.list_source_chunks_by_snapshot(target.snapshot_id)
             for chunk in chunks:
+                self._raise_if_cancelled(token)
                 candidate = FactCandidate(
                     id=FactCandidateId(f"cand:{chunk.id}"),
                     snapshot_id=chunk.snapshot_id,
@@ -524,6 +571,39 @@ class IngestBrandSources:
         return built
 
     # --- helpers ---
+
+    def _compute_run_stats(self, run_id: IngestionRunId) -> IngestionRunStats:
+        """Derive final stats from durable state, not per-call counters (BF-1)."""
+        targets = self._repository.list_crawl_targets_by_run(run_id)
+        fetched = 0
+        failed = 0
+        for target in targets:
+            if target.snapshot_id is not None:
+                fetched += 1
+            if target.state in (
+                CrawlTargetState.FAILED,
+                CrawlTargetState.SKIPPED_ROBOTS,
+                CrawlTargetState.SKIPPED_UNSAFE,
+                CrawlTargetState.TOO_LARGE,
+                CrawlTargetState.CANCELLED,
+            ):
+                failed += 1
+        extracted_chunks = 0
+        built_candidates = 0
+        for snapshot in self._repository.list_source_snapshots_by_run(run_id):
+            extracted_chunks += len(
+                self._repository.list_source_chunks_by_snapshot(snapshot.id)
+            )
+            built_candidates += len(
+                self._repository.list_fact_candidates_by_snapshot(snapshot.id)
+            )
+        return IngestionRunStats(
+            discovered_urls=len(targets),
+            fetched_pages=fetched,
+            extracted_chunks=extracted_chunks,
+            built_candidates=built_candidates,
+            failed_pages=failed,
+        )
 
     def _checkpoint(
         self,
