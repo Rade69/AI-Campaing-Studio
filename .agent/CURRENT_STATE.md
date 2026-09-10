@@ -3,7 +3,58 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-10 (coordinator: MiniMax) — **ACS-S2-010
+**Zadnje ažurirano:** 2026-09-10 (coordinator: MiniMax) — **ACS-S2-011
+(S2-G4, Content Extraction) MERGED (PR #28, squash `59a5ce6`).**
+§29 MEDIUM (po koordinatorovoj odluci). Q12 spike **stvarno obavljen**
+(6 BHS sajtova: klix, nezavisne, akta, oslobodjenje, ekupi ecommerce,
+turizam.rs, ručno ground-truth anotirani). **Pobjednik: Trafilatura**
+(F1=0.978 vs readability F1=0.891, razlika 9.7% > 5% tie-breaker).
+[Task contract](../agent_reports/ACS-S2-011-task-contract.md)
+· [Implementer evidence (OpenCode)](agent_reports/2026-09-10-ACS-S2-011-opencode.md)
+· [Q12 spike result](../agent_reports/../../../blob/task/ACS-S2-011-content-extract/spikes/extraction-benchmark/result.md) ·
+[chosen.md](../agent_reports/../../../blob/task/ACS-S2-011-content-extract/spikes/extraction-benchmark/chosen.md) ·
+[PR #28](https://github.com/Rade69/AI-Campaing-Studio/pull/28).
+Implementacija 31 fajla, +13528 insertions (većina HTML korpus).
+Scope čist (sve u `infrastructure/extraction/`, zero forbidden paths).
+GitNexus: 16.010 nodes / 23.701 edges / 361 clusters / 173 flows
+(+225/+286/+7 od G4).
+
+**Ključne odluke** (dokumentovane u evidence):
+- `extract` vraća `str` (ne `ContentExtractionResult`) — chunking
+  + SourceChunk materijalizacija je G6 scope
+- Graceful fallback preko stdlib `html.parser` (bez dependency-ja)
+  — `extract` nikad ne raise, prazan/malformed → `""`/raw text
+- `BoilerplateFilter` non-destructive (NE briše golu "kolačić"
+  riječ, samo consent linije)
+- `Deduplicator` tačan match sa `casefold()` + whitespace collapse
+  (mutation demonstriran: 3 failed → restore → 7 passed)
+- Dependency: SAMO pobjednik (`extraction = ["trafilatura>=1.6"]`,
+  optional extra, ne core)
+
+**OUT_OF_SCOPE_FINDINGS** (follow-up, ne blokira merge):
+1. CI install (`.github/workflows/ci.yml:20`) BEZ `extraction`
+   extra — 3 trafilatura-specifična testa će se skipovati preko
+   `importorskip`. Ostali testovi (fallback, dedup, filter) rade
+   svuda. Follow-up CI install fix (`.github/` NIJE u `allowed_paths`).
+2. Chunking (paragraph split) je NAMJERNO van scope-a —
+   `SourceChunk` materijalizacija je G6 zaduženje.
+
+**Slice 2 napredak**: S2-G1 (PR #23), S2-G2 (PR #25), S2-G9
+(PR #26), S2-G3 (PR #27), S2-G4 (PR #28) MERGED. S2-G5
+(Visual Extract, Pi) u toku. S2-G6 draft (čeka Claude).
+Čekam S2-G5 evidence, pa Claude re-review (§29, bez Codex round-a).
+
+**Coordinator handoff preuzet** (ACS-S2-002 round): Claude je
+blizu limita tokena u tekućoj sesiji (handoff detalji u
+[`agent_reports/2026-09-09-coordinator-handoff-to-minimax.md`](agent_reports/2026-09-09-coordinator-handoff-to-minimax.md),
+uključuje 12 operativnih lekcija iz prethodne sesije). MiniMax
+preuzima koordinatorsku ulogu do daljnjeg. Standardni workflow +
+`.agent/TASK_ROUTING.md` + `docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md`
+i dalje važe — handoff je DODATAK, ne zamjena.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-10 (coordinator: MiniMax) — **ACS-S2-010
 (S2-G3, HTTP Fetch + Discovery) MERGED (PR #27, squash `c0501ad`).**
 §29 MEDIUM (po koordinatorovoj odluci u ovoj sesiji — workflow #11
 strožije tumači SSRF guard kao HIGH, ali koordinator odlučio NE Codex
@@ -25,12 +76,6 @@ blokiraju merge, follow-up ako se pokaže potreba):
 2. **Sitemap index rekurzija (`<sitemapindex>`) NIJE implementirana.**
    Contract traži `sitemap.xml` `<url><loc>`; ako G6 traži index
    rekurziju, prijaviti kao follow-up.
-
-**Slice 2 napredak**: S2-G1 (PR #23), S2-G2 (PR #25), S2-G9
-(PR #26), S2-G3 (PR #27) MERGED. S2-G4 (Content Extract,
-OpenCode) + S2-G5 (Visual Extract, Pi) u toku. S2-G6 draft
-(čeka Claude). Čekam S2-G4 + S2-G5 evidence, pa Claude re-review
-(§29, bez Codex round-a po koordinatorovoj odluci).
 
 **Coordinator handoff preuzet** (ACS-S2-002 round): Claude je
 blizu limita tokena u tekućoj sesiji (handoff detalji u
