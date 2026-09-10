@@ -395,11 +395,35 @@ class IngestBrandSources:
                 continue
 
             content = result.content or b""
+            content_hash = hashlib.sha256(content).hexdigest()
+            base_snapshot_id = SourceSnapshotId(
+                _stable_id(run_id, target.normalized_url)
+            )
+            previous_snapshot_id = target.snapshot_id or base_snapshot_id
+            previous_snapshot = self._repository.get_source_snapshot(
+                previous_snapshot_id
+            )
+            snapshot_id = base_snapshot_id
+            if previous_snapshot is not None:
+                if previous_snapshot.content_hash == content_hash:
+                    # Same bytes after a crash: reuse the prior identity so
+                    # save remains an idempotent upsert.
+                    snapshot_id = previous_snapshot.id
+                else:
+                    # A recovery refetch can observe newer page content. Keep
+                    # the earlier snapshot/chunks immutable and start a fresh
+                    # provenance chain for the new bytes.
+                    snapshot_id = SourceSnapshotId(
+                        _stable_id(
+                            run_id,
+                            f"{target.normalized_url}:{content_hash}",
+                        )
+                    )
             snapshot = SourceSnapshot(
-                id=SourceSnapshotId(_stable_id(run_id, target.normalized_url)),
+                id=snapshot_id,
                 url=target.normalized_url,
                 fetched_at=self._clock(),
-                content_hash=hashlib.sha256(content).hexdigest(),
+                content_hash=content_hash,
                 content_type=result.content_type,
                 status_code=result.status_code,
             )
@@ -555,6 +579,7 @@ class IngestBrandSources:
             target
             for target in self._repository.list_crawl_targets_by_run(run_id)
             if target.snapshot_id is not None
+            and target.state is CrawlTargetState.EXTRACTED
         ]
         total = len(targets)
         for index, target in enumerate(targets, start=1):

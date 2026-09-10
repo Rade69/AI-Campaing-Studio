@@ -574,6 +574,138 @@ def test_refetch_path_recovers_body_on_resume(tmp_path: Path) -> None:
     assert run.stats.built_candidates == 2
 
 
+def test_failed_refetch_does_not_turn_failed_target_done(tmp_path: Path) -> None:
+    """R3-BF-1: a failed recovery refetch remains visibly failed.
+
+    A durable snapshot from the cancelled attempt must not make BUILD_FACTS
+    treat the target as successfully extracted or erase the fetch failure.
+    """
+    connection = _setup_db(tmp_path)
+    repository = SqliteIngestionRepository(connection)
+    token = CancellationToken(job_id="job-r3bf1")
+    fetcher = _CancelOnceFetcher({_START: _ok(_START)}, token)
+    use_case = _make_use_case(
+        connection,
+        discovery=_FakeDiscovery({_START: (_START,)}),
+        fetcher=fetcher,
+    )
+
+    with pytest.raises(CancellationError):
+        use_case.execute(_BRAND_ID, (_START,), run_id="run-r3bf1", token=token)
+
+    target_after_cancel = repository.list_crawl_targets_by_run(
+        IngestionRunId("run-r3bf1")
+    )[0]
+    assert target_after_cancel.state is CrawlTargetState.FETCHED
+    assert target_after_cancel.snapshot_id is not None
+
+    fetcher._mapping[_START] = FetchResult(
+        url=_START,
+        final_url=_START,
+        status_code=0,
+        error="network_down",
+    )
+    run = use_case.execute(_BRAND_ID, (_START,), run_id="run-r3bf1")
+
+    target = repository.list_crawl_targets_by_run(run.id)[0]
+    assert target.state is CrawlTargetState.FAILED
+    assert target.snapshot_id is not None
+    assert repository.list_source_chunks_by_snapshot(target.snapshot_id) == ()
+    assert repository.list_fact_candidates_by_snapshot(target.snapshot_id) == ()
+    assert run.stats.fetched_pages == 1
+    assert run.stats.extracted_chunks == 0
+    assert run.stats.built_candidates == 0
+    assert run.stats.failed_pages == 1
+
+
+def test_changed_refetch_body_does_not_reuse_partial_snapshot(
+    tmp_path: Path,
+) -> None:
+    """A changed recovery body gets a new snapshot provenance chain."""
+    connection = _setup_db(tmp_path)
+    token = CancellationToken(job_id="job-r3-drift")
+
+    class _CancelOnSecondChunkRepository(SqliteIngestionRepository):
+        def __init__(self) -> None:
+            super().__init__(connection)
+            self._saved = 0
+
+        def save_source_chunk(self, chunk: SourceChunk) -> None:
+            self._saved += 1
+            if self._saved == 2:
+                token.request_cancel()
+            super().save_source_chunk(chunk)
+
+    repository = _CancelOnSecondChunkRepository()
+    old_result = FetchResult(
+        url=_START,
+        final_url=_START,
+        status_code=200,
+        content=b"<html>old</html>",
+        content_type="text/html",
+    )
+    new_result = FetchResult(
+        url=_START,
+        final_url=_START,
+        status_code=200,
+        content=b"<html>new</html>",
+        content_type="text/html",
+    )
+    fetcher = _FakeFetcher({_START: old_result})
+
+    def changing_extractor(html: str, _base_url: str) -> str:
+        return "old-0\n\nold-1\n\nold-2" if "old" in html else "new-0"
+
+    use_case = IngestBrandSources(
+        repository=repository,
+        fetcher=fetcher,
+        classifier=UrlClassifier(),
+        discovery=_FakeDiscovery({_START: (_START,)}),
+        budget=_FakeBudget(),
+        normalizer=normalize_url,
+        visual_identity_extractor=_FakeVisual(),
+        content_extractor=changing_extractor,
+        boilerplate_filter=BoilerplateFilter().filter,
+        deduplicator=Deduplicator().deduplicate,
+        document_extractors={},
+    )
+
+    with pytest.raises(CancellationError):
+        use_case.execute(_BRAND_ID, (_START,), run_id="run-r3-drift", token=token)
+
+    target_after_cancel = repository.list_crawl_targets_by_run(
+        IngestionRunId("run-r3-drift")
+    )[0]
+    old_snapshot_id = target_after_cancel.snapshot_id
+    assert old_snapshot_id is not None
+    assert len(repository.list_source_chunks_by_snapshot(old_snapshot_id)) == 2
+
+    fetcher._mapping[_START] = new_result
+    run = use_case.execute(_BRAND_ID, (_START,), run_id="run-r3-drift")
+
+    target = repository.list_crawl_targets_by_run(run.id)[0]
+    assert target.state is CrawlTargetState.DONE
+    assert target.snapshot_id is not None
+    assert target.snapshot_id != old_snapshot_id
+    old_snapshot = repository.get_source_snapshot(old_snapshot_id)
+    current_snapshot = repository.get_source_snapshot(target.snapshot_id)
+    assert old_snapshot is not None
+    assert current_snapshot is not None
+    assert old_snapshot.content_hash != current_snapshot.content_hash
+    assert [
+        chunk.text
+        for chunk in repository.list_source_chunks_by_snapshot(old_snapshot_id)
+    ] == ["old-0", "old-1"]
+    current_chunks = repository.list_source_chunks_by_snapshot(target.snapshot_id)
+    assert [chunk.text for chunk in current_chunks] == ["new-0"]
+    current_candidates = repository.list_fact_candidates_by_snapshot(
+        target.snapshot_id
+    )
+    assert [candidate.content for candidate in current_candidates] == ["new-0"]
+    assert run.stats.extracted_chunks == 1
+    assert run.stats.built_candidates == 1
+
+
 def test_chunk_loop_checks_cancellation_per_iteration(tmp_path: Path) -> None:
     """BF-2(a): cancellation is checked before every chunk save."""
     connection = _setup_db(tmp_path)
