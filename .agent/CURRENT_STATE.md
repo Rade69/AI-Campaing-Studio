@@ -3,7 +3,38 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-10 (coordinator: claude) — **ACS-S2-014
+**Zadnje ažurirano:** 2026-09-10 (coordinator: claude) — **ACS-S2-015
+(S2-G7a, Approve/Reject FactCandidate) OTVOREN -- PARALELNO sa G6.**
+[Task contract](../agent_reports/ACS-S2-015-task-contract.md). MEDIUM,
+§29.
+
+**Paralelno rad PROVJEREN i ODOBREN**: G7a NE zavisi kodno od S2-G6
+(`ACS-S2-014-ingestion-pipeline` worktree, implementacija u toku) --
+testira se nad ručno seed-ovanim `FactCandidate`/`SourceSnapshot`
+preko `IngestionRepositoryPort` (isti obrazac kao S2-002). Disjunktni
+fajlovi (`approve_fact_candidates.py` vs `ingest_brand_sources.py`),
+jedina dodirna tačka je `application/ingestion/__init__.py` export
+lista (lako rješivo, ne blokira). Siguran za drugog implementera da
+krene ODMAH dok G6 implementer nastavlja.
+
+**Gap ispunjen unutar kontrakta**: `FactStatus.REJECTED` (S2-G1 nije
+imao razlog da ga doda, G7a je prvi koji ga stvarno treba -- isti
+obrazac kao S2-002/S2-014 gap-ovi).
+
+**Odluka (koordinator)**: G7a v1 kreira SAMO free-floating
+`ApprovedFact` (nije linkovan ni na jedan `BrandSnapshot`) --
+linkovanje preko `assemble_brand_snapshot` je EKSPLICITNO G7b posao
+(kanonski plan §10 ga tako i navodi kao zaseban bridge metod).
+Izbjegava da MEDIUM task preraste u Brand-domain (HIGH) izmjenu.
+
+**Put do "unesi URL, vidi rezultat" u aplikaciji**: G6 (u toku,
+paralelno) → G7a (ovaj task, paralelno sa G6) → G7b (bridge + GUI
+ekran, HIGH, zavisi od G7a -- SLJEDEĆI kontrakt kad G7a fiksira svoj
+API).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-10 (coordinator: claude) — **ACS-S2-014
 (S2-G6, Pipeline Orchestration) OTVOREN -- posljednji blokirajući gate
 prije S2-G7a.** [Task contract](../agent_reports/ACS-S2-014-task-contract.md).
 **HIGH -- pun ciklus Claude → Codex → Human Owner, NE §29.**
