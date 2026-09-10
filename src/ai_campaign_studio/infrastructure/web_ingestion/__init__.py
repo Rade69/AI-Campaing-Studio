@@ -27,6 +27,9 @@ from ai_campaign_studio.infrastructure.web_ingestion.sitemap_reader import (
     SitemapEntry,
     SitemapReader,
 )
+from ai_campaign_studio.infrastructure.web_ingestion.url_classifier import (
+    UrlClassifier,
+)
 from ai_campaign_studio.infrastructure.web_ingestion.url_normalizer import (
     normalize_url,
 )
@@ -47,6 +50,7 @@ __all__ = [
     "SitemapParseError",
     "SitemapReader",
     "UnsafeUrlError",
+    "UrlClassifier",
     "UrlSafetyPolicy",
     "normalize_url",
 ]
