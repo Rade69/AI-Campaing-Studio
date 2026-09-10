@@ -342,3 +342,40 @@ def test_cancellation_marks_run_cancelled(tmp_path: Path) -> None:
     runs = connection.execute("SELECT id, status FROM ingestion_runs").fetchall()
     assert len(runs) == 1
     assert runs[0]["status"] == IngestionRunStatus.CANCELLED.value
+
+
+class _CancellingDiscovery:
+    """Discovery that requests cancellation as a side-effect of discover()."""
+
+    def __init__(
+        self, mapping: dict[str, tuple[str, ...]], token: CancellationToken
+    ) -> None:
+        self._mapping = mapping
+        self._token = token
+
+    def discover(self, start_url: str) -> tuple[str, ...]:
+        self._token.request_cancel()
+        return self._mapping.get(start_url, ())
+
+
+def test_discover_checkpoint_not_written_when_cancelled_during_discover(
+    tmp_path: Path,
+) -> None:
+    """Honest cancellation: a cancel raised DURING discovery must not leave a
+    DISCOVER checkpoint behind (it is written only after the phase)."""
+    connection = _setup_db(tmp_path)
+    token = CancellationToken(job_id="job-1")
+    use_case = _make_use_case(
+        connection,
+        discovery=_CancellingDiscovery({_START: (_START,)}, token),
+        fetcher=_FakeFetcher({_START: _ok(_START)}),
+    )
+
+    with pytest.raises(CancellationError):
+        use_case.execute(_BRAND_ID, (_START,), token=token)
+
+    phases = {
+        row["phase"]
+        for row in connection.execute("SELECT phase FROM ingestion_checkpoints")
+    }
+    assert IngestionPhase.DISCOVER.value not in phases

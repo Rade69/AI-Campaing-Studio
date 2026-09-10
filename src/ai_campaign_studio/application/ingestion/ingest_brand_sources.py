@@ -205,9 +205,11 @@ class IngestBrandSources:
             )
 
         try:
-            self._checkpoint(run, IngestionPhase.DISCOVER, token)
             discovered = self._discover(resolved_run_id, run.source_scope, token)
             self._progress(token, 0, discovered, IngestionPhase.DISCOVER)
+            # Checkpoint AFTER the phase completes (honest cancellation): a
+            # cancel raised during discovery must NOT mark DISCOVER done.
+            self._checkpoint(run, IngestionPhase.DISCOVER, token)
 
             # CLASSIFY is folded into DISCOVER (page_type_hint is set on the
             # registered CrawlTarget); the checkpoint keeps the state machine
