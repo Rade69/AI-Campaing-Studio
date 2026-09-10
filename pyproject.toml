@@ -41,6 +41,12 @@ dependencies = [
     # 12.3.0 is the dev-environment version; the lower bound 10.0
     # covers any 2-year-old Pillow still in wide use.
     "pillow>=10.0",
+    # S2-G3: synchronous HTTP transport for the web-ingestion fetcher
+    # (requests + custom HTTPAdapter SSRF guard). Declared explicitly
+    # because ``infrastructure/web_ingestion/http_fetcher.py`` imports it
+    # directly (it is NOT guaranteed by the openai/anthropic/google SDKs,
+    # which ship on httpx).
+    "requests>=2.31",
 ]
 
 [project.optional-dependencies]
@@ -75,6 +81,10 @@ documents = [
 # pin only the winner in [project.dependencies] after the spike
 # decision is recorded in ``artifacts/renderer_spike_result.json``.
 renderer-spike = ["playwright>=1.60"]
+
+# S2-G3: robots.txt parsing (RFC 9309). Optional extra -- web discovery is
+# not needed by every install; CI installs ``pip install -e ".[dev,web-discovery]"``.
+web-discovery = ["Protego>=0.6.2"]
 
 
 [tool.setuptools.packages.find]
