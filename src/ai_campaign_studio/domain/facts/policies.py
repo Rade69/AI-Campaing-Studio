@@ -1,8 +1,11 @@
 """Facts domain policies (A3).
 
-Owns the fact-usability rules and immutable version creation. Versioning is
-immutable-replace: ``create_next_fact_version`` returns a brand-new
-``ApprovedFact`` and never mutates the previous fact's text or status.
+Owns the fact-usability rules, immutable version creation, and the
+candidate→fact conversion (S2-G7a). Versioning is immutable-replace:
+``create_next_fact_version`` returns a brand-new ``ApprovedFact`` and never
+mutates the previous fact's text or status; likewise
+``build_approved_fact_from_candidate`` builds a fresh ``ApprovedFact`` and
+never touches the ``FactCandidate``.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from ai_campaign_studio.domain.facts.entities import (
     SourceReference,
 )
 from ai_campaign_studio.domain.facts.enums import FactStatus
+from ai_campaign_studio.domain.ingestion.entities import SourceSnapshot
 
 
 def is_fact_usable(fact: ApprovedFact) -> bool:
@@ -75,3 +79,34 @@ def assert_candidate_proposed(candidate: FactCandidate) -> None:
             f"candidate {candidate.id} is not proposed "
             f"(status={candidate.status.value})"
         )
+
+
+def build_approved_fact_from_candidate(
+    candidate: FactCandidate,
+    snapshot: SourceSnapshot,
+) -> ApprovedFact:
+    """Build the FIRST version of a brand-new ``ApprovedFact``.
+
+    The caller MUST call ``assert_candidate_proposed`` first: this function is
+    a pure construction helper and does not itself reject a non-``PROPOSED``
+    candidate. The result is always ``version=1`` with a FRESH
+    ``logical_fact_id`` — approving a candidate creates a NEW logical fact;
+    merging into an existing logical fact is an explicit future feature, not
+    v1. The ``source_ref`` is the G-WI-EVIDENCE link back to the immutable
+    ``SourceSnapshot`` (and the optional locator-precise chunk).
+    """
+    source_ref = SourceReference(
+        source_type="web_ingestion",
+        uri=snapshot.url,
+        snapshot_id=str(candidate.snapshot_id),
+        chunk_id=str(candidate.chunk_id) if candidate.chunk_id else None,
+    )
+    return ApprovedFact(
+        id=FactId(new_id()),
+        logical_fact_id=new_id(),
+        version=1,
+        content=candidate.content,
+        source_ref=source_ref,
+        status=FactStatus.APPROVED,
+        created_at=utc_now(),
+    )

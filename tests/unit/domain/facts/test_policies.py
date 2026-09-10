@@ -8,6 +8,7 @@ from ai_campaign_studio.domain.common.errors import InvariantViolation
 from ai_campaign_studio.domain.common.ids import (
     FactCandidateId,
     FactId,
+    SourceChunkId,
     SourceSnapshotId,
 )
 from ai_campaign_studio.domain.facts.entities import (
@@ -19,10 +20,12 @@ from ai_campaign_studio.domain.facts.enums import FactStatus
 from ai_campaign_studio.domain.facts.policies import (
     assert_candidate_proposed,
     assert_fact_usable,
+    build_approved_fact_from_candidate,
     create_next_fact_version,
     is_candidate_proposed,
     is_fact_usable,
 )
+from ai_campaign_studio.domain.ingestion.entities import SourceSnapshot
 
 _CREATED_AT = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -122,3 +125,79 @@ def test_assert_candidate_proposed_raises_for_non_proposed() -> None:
     assert_candidate_proposed(_candidate())  # no raise
     with pytest.raises(InvariantViolation):
         assert_candidate_proposed(_candidate(status=FactStatus.APPROVED))
+
+
+def _snapshot(url: str = "https://example.ba/clanak") -> SourceSnapshot:
+    return SourceSnapshot(
+        id=SourceSnapshotId("snap-1"),
+        url=url,
+        fetched_at=_CREATED_AT,
+        content_hash="hash",
+    )
+
+
+def test_build_approved_fact_from_candidate_is_version_one_approved() -> None:
+    fact = build_approved_fact_from_candidate(_candidate(), _snapshot())
+
+    assert fact.version == 1
+    assert fact.status is FactStatus.APPROVED
+    assert fact.content == "proposed text"
+    assert fact.superseded_by is None
+    assert fact.deleted_at is None
+
+
+def test_build_approved_fact_from_candidate_has_fresh_logical_id() -> None:
+    candidate = _candidate()
+    fact = build_approved_fact_from_candidate(candidate, _snapshot())
+
+    assert fact.logical_fact_id
+    assert fact.logical_fact_id != candidate.id
+    assert fact.id != candidate.id
+
+
+def test_build_approved_fact_from_candidate_source_ref_points_at_snapshot() -> None:
+    candidate = _candidate()
+    snapshot = _snapshot(url="https://klix.ba/vijesti/x")
+
+    fact = build_approved_fact_from_candidate(candidate, snapshot)
+
+    assert fact.source_ref.source_type == "web_ingestion"
+    assert fact.source_ref.uri == "https://klix.ba/vijesti/x"
+    assert fact.source_ref.snapshot_id == str(candidate.snapshot_id)
+    assert fact.source_ref.chunk_id is None
+
+
+def test_build_approved_fact_from_candidate_carries_chunk_id_when_present() -> None:
+    candidate = FactCandidate(
+        id=FactCandidateId("cand-2"),
+        snapshot_id=SourceSnapshotId("snap-1"),
+        content="text",
+        created_at=_CREATED_AT,
+        chunk_id=SourceChunkId("chunk-9"),
+    )
+
+    fact = build_approved_fact_from_candidate(candidate, _snapshot())
+
+    assert fact.source_ref.chunk_id == "chunk-9"
+
+
+def test_build_approved_fact_does_not_mutate_candidate() -> None:
+    candidate = _candidate()
+    before = (
+        candidate.id,
+        candidate.snapshot_id,
+        candidate.content,
+        candidate.status,
+        candidate.chunk_id,
+    )
+
+    build_approved_fact_from_candidate(candidate, _snapshot())
+
+    after = (
+        candidate.id,
+        candidate.snapshot_id,
+        candidate.content,
+        candidate.status,
+        candidate.chunk_id,
+    )
+    assert after == before
