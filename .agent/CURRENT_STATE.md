@@ -3,7 +3,31 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-10 (coordinator: claude) — **ACS-S2-015
+**Zadnje ažurirano:** 2026-09-10 (coordinator: claude) — **ACS-S2-014
+(S2-G6) F1 fix verifikovan, Claude PASS, PR #32 otvoren, poslato na
+Codex adversarial review.** [Task contract](../agent_reports/ACS-S2-014-task-contract.md)
+· [Implementer evidence (Pi, uklj. fix + re-review)](../agent_reports/2026-09-10-ACS-S2-014-pi.md).
+**HIGH -- i dalje NE §29, čeka Codex + eksplicitno Human Owner
+odobrenje.**
+
+Fix: DISCOVER checkpoint premješten na poslije `_discover()`. Koordinator
+nezavisno reprodukovao mutation (vraćen stari redoslijed, test pao sa
+identičnim simptomom, restauracija čista). Grana rebase-ovana na main
+(koji je u međuvremenu dobio S2-G7a/PR #31) -- očekivan `add/add`
+konflikt SAMO na `application/ingestion/__init__.py` (predviđeno u oba
+kontrakta), riješen spajanjem export lista, ništa drugo dirano. Pun
+suite 1471 passed nakon rebase-a, 0 regresija. Ruff/mypy čisti (211
+fajlova).
+
+**Lekcija**: fix-brief fajl za Pi-ja je bio u session-lokalnom
+scratchpad direktoriju (ne u repou), pa ga implementer nije mogao naći
+na disku -- radio je ispravno po opisu iz relay poruke (fallback je
+funkcionisao), ali ubuduće pisati fix-brief-ove direktno u
+`agent_reports/` ako treba da budu vidljivi drugim agentima na disku.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-10 (coordinator: claude) — **ACS-S2-015
 (S2-G7a, Approve/Reject FactCandidate) MERGED (PR #31, squash `37af25b`).**
 [Task contract](../agent_reports/ACS-S2-015-task-contract.md) ·
 [Implementer evidence (OpenCode)](../agent_reports/2026-09-10-ACS-S2-015-opencode.md).
