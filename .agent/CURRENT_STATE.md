@@ -3,7 +3,27 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-10 (coordinator: claude, vraćen iz pauze) —
+**Zadnje ažurirano:** 2026-09-10 (coordinator: claude) — **ACS-S2-012
+(S2-G5, Visual Identity Extraction) MERGED (PR #30, squash `c0fdd17`).**
+[Task contract](../agent_reports/ACS-S2-012-task-contract.md) ·
+[Implementer evidence (Pi)](../agent_reports/2026-09-10-ACS-S2-012-pi.md)
+· [Branch-fix evidence](../agent_reports/2026-09-10-ACS-S2-012-pi-fix.md).
+Cherry-pick na v2 branch (čist, 11 fajlova/597 insertions/0 deletions
+protiv `main`) merge-ovan nakon Claude review-a: kod pročitan u
+cjelini, `VisualIdentity` VO polja potvrđena identična, XSS/javascript:/
+data: URL zaštita provjerena (allowlist scheme-check je backstop,
+mutation test otkrio da je blocklist provjera redundantna ali
+allowlist samostalno dovoljna — nije bug, defense-in-depth). Nezavisan
+mutation test (hex-color regex onemogućen → 2 testa pala, restore
+čist). Pun suite 1412 passed, 0 regresija. §29 MEDIUM.
+
+**SLICE 2 DAG: S2-G1/G2/G3/G4/G5/G9 SVI MERGED.** S2-G6 (Pipeline
+Orchestration) sada ima SVE svoje zavisnosti zadovoljene -- Claude piše
+kontrakt.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-10 (coordinator: claude, vraćen iz pauze) —
 **ACS-S2-013 MERGED (PR #29, squash `e759bd3`) -- CI je ZELEN na main-u
 opet.** [MiniMax evidence](../agent_reports/2026-09-10-ACS-S2-013-minimax.md)
 (sad sa Claude review dodatkom). Dva nepovezana root cause-a:
