@@ -3,7 +3,51 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-10 (coordinator: claude) — **ACS-S2-014
+**Zadnje ažurirano:** 2026-09-10 (coordinator: minimax, Claude na
+pauzi zbog limita tokena) — **ACS-S2-014 (S2-G6, Pipeline
+Orchestration) MERGED.** PR #32 squash `04634f3` (Human Owner
+ručno merge-ovao u 13:48:40Z) + Codex round-3 R3-BF-1 follow-up
+commit `4b33e58` (preserve recovery failure provenance) merge-ovan
+kao zaseban merge commit `8e3e5c3` na main. [Task contract](../agent_reports/ACS-S2-014-task-contract.md)
+· [Pi evidence](../agent_reports/2026-09-10-ACS-S2-014-pi.md) ·
+[Codex round-3 review](../agent_reports/2026-09-10-ACS-S2-014-review-codex-r3.md) ·
+[Codex R3-BF-1 fix evidence](../agent_reports/2026-09-10-ACS-S2-014-codex-fix-r3.md) ·
+[Coordinator round-3 re-review](../agent_reports/2026-09-10-ACS-S2-014-coordinator-re-review-r2.md).
+
+**R3-BF-1 (Codex round 3)**: neuspjeli recovery refetch se lažno
+pretvarao u `DONE/SUCCEEDED` jer (a) `BUILD_FACTS` filter je birao
+targete samo po `snapshot_id`, a stari `snapshot_id` je ostajao u
+bazi nakon `FAILED`, i (b) recovery refetch sa promijenjenim body-jem
+je dijelio isti snapshot ID sa parcijalnim chunkovima prethodnog
+sadržaja. Codex fix: (1) `BUILD_FACTS` filter sada zahtijeva
+`state is EXTRACTED`, (2) `SourceSnapshot.id` koristi content-hash
+za crash-idempotency (isti hash → reuse ID; različit hash → novi
+content-version ID sa zasebnim provenance chain). Novi reprodukcioni
+testovi `test_failed_refetch_does_not_turn_failed_target_done` i
+`test_changed_refetch_body_does_not_reuse_partial_snapshot`
+mutation-verifikovani (2/2 PASS u 1.63s).
+
+**HIGH, ali Claude PASS override-ovan (3b)** — Human Owner odobrio
+skip Claude-a zbog pauze limita tokena (drugi put u sesiji).
+Workflow standard za HIGH i dalje zahtijeva Claude PASS; ovo je
+jednokratni override. Codex round 3 PASS (verifikovan: 50/50 G6
+testova, 1474 passed full suite) + Human Owner eksplicitno merge
+odobrenje je bilo dovoljno.
+
+**Scope ukupni** (G1..G6): 7 taskova MERGED (G1, G2, G3, G4, G5,
+G7a, G9) + G6. Preostalo do end-to-end demo: **S2-G7b** (bridge +
+GUI ekran, HIGH, zadnji blokirajući task prije "unesi URL → vidi
+rezultat" petlje).
+
+**Sljedeći korak**: S2-G7b Task Contract (koordinator piše).
+Ključna arhitektonska odluka: `assemble_brand_snapshot` —
+provjeriti `sqlite_brand_repository.py:save_brand_snapshot` +
+`BrandSnapshot.approved_fact_ids: list[FactId]` da li već postoji
+Faza 1 use-case koji bridge može direktno pozvati.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-10 (coordinator: claude) — **ACS-S2-014
 (S2-G6) F1 fix verifikovan, Claude PASS, PR #32 otvoren, poslato na
 Codex adversarial review.** [Task contract](../agent_reports/ACS-S2-014-task-contract.md)
 · [Implementer evidence (Pi, uklj. fix + re-review)](../agent_reports/2026-09-10-ACS-S2-014-pi.md).
