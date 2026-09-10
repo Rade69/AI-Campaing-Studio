@@ -3,7 +3,43 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-10 (coordinator: claude) — **ACS-S2-012
+**Zadnje ažurirano:** 2026-09-10 (coordinator: claude) — **ACS-S2-014
+(S2-G6, Pipeline Orchestration) OTVOREN -- posljednji blokirajući gate
+prije S2-G7a.** [Task contract](../agent_reports/ACS-S2-014-task-contract.md).
+**HIGH -- pun ciklus Claude → Codex → Human Owner, NE §29.**
+
+Sve zavisnosti (G1/G2/G3/G4/G5/G9) MERGED i konkretni potpisi
+nezavisno verifikovani prije pisanja kontrakta (`HttpFetcher.fetch`,
+`DomainDiscovery.discover`, `CrawlBudget`, `MainContentExtractor`,
+`VisualIdentityAdapter`, `PdfSource`/`DocxSource`/`XlsxSource`,
+`SqliteIngestionRepository` lease queue).
+
+**Gap ispunjen unutar ovog kontrakta** (isti obrazac kao S2-002/
+CrawlTarget): `UrlClassifierPort` (S2-G1) nema implementaciju --
+nijedan G3/G4/G5/G9 gate ga nije eksplicitno dobio u scope. Nov
+`infrastructure/web_ingestion/url_classifier.py`, deterministički
+URL-only, EN+BHS_LATIN pattern-i, nikad LLM.
+
+**Gap dokumentovan, NE popravljen**: `PdfSource`/`DocxSource`/`XlsxSource`
+(G9) NE implementiraju `DocumentExtractorPort` iz S2-G1 (drugačiji
+potpis -- direktno vraćaju `SourceChunk`, ne `ContentExtractionResult`).
+Port je efektivno osiročen. G6 poziva konkretne klase direktno. Follow-up
+kandidat za kasnije (uskladiti port ili ga ukloniti), van scope-a G6.
+
+**Odluka (koordinator)**: BUILD_FACTS faza je DETERMINISTIČKA u v1
+(1:1 SourceChunk → FactCandidate, NULA LLM poziva) -- izbjegava novu AI
+provider površinu i prompt-injection rizik u već velikom HIGH tasku;
+G-WI-FACT-FIRST hard gate ne traži LLM. Smarter LLM-bazirani candidate
+builder je zaseban budući task.
+
+**Najveći rizik/review fokus**: G-WI-RECOVER (kill usred crawl-a →
+resume → nula duplog/izgubljenog rada) -- isti F1-047/HOTFIX-001
+klasa grešaka. "Honest cancellation" (checkpoint POSLIJE svake faze,
+ne prije).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-10 (coordinator: claude) — **ACS-S2-012
 (S2-G5, Visual Identity Extraction) MERGED (PR #30, squash `c0fdd17`).**
 [Task contract](../agent_reports/ACS-S2-012-task-contract.md) ·
 [Implementer evidence (Pi)](../agent_reports/2026-09-10-ACS-S2-012-pi.md)
