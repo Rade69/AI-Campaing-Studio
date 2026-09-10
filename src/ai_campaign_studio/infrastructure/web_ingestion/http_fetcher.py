@@ -44,16 +44,26 @@ class SafeHttpAdapter(HTTPAdapter):
     def __init__(
         self, policy: UrlSafetyPolicy, *args: object, **kwargs: object
     ) -> None:
-        super().__init__(*args, **kwargs)
+        # Forwarded to ``HTTPAdapter.__init__`` whose declared signature uses
+        # concrete parameter names (``pool_connections``, ``pool_maxsize``,
+        # ``max_retries``); we accept ``*args/**kwargs`` so the policy can be
+        # inserted as the first positional argument without changing every
+        # caller. Runtime behaviour is identical to passing the kwargs through
+        # directly — mypy cannot prove that without a stub for ``requests``.
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
         self._policy = policy
 
-    def send(
+    def send(  # type: ignore[override]
         self, request: requests.PreparedRequest, **kwargs: object
     ) -> requests.Response:
         decision = self._policy.validate_url(request.url or "")
         if not decision.allowed:
             raise UnsafeUrlError(decision.reason)
-        return super().send(request, **kwargs)
+        # Same reasoning as ``__init__`` — ``HTTPAdapter.send`` declares
+        # ``stream``/``timeout``/``verify``/``cert``/``proxies`` but accepts
+        # any keyword arguments; the request leaves the adapter at the
+        # connection boundary only after the per-hop policy check above.
+        return super().send(request, **kwargs)  # type: ignore[arg-type]
 
 
 class HttpFetcher:

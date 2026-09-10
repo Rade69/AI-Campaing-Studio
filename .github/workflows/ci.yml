@@ -17,7 +17,12 @@ jobs:
           python-version: "3.12"
 
       - name: Install package + dev dependencies
-        run: python -m pip install -e ".[dev]"
+        # S2-G4: `extraction` (trafilatura) is an optional extra (G4's
+        # deliberate design decision, kept optional for end users) but CI
+        # must exercise it -- without this, the 3 trafilatura-specific
+        # tests in tests/integration/extraction/ skip via importorskip and
+        # the extraction pipeline is never actually tested end-to-end.
+        run: python -m pip install -e ".[dev,extraction]"
 
       - name: ruff
         run: python -m ruff check .

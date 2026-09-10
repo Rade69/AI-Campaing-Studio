@@ -47,6 +47,17 @@ dependencies = [
     # directly (it is NOT guaranteed by the openai/anthropic/google SDKs,
     # which ship on httpx).
     "requests>=2.31",
+    # S2-G3: RFC 9309 robots.txt parser used by
+    # ``infrastructure/web_ingestion/robots_reader.py``. Promoted from
+    # the ``web-discovery`` optional extra to a hard dependency because
+    # the canonical install must include web discovery (it is part of
+    # the S2 vertical slice, not an opt-in feature); the ``web-discovery``
+    # extra is kept for explicit opt-in by users who want a slimmer
+    # install, but CI and the canonical default install pull protego
+    # unconditionally. Fixes CI run failures (mypy
+    # [import-not-found]) observed on runs 34443402816, 34444009075,
+    # 34444031507, 34444224234 (S2-010/S2-011 post-merge push).
+    "protego>=0.6.2",
 ]
 
 [project.optional-dependencies]
@@ -90,8 +101,11 @@ extraction = [
 # decision is recorded in ``artifacts/renderer_spike_result.json``.
 renderer-spike = ["playwright>=1.60"]
 
-# S2-G3: robots.txt parsing (RFC 9309). Optional extra -- web discovery is
-# not needed by every install; CI installs ``pip install -e ".[dev,web-discovery]"``.
+# S2-G3: robots.txt parsing (RFC 9309). ``protego`` is now a HARD
+# dependency (see ``[project.dependencies]`` above, ACS-S2-013) -- this
+# extra is kept only as an explicit, self-documenting opt-in name for
+# anyone installing just this piece; it no longer changes what actually
+# gets installed, and CI does not need it.
 web-discovery = ["Protego>=0.6.2"]
 
 
