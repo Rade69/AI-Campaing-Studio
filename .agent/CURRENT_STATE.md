@@ -3,7 +3,50 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-10 (coordinator: MiniMax) — **ACS-S2-009
+**Zadnje ažurirano:** 2026-09-10 (coordinator: MiniMax) — **ACS-S2-010
+(S2-G3, HTTP Fetch + Discovery) + ACS-S2-011 (S2-G4, Content
+Extraction) + ACS-S2-012 (S2-G5, Visual Identity Extraction)
+Task Contract-i push-ovani, čekaju implementaciju.** Sva tri
+taska su otvorena paralelno: G3 (Pi) + G4 (OpenCode) + G5 (Pi,
+pripremljeno unaprijed za kad Pi završi G3). S2-G6 (Pipeline
+Orchestration) ostaje DRAFT do Claude-ovog povratka (HIGH, treba
+njegovu finalnu odluku). [S2-G3 contract](../agent_reports/ACS-S2-010-task-contract.md)
+· [S2-G4 contract](../agent_reports/ACS-S2-011-task-contract.md) ·
+[S2-G5 contract](../agent_reports/ACS-S2-012-task-contract.md).
+Branch-evi push-ovani: `task/ACS-S2-010-http-fetch`, `task/ACS-S2-011-content-extract`,
+`task/ACS-S2-012-visual-extract`. Bazni commit na `main`: `d13ad18`.
+
+**Risk klasifikacija korigovana**: S2-G3 je **HIGH** (SSRF
+guard, safety-critical, workflow #11 "bezbjednosne implikacije
+= HIGH"), NE MEDIUM kao što sam prvobitno napisao u contract.
+[G3 contract `risk: MEDIUM`](agent_reports/ACS-S2-010-task-contract.md)
+je GREŠKA — trebao je `risk: HIGH` (eksplicitno "Human Owner
+approval required"). S2-G4 MEDIUM (po planu §10), S2-G5 MEDIUM
+(sinteza postojećeg VO + port). S2-G6 HIGH (concurrency, F1-047
+klasa).
+
+**Trenutni tok**: Pi implementira S2-G3 (HIGH), OpenCode
+implementira S2-G4 (Q12 spike + extraction), čekam njihove
+evidence. G5 contract spreman push-ovan; Pi može odmah nastaviti
+na G5 kad završi G3. G6 contract draft čeka Claude (HIGH
+zahtijeva konzultaciju sa koordinatorom najviše razine).
+
+**Slice 2 napredak**: S2-G1 (ACS-S2-001, PR #23), S2-G2 (ACS-S2-002,
+PR #25) i S2-G9 (ACS-S2-009, PR #26) MERGED. S2-G3/G4/G5 u toku
+(otvoreni task contract-i, implementacija u toku). S2-G6 draft
+(čeka Claude).
+
+**Coordinator handoff preuzet** (ACS-S2-002 round): Claude je
+blizu limita tokena u tekućoj sesiji (handoff detalji u
+[`agent_reports/2026-09-09-coordinator-handoff-to-minimax.md`](agent_reports/2026-09-09-coordinator-handoff-to-minimax.md),
+uključuje 12 operativnih lekcija iz prethodne sesije). MiniMax
+preuzima koordinatorsku ulogu do daljnjeg. Standardni workflow +
+`.agent/TASK_ROUTING.md` + `docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md`
+i dalje važe — handoff je DODATAK, ne zamjena.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-10 (coordinator: MiniMax) — **ACS-S2-009
 (S2-G9, Document parsers) MERGED (PR #26, squash `405b4139`).**
 [Codex re-review round 2 PASS](../agent_reports/2026-09-09-ACS-S2-009-rereview-codex.md)
 (`verdict: PASS`, `blocking_findings: []`) — BF-1 (cross-document
@@ -23,14 +66,6 @@ clusters / 167 flows.
 PR #25) i S2-G9 (ACS-S2-009, PR #26) MERGED. **S2-G3/G4/G5/G6 ostaju
 otvoreni** (po kanonskom plan DAG §3). S2-G6 zavisi od G3+G4+G5+G9 —
 sada kada je G9 merged, G6 je blizu ready (još treba G3+G4+G5).
-
-**Risk klasifikacija za S2-G3/G4/G5/G6**: ako gate uvodi NOVU shemu
-(migraciju), HIGH, pun ciklus (Claude + Codex + Human Owner).
-Ako je test-only / wiring-only / sinteza već pregledanih delova bez
-GUI lifecycle rizika — MEDIUM/§29 (Claude-only review, odmah merge
-ako PASS, BEZ Codex round, BEZ posebnog Human Owner odobrenja za
-LOW/MEDIUM). Bilo šta sa GUI lifecycle rizikom (pywebview, js_api
-bridge state) ili bezbjednosnim implikacijama — HIGH, pun ciklus.
 
 **Coordinator handoff preuzet** (ACS-S2-002 round): Claude je
 blizu limita tokena u tekućoj sesiji (handoff detalji u
