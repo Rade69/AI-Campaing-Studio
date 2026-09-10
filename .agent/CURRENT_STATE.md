@@ -3,7 +3,30 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-10 (coordinator: claude) — **ACS-S2-015
+**Zadnje ažurirano:** 2026-09-10 (coordinator: claude) — **ACS-S2-014
+(S2-G6) evidence pregledan -- 1 konkretan nalaz, vraćeno Pi-ju na
+popravku.** [Task contract](../agent_reports/ACS-S2-014-task-contract.md)
+· [Implementer evidence (Pi)](../agent_reports/2026-09-10-ACS-S2-014-pi.md).
+
+**Nalaz (nezavisno reprodukovan)**: `IngestionCheckpoint(phase=DISCOVER)`
+se piše PRIJE `_discover()` poziva, ne poslije -- jedina faza od šest
+gdje je redoslijed obrnut u odnosu na ostatak `execute()`. Reprodukovano
+konkretno: fake discovery koji zatraži cancel kao side-effect →
+`execute()` baci `CancellationError` usred DISCOVER petlje → ALI
+DISCOVER checkpoint je već upisan u bazu, laže da je faza završena.
+Ne krši G-WI-RECOVER (resume je idempotentan re-run, ne
+checkpoint-driven), ALI krši dokumentovani "checkpoint POSLIJE faze"
+princip i kontraktov acceptance kriterijum. Fix: premjestiti jednu
+liniju (checkpoint poziv) na poslije `_discover()`. Ostatak review-a
+JAK: G-WI-RECOVER test (prava SQLite lease manipulacija) odličan,
+atomicity, scope čist (10 fajlova, čisto aditivno), url_classifier
+EN+BHS_LATIN pokrivenost potvrđena testovima, layer-boundary DI
+rješenje (application/ ne smije uvoziti infrastructure/) elegantno
+riješeno koje kontrakt nije ni predvidio.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-10 (coordinator: claude) — **ACS-S2-015
 (S2-G7a, Approve/Reject FactCandidate) OTVOREN -- PARALELNO sa G6.**
 [Task contract](../agent_reports/ACS-S2-015-task-contract.md). MEDIUM,
 §29.
