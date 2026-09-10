@@ -40,6 +40,7 @@ from ai_campaign_studio.domain.common.ids import (
 from ai_campaign_studio.domain.content.entities import ContentPiece
 from ai_campaign_studio.domain.content.revisions import Revision
 from ai_campaign_studio.domain.facts.entities import ApprovedFact, FactCandidate
+from ai_campaign_studio.domain.facts.enums import FactStatus
 from ai_campaign_studio.domain.ingestion.entities import (
     CrawlTarget,
     IngestionCheckpoint,
@@ -70,6 +71,12 @@ class BrandRepositoryPort(Protocol):
 
     def get_snapshot(self, snapshot_id: BrandSnapshotId) -> BrandSnapshot | None: ...
 
+    def get_latest_snapshot(self, brand_id: BrandId) -> BrandSnapshot | None:
+        """Return the highest-version BrandSnapshot for a brand, or None
+        if no snapshot has been assembled yet. Used by
+        ``assemble_brand_snapshot`` to compute the next version.
+        """
+
 
 @runtime_checkable
 class FactRepositoryPort(Protocol):
@@ -82,6 +89,23 @@ class FactRepositoryPort(Protocol):
     def list_snapshot_facts(
         self, snapshot_id: BrandSnapshotId
     ) -> tuple[ApprovedFact, ...]: ...
+
+    def list_approved_facts_by_brand(
+        self, brand_id: BrandId
+    ) -> tuple[ApprovedFact, ...]:
+        """Return all APPROVED facts for a brand, ordered by created_at DESC.
+
+        Used by ``assemble_brand_snapshot`` to compute ``approved_fact_ids``
+        for a new ``BrandSnapshot``. Empty tuple if no approved facts.
+        """
+
+    def list_fact_candidates_by_brand(
+        self, brand_id: BrandId, statuses: tuple[FactStatus, ...] | None = None
+    ) -> tuple[FactCandidate, ...]:
+        """Return FactCandidate rows for a brand, optionally filtered by
+        statuses. Default returns all (PROPOSED, APPROVED, REJECTED).
+        Used by ``get_ingestion_review``.
+        """
 
 
 @runtime_checkable

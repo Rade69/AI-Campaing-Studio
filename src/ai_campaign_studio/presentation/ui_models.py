@@ -424,3 +424,82 @@ class ConfirmPerformanceImportResultUiModel:
     skipped_invalid_count: int
     error_code: str | None
     error_message: str | None
+
+
+@dataclass(frozen=True)
+class IngestionReviewCandidateUiModel:
+    """One FactCandidate row for the fact-review list (S2-G7b).
+
+    ``snapshot_url`` is the ``SourceSnapshot.url`` the candidate's
+    provenance points at (G-WI-EVIDENCE); ``content`` is the plain-text
+    candidate content; ``chunk_id`` is optional locator-precise evidence.
+    """
+
+    candidate_id: str
+    snapshot_id: str
+    snapshot_url: str
+    content: str
+    chunk_id: str | None
+    status: str
+    created_at: str
+
+
+@dataclass(frozen=True)
+class IngestionReviewResultUiModel:
+    """Result of ``get_ingestion_review`` (S2-G7b).
+
+    Returns every ``FactCandidate`` for the brand plus separate
+    ``approved_count``/``rejected_count`` counters. Never carries
+    secret/path/exception text.
+    """
+
+    ok: bool
+    brand_id: str | None
+    candidates: tuple[IngestionReviewCandidateUiModel, ...]
+    approved_count: int
+    rejected_count: int
+    error_code: str | None
+    error_message: str | None
+
+
+@dataclass(frozen=True)
+class ApproveFactResultUiModel:
+    """Result of ``approve_fact_candidate`` (S2-G7b).
+
+    ``approved_fact_id`` is the new ``ApprovedFact.id`` created by the G7a
+    ``ApproveFactCandidate`` use-case; ``version`` is always 1 (first
+    version of a brand-new logical fact).
+    """
+
+    ok: bool
+    approved_fact_id: str | None
+    candidate_id: str | None
+    snapshot_url: str | None
+    version: int | None
+    error_code: str | None
+    error_message: str | None
+
+
+@dataclass(frozen=True)
+class RejectFactResultUiModel:
+    """Result of ``reject_fact_candidate`` (S2-G7b)."""
+
+    ok: bool
+    candidate_id: str | None
+    status: str | None
+    error_code: str | None
+    error_message: str | None
+
+
+@dataclass(frozen=True)
+class AssembleSnapshotResultUiModel:
+    """Result of ``assemble_brand_snapshot`` (S2-G7b)."""
+
+    ok: bool
+    snapshot_id: str | None
+    brand_id: str | None
+    version: int | None
+    approved_fact_count: int
+    created_at: str | None
+    error_code: str | None
+    error_message: str | None

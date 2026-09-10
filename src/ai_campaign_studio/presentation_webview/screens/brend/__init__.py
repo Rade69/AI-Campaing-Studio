@@ -143,12 +143,14 @@ def render_body(fixture: BrendFixture | None = None) -> str:
         "Odobrene činjenice",
         "Glas brenda",
         "Brend resursi",
+        "Pregled činjenica",
     ]
     _panel_ids = [
         "panel-osnovni",
         "panel-cinjenice",
         "panel-glas",
         "panel-resursi",
+        "panel-fact-review",
     ]
     return (
         '<div class="page-head">'
@@ -217,6 +219,28 @@ def render_body(fixture: BrendFixture | None = None) -> str:
         "</button>"
         "</div>"
         f'<div class="grid g3">{resource_html}</div>'
+        "</div>"
+        # Panel 5: Pregled činjenica (S2-G7b fact-review, hydrated by app.js)
+        + '<div data-tab-panel id="panel-fact-review" hidden>'
+        '<div class="card" data-fact-review>'
+        '<div class="section-title">'
+        "<h3>Pregled činjenica</h3>"
+        '<button class="btn primary" data-action="assemble-snapshot" hidden>'
+        "Napravi snimak brenda"
+        "</button>"
+        "</div>"
+        '<div class="statusline" data-fact-review-counts>'
+        '<span class="badge info">Predloženo: '
+        '<b data-fact-count-proposed>0</b></span>'
+        '<span class="badge ok">Odobreno: '
+        '<b data-fact-count-approved>0</b></span>'
+        '<span class="badge danger">Odbijeno: '
+        '<b data-fact-count-rejected>0</b></span>'
+        "</div>"
+        '<div data-fact-review-list>'
+        '<div class="muted">Učitavanje kandidata…</div>'
+        "</div>"
+        "</div>"
         "</div>"
     )
 
