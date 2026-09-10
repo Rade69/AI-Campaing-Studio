@@ -101,8 +101,11 @@ extraction = [
 # decision is recorded in ``artifacts/renderer_spike_result.json``.
 renderer-spike = ["playwright>=1.60"]
 
-# S2-G3: robots.txt parsing (RFC 9309). Optional extra -- web discovery is
-# not needed by every install; CI installs ``pip install -e ".[dev,web-discovery]"``.
+# S2-G3: robots.txt parsing (RFC 9309). ``protego`` is now a HARD
+# dependency (see ``[project.dependencies]`` above, ACS-S2-013) -- this
+# extra is kept only as an explicit, self-documenting opt-in name for
+# anyone installing just this piece; it no longer changes what actually
+# gets installed, and CI does not need it.
 web-discovery = ["Protego>=0.6.2"]
 
 
