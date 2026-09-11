@@ -153,6 +153,25 @@ class StartIngestionResultUiModel:
 
 
 @dataclass(frozen=True)
+class ClearIngestionResultUiModel:
+    """Result of an "Obriši sve" click on the Brend screen's "Pregled
+    činjenica" panel (ACS-GUI-013 bridge).
+
+    Returned by ``CampaignBridgeApi.clear_brand_ingestion``. Deletes every
+    ingestion run for the brand (and its snapshots/chunks/candidates/crawl
+    targets/checkpoints) so the review list starts empty again for a new
+    test URL — does NOT touch ``approved_facts`` (see
+    ``IngestionRepositoryPort.delete_ingestion_data_for_brand``).
+    """
+
+    ok: bool
+    brand_id: str | None
+    deleted_run_count: int | None
+    error_code: str | None
+    error_message: str | None
+
+
+@dataclass(frozen=True)
 class ExportCampaignResultUiModel:
     """Result of an "Izvezi ZIP paket" click (ACS-GUI-009 bridge).
 

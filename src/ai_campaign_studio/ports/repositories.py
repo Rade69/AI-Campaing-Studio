@@ -385,6 +385,16 @@ class IngestionRepositoryPort(Protocol):
         self, run_id: IngestionRunId
     ) -> tuple[CrawlTarget, ...]: ...
 
+    def delete_ingestion_data_for_brand(self, brand_id: BrandId) -> int:
+        """Delete every ingestion run (and its snapshots/chunks/candidates/
+        crawl targets/checkpoints) for one brand; returns the run count
+        deleted. Does NOT touch ``approved_facts`` (ACS-GUI-013) — a fact
+        already approved keeps its own copy of ``content``, independent of
+        the raw source data this deletes; only the deep source-snapshot
+        provenance link becomes unreachable, which is the accepted trade-off
+        for a "start over" reset during ingestion testing."""
+        ...
+
 
 @runtime_checkable
 class TelemetryRepositoryPort(Protocol):

@@ -1463,6 +1463,46 @@ async function confirmPerformanceImport(button){
     startIngestBtn.addEventListener('click', function(){ startIngestion(startIngestBtn); });
   }
 
+  // ACS-GUI-013: "Obriši sve" — deletes every ingestion run/snapshot/chunk/
+  // candidate for this brand (NOT approved_facts, see the bridge docstring)
+  // so a new test URL starts from an empty review list. Confirms first —
+  // this is a real, immediate delete, not undoable from the GUI.
+  async function clearIngestion(button){
+    if(!window.confirm('Obrisati sve preuzete podatke za ovaj brend? '+
+      'Ovo NE briše već odobrene/odbijene činjenice koje su ušle u snimak '+
+      'brenda, samo sirove podatke iz preuzimanja. Ova akcija se ne može '+
+      'poništiti.')) return;
+    button.disabled=true;
+    setIngestionStatus('Brišem…');
+    const api=window.pywebview && window.pywebview.api;
+    if(!api || typeof api.clear_brand_ingestion!=='function'){
+      showToast('Interna greška: bridge nije dostupan.');
+      button.disabled=false;
+      setIngestionStatus('');
+      return;
+    }
+    let result;
+    try{
+      result=await api.clear_brand_ingestion({});
+    }catch(err){
+      showToast('Interna greška pri pozivu: '+(err&&err.message?err.message:'nepoznato.'));
+      result=null;
+    }
+    button.disabled=false;
+    setIngestionStatus('');
+    if(result && result.ok){
+      showToast('Obrisano ('+result.deleted_run_count+' preuzimanja). Spremno za novi URL.');
+      await loadFactReview();
+    }else if(result){
+      showToast(result.error_message||'Brisanje nije uspjelo.');
+    }
+  }
+
+  const clearIngestBtn=document.querySelector('[data-action="clear-ingestion"]');
+  if(clearIngestBtn){
+    clearIngestBtn.addEventListener('click', function(){ clearIngestion(clearIngestBtn); });
+  }
+
   // Static "Napravi snimak brenda" button: bind directly (the global
   // [data-action] delegate binds a no-op for this action).
   const assembleBtn=document.querySelector('[data-action="assemble-snapshot"]');

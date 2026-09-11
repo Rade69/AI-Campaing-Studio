@@ -385,6 +385,62 @@ class SqliteIngestionRepository:
         ).fetchall()
         return tuple(_crawl_target_from_row(row) for row in rows)
 
+    def delete_ingestion_data_for_brand(self, brand_id: BrandId) -> int:
+        """Delete every ingestion run for ``brand_id`` and its dependents.
+
+        ``foreign_keys = ON`` (connection.py) means delete order matters:
+        ``source_snapshots``/``crawl_targets`` reference each other, so the
+        snapshot id set is captured BEFORE anything is deleted, then deletes
+        run children-before-parents (fact_candidates/source_chunks ->
+        crawl_targets -> source_snapshots -> ingestion_checkpoints ->
+        ingestion_runs). Does NOT touch ``approved_facts`` — see the port
+        docstring.
+        """
+        run_rows = self._connection.execute(
+            "SELECT id FROM ingestion_runs WHERE brand_id = ?", (brand_id,)
+        ).fetchall()
+        run_ids = [row["id"] for row in run_rows]
+        if not run_ids:
+            return 0
+        run_placeholders = ",".join("?" for _ in run_ids)
+
+        snapshot_rows = self._connection.execute(
+            "SELECT DISTINCT snapshot_id FROM crawl_targets"
+            f" WHERE run_id IN ({run_placeholders}) AND snapshot_id IS NOT NULL",
+            run_ids,
+        ).fetchall()
+        snapshot_ids = [row["snapshot_id"] for row in snapshot_rows]
+
+        if snapshot_ids:
+            snap_placeholders = ",".join("?" for _ in snapshot_ids)
+            self._connection.execute(
+                "DELETE FROM fact_candidates"
+                f" WHERE snapshot_id IN ({snap_placeholders})",
+                snapshot_ids,
+            )
+            self._connection.execute(
+                f"DELETE FROM source_chunks WHERE snapshot_id IN ({snap_placeholders})",
+                snapshot_ids,
+            )
+        self._connection.execute(
+            f"DELETE FROM crawl_targets WHERE run_id IN ({run_placeholders})",
+            run_ids,
+        )
+        if snapshot_ids:
+            snap_placeholders = ",".join("?" for _ in snapshot_ids)
+            self._connection.execute(
+                f"DELETE FROM source_snapshots WHERE id IN ({snap_placeholders})",
+                snapshot_ids,
+            )
+        self._connection.execute(
+            f"DELETE FROM ingestion_checkpoints WHERE run_id IN ({run_placeholders})",
+            run_ids,
+        )
+        self._connection.execute(
+            "DELETE FROM ingestion_runs WHERE brand_id = ?", (brand_id,)
+        )
+        return len(run_ids)
+
 
 # --- row reconstruction helpers ---
 

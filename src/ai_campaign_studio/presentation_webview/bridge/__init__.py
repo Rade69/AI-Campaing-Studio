@@ -165,6 +165,7 @@ from ai_campaign_studio.presentation.ui_models import (
     CampaignPerformanceResultUiModel,
     CampaignPlanResultUiModel,
     CampaignSummaryUiModel,
+    ClearIngestionResultUiModel,
     ConfirmPerformanceImportResultUiModel,
     ContentPerformanceResultUiModel,
     ContentPerformanceRowUiModel,
@@ -249,6 +250,7 @@ _LIFECYCLE_ERROR_MAPPERS: dict[str, str] = {
     "reject_fact_candidate": "_reject_err",
     "assemble_brand_snapshot": "_assemble_err",
     "start_brand_ingestion": "_start_ingestion_err",
+    "clear_brand_ingestion": "_clear_ingestion_err",
 }
 # Per-method fallback message used ONLY when the resource-lifecycle
 # fails (we never want to surface the underlying exception text;
@@ -288,6 +290,9 @@ _LIFECYCLE_ERROR_MESSAGES: dict[str, str] = {
     ),
     "start_brand_ingestion": (
         "Pokretanje preuzimanja sadržaja nije uspjelo (interna greška)."
+    ),
+    "clear_brand_ingestion": (
+        "Brisanje preuzetih podataka nije uspjelo (interna greška)."
     ),
 }
 
@@ -2106,6 +2111,68 @@ class CampaignBridgeApi:
                 ok=False,
                 brand_id=None,
                 job_id=None,
+                error_code=code,
+                error_message=message,
+            )
+        )
+
+    @_with_call_resources
+    def clear_brand_ingestion(self, raw_payload: dict) -> dict:
+        """Delete every ingestion run for a brand (ACS-GUI-013).
+
+        Lets a tester clear out previously-ingested pages so a new URL can
+        be tried without the review list accumulating candidates from every
+        prior attempt. Deletes ``ingestion_runs``/``crawl_targets``/
+        ``source_snapshots``/``source_chunks``/``fact_candidates`` for the
+        brand via ``IngestionRepositoryPort.delete_ingestion_data_for_brand``
+        — does NOT touch ``approved_facts`` (a fact already approved keeps
+        its own copy of the text, independent of the raw source data this
+        removes). No confirmation prompt on the Python side — the JS caller
+        is expected to confirm with the user before calling this (see
+        ``static/app.js``), since this bridge method's whole contract is "do
+        exactly what was asked, immediately".
+        """
+        if not isinstance(raw_payload, dict):
+            return self._clear_ingestion_err(
+                _ERROR_VALIDATION, "Pošiljka iz GUI-ja nije objekat."
+            )
+        brand_id = self._resolve_review_brand_id(raw_payload)
+        if brand_id is None:
+            return self._clear_ingestion_err(
+                _ERROR_VALIDATION, "brand_id mora biti string."
+            )
+        try:
+            if self._brand_repo.get_brand(brand_id) is None:
+                return self._clear_ingestion_err(
+                    _ERROR_VALIDATION, f"Brend {brand_id} ne postoji."
+                )
+            deleted = self._ingestion_repo.delete_ingestion_data_for_brand(brand_id)
+        except (EntityNotFound, ValueError, TypeError) as exc:
+            return self._clear_ingestion_err(_ERROR_VALIDATION, str(exc))
+        except Exception:
+            self._bootstrap.logger.exception("clear_brand_ingestion failed")
+            return self._clear_ingestion_err(
+                _ERROR_INTERNAL,
+                "Brisanje preuzetih podataka nije uspjelo (interna greška).",
+            )
+        return asdict(
+            ClearIngestionResultUiModel(
+                ok=True,
+                brand_id=str(brand_id),
+                deleted_run_count=deleted,
+                error_code=None,
+                error_message=None,
+            )
+        )
+
+    @staticmethod
+    def _clear_ingestion_err(code: str, message: str) -> dict:
+        """Error result for ``clear_brand_ingestion`` only (ACS-GUI-013)."""
+        return asdict(
+            ClearIngestionResultUiModel(
+                ok=False,
+                brand_id=None,
+                deleted_run_count=None,
                 error_code=code,
                 error_message=message,
             )
