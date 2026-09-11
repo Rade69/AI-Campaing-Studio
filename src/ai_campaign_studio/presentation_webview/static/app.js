@@ -1170,6 +1170,14 @@ async function confirmPerformanceImport(button){
   const reviewCard=document.querySelector('[data-fact-review]');
   if(!reviewCard) return;
 
+  // ACS-GUI-014 bugfix: this IIFE is a separate top-level scope from the
+  // "Studio sadržaja" IIFE that declares POLL_INTERVAL_MS (line ~319) -
+  // referencing that name here was a ReferenceError at runtime (caught by
+  // the new progress-bar test; node --check's syntax-only check could not
+  // catch it, since it never executes the IIFE). Defined locally instead
+  // of reaching into a sibling IIFE's private scope.
+  const INGEST_POLL_INTERVAL_MS=1200;
+
   function escapeHtml(value){
     return String(value).replace(/[&<>"']/g, function(ch){
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
@@ -1396,18 +1404,46 @@ async function confirmPerformanceImport(button){
     el.hidden=!text;
   }
 
+  // ACS-GUI-014: visual progress bar. ``current``/``total`` come straight
+  // from JobState.progress_current/progress_total (already populated by
+  // IngestBrandSources._progress() for FETCH/EXTRACT/BUILD_FACTS — no
+  // backend change needed here). ``total`` is 0 before the first progress
+  // report (e.g. during DISCOVER), so that case gets an indeterminate
+  // sliding animation instead of a stuck 0% bar.
+  function setIngestionProgress(current, total){
+    const wrap=document.querySelector('[data-ingestion-progress]');
+    const bar=document.querySelector('[data-ingestion-progress-bar]');
+    if(!wrap || !bar) return;
+    if(current===null){
+      wrap.hidden=true;
+      wrap.classList.remove('indeterminate');
+      bar.style.width='';
+      return;
+    }
+    wrap.hidden=false;
+    if(total>0){
+      wrap.classList.remove('indeterminate');
+      bar.style.width=Math.max(0, Math.min(100, Math.round((current/total)*100)))+'%';
+    }else{
+      wrap.classList.add('indeterminate');
+      bar.style.width='';
+    }
+  }
+
   async function startIngestion(button){
     const input=document.querySelector('[data-ingest-url]');
     const url=(input && input.value || '').trim();
     if(!url){ showToast('Unesi URL prije pokretanja.'); return; }
     button.disabled=true;
     setIngestionStatus('Pokrećem preuzimanje…');
+    setIngestionProgress(0, 0);
     const api=window.pywebview && window.pywebview.api;
     if(!api || typeof api.start_brand_ingestion!=='function' ||
        typeof api.get_job_status!=='function'){
       showToast('Interna greška: bridge nije dostupan.');
       button.disabled=false;
       setIngestionStatus('');
+      setIngestionProgress(null, null);
       return;
     }
     let submitResult;
@@ -1417,6 +1453,7 @@ async function confirmPerformanceImport(button){
       showToast('Interna greška pri pozivu: '+(err&&err.message?err.message:'nepoznato.'));
       button.disabled=false;
       setIngestionStatus('');
+      setIngestionProgress(null, null);
       return;
     }
     if(!submitResult || submitResult.ok!==true){
@@ -1424,6 +1461,7 @@ async function confirmPerformanceImport(button){
       showToast(message);
       button.disabled=false;
       setIngestionStatus('');
+      setIngestionProgress(null, null);
       return;
     }
     const jobId=submitResult.job_id;
@@ -1435,17 +1473,23 @@ async function confirmPerformanceImport(button){
         clearInterval(poll);
         button.disabled=false;
         setIngestionStatus('');
+        setIngestionProgress(null, null);
         showToast('Greška pri praćenju posla: '+(err&&err.message?err.message:'nepoznato.'));
         return;
       }
       if(!state) return;
       if(state.status==='RUNNING'||state.status==='PENDING'){
-        const phase=state.phase?(' — '+state.phase):'';
+        const total=state.progress_total||0;
+        const current=state.progress_current||0;
+        const count=total>0?(' ('+current+'/'+total+')'):'';
+        const phase=state.phase?(' — '+state.phase+count):'';
         setIngestionStatus('U toku'+phase+'…');
+        setIngestionProgress(current, total);
         return;
       }
       clearInterval(poll);
       button.disabled=false;
+      setIngestionProgress(null, null);
       if(state.status==='SUCCEEDED'){
         setIngestionStatus(state.message||'Završeno.');
         showToast('Preuzimanje završeno.');
@@ -1455,7 +1499,7 @@ async function confirmPerformanceImport(button){
         setIngestionStatus('');
         showToast(state.error_message||('Posao je završio sa statusom '+state.status+'.'));
       }
-    }, POLL_INTERVAL_MS);
+    }, INGEST_POLL_INTERVAL_MS);
   }
 
   const startIngestBtn=document.querySelector('[data-action="start-ingestion"]');

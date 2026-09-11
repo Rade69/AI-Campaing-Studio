@@ -245,6 +245,11 @@ def render_body(fixture: BrendFixture | None = None) -> str:
         "Obriši sve"
         "</button>"
         "</div>"
+        # ACS-GUI-014: visual progress bar — ingestion can take a while
+        # (multiple page fetches), so a text-only status was easy to miss.
+        '<div class="ingest-progress" data-ingestion-progress hidden>'
+        '<div class="ingest-progress-bar" data-ingestion-progress-bar></div>'
+        "</div>"
         '<div class="muted small" data-ingestion-status hidden></div>'
         "</div>"
         '<div class="statusline" data-fact-review-counts>'
