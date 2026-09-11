@@ -148,10 +148,24 @@ def test_body_over_limit_returns_too_large(served) -> None:
 
 
 def test_worker_side_timeout_returns_timeout_error(served) -> None:
+    """An origin the worker cannot get any response from in time must fail —
+    either as the browser's own navigation ``timeout``, or (since the F2
+    fail-closed fix, agent_reports/2026-09-11-ACS-S2-017-review-claude.md)
+    as ``unsafe:redirect_check_failed:...`` if the pre-navigation redirect
+    check's own bounded probe of the SAME slow origin loses the race first.
+    Both are correct: the redirect pre-check can no longer distinguish "slow
+    but will eventually answer safely" from "slow because it is about to
+    redirect somewhere unsafe" within its own timeout, and failing open on
+    that ambiguity is exactly the SSRF bypass F2 fixed — so which of the two
+    equally-valid failure paths reports first is not something this test
+    should pin down further."""
     port = served
     fetcher = _browser_fetcher(port, timeout=2)
     try:
         result = fetcher.fetch(f"http://localhost:{port}/slow")
-        assert result.error == "timeout"
+        assert result.error == "timeout" or (
+            result.error is not None
+            and result.error.startswith("unsafe:redirect_check_failed:")
+        )
     finally:
         fetcher.stop()

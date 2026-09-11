@@ -63,10 +63,13 @@ def _build_policy(request: PlaywrightRequest) -> UrlSafetyPolicy:
 
 _REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
 _MAX_REDIRECT_HOPS = 5
-_REDIRECT_CHECK_TIMEOUT = (3.0, 3.0)
+_REDIRECT_CHECK_CONNECT_TIMEOUT = 3.0
+_REDIRECT_CHECK_MAX_READ_TIMEOUT = 5.0
 
 
-def _redirect_unsafe_reason(url: str, policy: UrlSafetyPolicy) -> str | None:
+def _redirect_unsafe_reason(
+    url: str, policy: UrlSafetyPolicy, *, read_timeout: float = 5.0
+) -> str | None:
     """Pre-navigation redirect-chain SSRF validation.
 
     Playwright's ``context.route`` does NOT intercept redirect hops of a
@@ -74,8 +77,28 @@ def _redirect_unsafe_reason(url: str, policy: UrlSafetyPolicy) -> str | None:
     reach the private target. This follows the chain with ``requests``
     (``allow_redirects=False``) and re-validates EVERY hop through the same
     ``UrlSafetyPolicy`` BEFORE the browser navigates. Returns the unsafe
-    reason, or ``None`` when no unsafe hop was found (best-effort: network
-    failures/timeouts fall through to the browser's own handling).
+    reason, or ``None`` when no unsafe hop was found.
+
+    FAILS CLOSED: this is the ONLY guard against a top-level redirect chain
+    reaching a private/loopback target (route.request handlers do not see
+    these hops), so a redirect target that cannot be verified — connection
+    refused, timeout, TLS error, any ``requests.RequestException`` — is
+    treated as unsafe, not as "let the browser find out". A live reproducer
+    confirmed that returning ``None`` on timeout let a deliberately slow
+    (>3s) redirect response bypass this check entirely and reach a loopback
+    target (agent_reports/2026-09-11-ACS-S2-017-review-claude.md, F2).
+
+    This runs BEFORE knowing whether ``url`` even redirects, so failing
+    closed here means: an origin that is merely slow to answer at all (not
+    just a slow redirect) is now also treated as unverifiable and blocked,
+    rather than being allowed to reach the browser's own (separately
+    reported) navigation timeout — a deliberate, unavoidable trade-off of
+    closing F2, not a bug (see
+    ``test_worker_side_timeout_returns_timeout_error``, updated to accept
+    either outcome for a slow origin). ``read_timeout`` is capped well below
+    the caller's full navigation budget so a many-hop unreachable chain
+    cannot multiply into an excessive worst-case delay before the browser
+    ever gets a turn.
     """
     current = url
     for _hop in range(_MAX_REDIRECT_HOPS + 1):
@@ -86,7 +109,7 @@ def _redirect_unsafe_reason(url: str, policy: UrlSafetyPolicy) -> str | None:
             with requests.get(
                 current,
                 allow_redirects=False,
-                timeout=_REDIRECT_CHECK_TIMEOUT,
+                timeout=(_REDIRECT_CHECK_CONNECT_TIMEOUT, read_timeout),
                 stream=True,
             ) as response:
                 if response.status_code not in _REDIRECT_STATUS_CODES:
@@ -95,8 +118,8 @@ def _redirect_unsafe_reason(url: str, policy: UrlSafetyPolicy) -> str | None:
                 if not location:
                     return None
                 current = urljoin(current, location)
-        except requests.RequestException:
-            return None  # best-effort: let the browser surface the failure
+        except requests.RequestException as exc:
+            return f"redirect_check_failed:{type(exc).__name__}"
     return "too_many_redirects"
 
 
@@ -128,7 +151,11 @@ def _process_one(browser: Any, request: PlaywrightRequest) -> PlaywrightResult:
 
     # Validate the whole redirect chain BEFORE the browser navigates —
     # ``context.route`` does not intercept top-level redirect hops.
-    redirect_reason = _redirect_unsafe_reason(request.url, policy)
+    redirect_reason = _redirect_unsafe_reason(
+        request.url,
+        policy,
+        read_timeout=min(float(request.timeout), _REDIRECT_CHECK_MAX_READ_TIMEOUT),
+    )
     if redirect_reason is not None:
         return PlaywrightResult(
             request_id=request.request_id,
