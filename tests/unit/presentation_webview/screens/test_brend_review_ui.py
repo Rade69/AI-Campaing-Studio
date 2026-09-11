@@ -295,6 +295,123 @@ vm.createContext(context);
     }
 
 
+def test_ingestion_scheme_autofix_and_zero_result_toast() -> None:
+    """ACS-GUI-015: a bare-domain input ("example.com") gets ``https://``
+    prepended before being submitted, and a SUCCEEDED job with
+    ``progress_total==0`` (the silent "nothing discovered" case that looked
+    like the app was just stuck) now shows an explicit, actionable toast
+    instead of the generic "Preuzimanje završeno."."""
+    import json
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is unavailable; executable app.js regression skipped")
+
+    app_js_path = (
+        Path(__file__).resolve().parents[4]
+        / "src" / "ai_campaign_studio" / "presentation_webview" / "static"
+        / "app.js"
+    )
+    harness = r"""
+const fs=require('fs'),vm=require('vm');
+const src=fs.readFileSync(process.argv[1],'utf8');
+function el(){
+  return {
+    dataset:{}, listeners:{}, disabled:false, hidden:false, value:'',
+    style:{width:''},
+    classList:{add(){},remove(){},contains(){return false;}},
+    _text:'', set textContent(v){this._text=v;}, get textContent(){return this._text;},
+    addEventListener(n,f){(this.listeners[n]??=[]).push(f);},
+    click(){(this.listeners['click']||[]).forEach(f=>f());},
+    querySelectorAll(){return [];}
+  };
+}
+const reviewCard=el();
+const listEl=el();
+listEl.querySelectorAll=function(){return [];};
+const proposedEl=el(), approvedEl=el(), rejectedEl=el();
+const urlInput=el(); urlInput.value='example.com';
+const startBtn=el();
+const statusEl=el(); statusEl.hidden=true;
+const progressWrap=el(); progressWrap.hidden=true;
+const progressBar=el();
+let toastEl=null;
+const document={
+  querySelectorAll(){return [];},
+  getElementById(id){return id==='toast'?toastEl:null;},
+  createElement(){const e=el(); return e;},
+  querySelector(sel){
+    if(sel==='[data-fact-review]') return reviewCard;
+    if(sel==='[data-fact-review-list]') return listEl;
+    if(sel==='[data-fact-count-proposed]') return proposedEl;
+    if(sel==='[data-fact-count-approved]') return approvedEl;
+    if(sel==='[data-fact-count-rejected]') return rejectedEl;
+    if(sel==='[data-action="assemble-snapshot"]') return el();
+    if(sel==='[data-action="start-ingestion"]') return startBtn;
+    if(sel==='[data-action="clear-ingestion"]') return null;
+    if(sel==='[data-ingest-url]') return urlInput;
+    if(sel==='[data-ingestion-status]') return statusEl;
+    if(sel==='[data-ingestion-progress]') return progressWrap;
+    if(sel==='[data-ingestion-progress-bar]') return progressBar;
+    return null;
+  }
+};
+document.body={appendChild(node){ toastEl=node; node.id='toast'; }};
+let pollFn=null;
+let submittedUrls=null;
+const window={
+  addEventListener(){},
+  confirm(){return true;},
+  pywebview:{api:{
+    async get_ingestion_review(){return {ok:true, brand_id:'b-1',
+      approved_count:0, rejected_count:0, candidates:[]};},
+    async start_brand_ingestion(payload){
+      submittedUrls=payload.urls;
+      return {ok:true, brand_id:'b-1', job_id:'job-1',
+        error_code:null, error_message:null};
+    },
+    async get_job_status(){
+      return {status:'SUCCEEDED', phase:'DONE', progress_current:0,
+        progress_total:0, message:'fetched=0 extracted=0 candidates=0 failed=0'};
+    }
+  }}
+};
+const context={window, document, location:{search:''}, URLSearchParams,
+  setInterval(fn){pollFn=fn; return 1;}, clearInterval(){},
+  setTimeout, clearTimeout, console};
+vm.createContext(context);
+(async()=>{
+  vm.runInContext(src, context);
+  await new Promise(r=>setTimeout(r,0));
+  startBtn.click();
+  await new Promise(r=>setTimeout(r,0));
+  await new Promise(r=>setTimeout(r,0));
+  await pollFn();
+  console.log(JSON.stringify({
+    submittedUrls,
+    inputValueAfterSubmit: urlInput.value,
+    toastText: toastEl ? toastEl._text : null,
+  }));
+})().catch(e=>{console.error(e);process.exitCode=1;});
+"""
+    completed = subprocess.run(
+        [node, "-e", harness, str(app_js_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=15,
+    )
+    result = json.loads(completed.stdout)
+    assert result["submittedUrls"] == ["https://example.com"]
+    assert "Nijedna stranica nije pronađena" in result["toastText"]
+
+
 def test_ingestion_progress_bar_determinate_then_hidden_on_terminal() -> None:
     """ACS-GUI-014: the progress bar goes indeterminate (no total yet) ->
     determinate width once JobState reports progress -> hidden again on a
