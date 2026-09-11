@@ -295,6 +295,128 @@ vm.createContext(context);
     }
 
 
+def test_bulk_checkboxes_render_for_proposed_only() -> None:
+    """ACS-GUI-017: PROPOSED candidates get a ``data-candidate-checkbox``
+    (for bulk selection), an already-decided candidate does not (it has no
+    action to bulk-apply); each group with at least one PROPOSED item gets
+    a ``data-group-select-all`` checkbox in its header.
+
+    This is a markup-level check, not an interactive one — the lightweight
+    fake DOM used across this file sets ``innerHTML`` as a plain string
+    (see ``el()`` below) rather than parsing it into a live, queryable
+    tree, so a dynamically-rendered checkbox's own click/change handlers
+    cannot be exercised here. The interactive bulk-select ->
+    bulk_review_fact_candidates flow is covered end-to-end against a real
+    SQLite DB by
+    tests/integration/presentation_webview/test_bulk_review_fact_candidates_flow.py
+    instead.
+    """
+    import json
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is unavailable; executable app.js regression skipped")
+
+    app_js_path = (
+        Path(__file__).resolve().parents[4]
+        / "src" / "ai_campaign_studio" / "presentation_webview" / "static"
+        / "app.js"
+    )
+    harness = r"""
+const fs=require('fs'),vm=require('vm');
+const src=fs.readFileSync(process.argv[1],'utf8');
+function el(){
+  return {
+    dataset:{}, listeners:{}, disabled:false, hidden:false, value:'',
+    style:{width:''},
+    classList:{add(){},remove(){},contains(){return false;}},
+    _text:'', set textContent(v){this._text=v;}, get textContent(){return this._text;},
+    addEventListener(n,f){(this.listeners[n]??=[]).push(f);},
+    click(){(this.listeners['click']||[]).forEach(f=>f());},
+    querySelectorAll(){return [];}
+  };
+}
+const reviewCard=el();
+const listEl=el();
+listEl.querySelectorAll=function(){return [];};
+const proposedEl=el(), approvedEl=el(), rejectedEl=el();
+const bulkBar=el(); bulkBar.hidden=true;
+const bulkCountEl=el();
+const document={
+  querySelectorAll(){return [];},
+  getElementById(){return null;},
+  createElement(){return el();},
+  querySelector(sel){
+    if(sel==='[data-fact-review]') return reviewCard;
+    if(sel==='[data-fact-review-list]') return listEl;
+    if(sel==='[data-fact-count-proposed]') return proposedEl;
+    if(sel==='[data-fact-count-approved]') return approvedEl;
+    if(sel==='[data-fact-count-rejected]') return rejectedEl;
+    if(sel==='[data-action="assemble-snapshot"]') return el();
+    if(sel==='[data-action="start-ingestion"]') return null;
+    if(sel==='[data-action="clear-ingestion"]') return null;
+    if(sel==='[data-bulk-review-bar]') return bulkBar;
+    if(sel==='[data-bulk-selected-count]') return bulkCountEl;
+    if(sel==='[data-action="bulk-approve"]') return null;
+    if(sel==='[data-action="bulk-reject"]') return null;
+    return null;
+  }
+};
+document.body={appendChild(){}};
+const window={
+  addEventListener(){},
+  pywebview:{api:{
+    async get_ingestion_review(){
+      return {ok:true, brand_id:'b-1', approved_count:1, rejected_count:0,
+        candidates:[
+          {candidate_id:'c1', snapshot_id:'s1',
+           snapshot_url:'https://example.com/a', content:'Predlozeno jedan.',
+           chunk_id:null, status:'PROPOSED', created_at:'2026-01-01'},
+          {candidate_id:'c2', snapshot_id:'s1',
+           snapshot_url:'https://example.com/a', content:'Predlozeno dva.',
+           chunk_id:null, status:'PROPOSED', created_at:'2026-01-01'},
+          {candidate_id:'c3', snapshot_id:'s2',
+           snapshot_url:'https://example.com/b', content:'Vec odobreno.',
+           chunk_id:null, status:'APPROVED', created_at:'2026-01-01'}
+        ]};
+    }
+  }}
+};
+const context={window, document, location:{search:''}, URLSearchParams,
+  setInterval(){return 1;}, clearInterval(){}, setTimeout, clearTimeout, console};
+vm.createContext(context);
+(async()=>{
+  vm.runInContext(src, context);
+  await new Promise(r=>setTimeout(r,0));
+  await new Promise(r=>setTimeout(r,0));
+  const html=listEl.innerHTML;
+  const checkboxCount=(html.match(/data-candidate-checkbox/g)||[]).length;
+  const selectAllCount=(html.match(/data-group-select-all/g)||[]).length;
+  console.log(JSON.stringify({checkboxCount, selectAllCount}));
+})().catch(e=>{console.error(e);process.exitCode=1;});
+"""
+    completed = subprocess.run(
+        [node, "-e", harness, str(app_js_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=15,
+    )
+    result = json.loads(completed.stdout)
+    # 2 PROPOSED candidates (c1, c2, both in group a) -> 2 checkboxes.
+    # c3 is APPROVED (group b) -> no checkbox for it.
+    assert result["checkboxCount"] == 2
+    # group a has PROPOSED items -> select-all shown; group b (only c3,
+    # APPROVED) has none -> no select-all for group b.
+    assert result["selectAllCount"] == 1
+
+
 def test_ingestion_scheme_autofix_and_zero_result_toast() -> None:
     """ACS-GUI-015: a bare-domain input ("example.com") gets ``https://``
     prepended before being submitted, and a SUCCEEDED job with

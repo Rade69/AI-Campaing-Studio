@@ -162,6 +162,7 @@ from ai_campaign_studio.presentation.ui_models import (
     AssembleSnapshotResultUiModel,
     BrandFactUiModel,
     BrandOverviewResultUiModel,
+    BulkReviewResultUiModel,
     CampaignPerformanceResultUiModel,
     CampaignPlanResultUiModel,
     CampaignSummaryUiModel,
@@ -251,6 +252,7 @@ _LIFECYCLE_ERROR_MAPPERS: dict[str, str] = {
     "assemble_brand_snapshot": "_assemble_err",
     "start_brand_ingestion": "_start_ingestion_err",
     "clear_brand_ingestion": "_clear_ingestion_err",
+    "bulk_review_fact_candidates": "_bulk_review_err",
 }
 # Per-method fallback message used ONLY when the resource-lifecycle
 # fails (we never want to surface the underlying exception text;
@@ -293,6 +295,9 @@ _LIFECYCLE_ERROR_MESSAGES: dict[str, str] = {
     ),
     "clear_brand_ingestion": (
         "Brisanje preuzetih podataka nije uspjelo (interna greška)."
+    ),
+    "bulk_review_fact_candidates": (
+        "Masovna akcija nad činjenicama nije uspjela (interna greška)."
     ),
 }
 
@@ -2293,6 +2298,97 @@ class CampaignBridgeApi:
                 version=fact.version,
                 error_code=None,
                 error_message=None,
+            )
+        )
+
+    @_with_call_resources
+    def bulk_review_fact_candidates(self, raw_payload: dict) -> dict:
+        """Approve or reject MANY candidates in one call (ACS-GUI-017).
+
+        ``{"candidate_ids": [...], "action": "approve"|"reject"}``. A single
+        ingested page can produce 100+ tiny PROPOSED candidates (deterministic
+        1:1 paragraph mapping, no LLM synthesis — confirmed live on
+        kingdomdoo.com/en/: 104 candidates from one page alone), so
+        one-by-one review does not scale. Loops the EXISTING
+        ``ApproveFactCandidate``/``RejectFactCandidate`` use-cases per id —
+        no new domain logic, no new invariant. Each id's outcome is
+        independent: one already-decided (by a concurrent action) or missing
+        candidate does not abort the rest of the batch — partial success is
+        the normal, expected outcome for a large batch, not a failure. Per-
+        item exception text is logged, never returned (same no-leak rule as
+        every other method) — only aggregate counts cross the js_api
+        boundary.
+        """
+        if not isinstance(raw_payload, dict):
+            return self._bulk_review_err(
+                _ERROR_VALIDATION, "Pošiljka iz GUI-ja nije objekat."
+            )
+        action = raw_payload.get("action")
+        if action not in ("approve", "reject"):
+            return self._bulk_review_err(
+                _ERROR_VALIDATION, "action mora biti 'approve' ili 'reject'."
+            )
+        ids_raw = raw_payload.get("candidate_ids")
+        if not isinstance(ids_raw, list) or not ids_raw:
+            return self._bulk_review_err(
+                _ERROR_VALIDATION, "candidate_ids je obavezna neprazna lista."
+            )
+        candidate_ids: list[FactCandidateId] = []
+        for item in ids_raw:
+            if not isinstance(item, str) or not item.strip():
+                return self._bulk_review_err(
+                    _ERROR_VALIDATION,
+                    "Svaki candidate_id mora biti neprazan string.",
+                )
+            candidate_ids.append(FactCandidateId(item.strip()))
+
+        succeeded = 0
+        failed = 0
+        for candidate_id in candidate_ids:
+            try:
+                if action == "approve":
+                    ApproveFactCandidate(
+                        ingestion_repo=self._ingestion_repo,
+                        fact_repo=self._fact_repo,
+                        unit_of_work=self._uow,
+                    ).execute(candidate_id)
+                else:
+                    RejectFactCandidate(
+                        ingestion_repo=self._ingestion_repo,
+                        unit_of_work=self._uow,
+                    ).execute(candidate_id)
+                succeeded += 1
+            except (EntityNotFound, InvariantViolation):
+                failed += 1
+            except Exception:  # noqa: BLE001 - one bad item must not kill the batch
+                self._bootstrap.logger.exception(
+                    "bulk_review_fact_candidates item failed candidate_id=%s",
+                    candidate_id,
+                )
+                failed += 1
+
+        return asdict(
+            BulkReviewResultUiModel(
+                ok=True,
+                action=action,
+                succeeded_count=succeeded,
+                failed_count=failed,
+                error_code=None,
+                error_message=None,
+            )
+        )
+
+    @staticmethod
+    def _bulk_review_err(code: str, message: str) -> dict:
+        """Error result for ``bulk_review_fact_candidates`` only (ACS-GUI-017)."""
+        return asdict(
+            BulkReviewResultUiModel(
+                ok=False,
+                action=None,
+                succeeded_count=None,
+                failed_count=None,
+                error_code=code,
+                error_message=message,
             )
         )
 

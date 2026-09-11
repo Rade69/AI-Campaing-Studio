@@ -1234,6 +1234,21 @@ async function confirmPerformanceImport(button){
   // collapse a group is not undone by the very action that triggered it.
   const collapsedGroups={};
 
+  // ACS-GUI-017: selected candidate_ids for bulk approve/reject. Reset on
+  // every renderRows() call (a fresh render means the underlying data may
+  // have changed — a stale selected id from before a reload must not
+  // silently carry over).
+  const selectedCandidates=new Set();
+
+  function updateBulkBar(){
+    const bar=document.querySelector('[data-bulk-review-bar]');
+    const countEl=document.querySelector('[data-bulk-selected-count]');
+    if(!bar || !countEl) return;
+    const n=selectedCandidates.size;
+    bar.hidden=(n===0);
+    countEl.textContent=n+' označeno';
+  }
+
   function groupBySnapshotUrl(candidates){
     const order=[];
     const byUrl={};
@@ -1248,6 +1263,8 @@ async function confirmPerformanceImport(button){
   function renderRows(candidates){
     const list=document.querySelector('[data-fact-review-list]');
     if(!list) return;
+    selectedCandidates.clear();
+    updateBulkBar();
     if(!candidates || candidates.length===0){
       list.innerHTML='<div class="muted">Nema kandidata za pregled.</div>';
       return;
@@ -1255,8 +1272,13 @@ async function confirmPerformanceImport(button){
     const groups=groupBySnapshotUrl(candidates);
     list.innerHTML=groups.map(function(g){
       const collapsed=!!collapsedGroups[g.url];
+      const proposedInGroup=g.items.filter(function(c){return c.status==='PROPOSED';}).length;
       const itemsHtml=g.items.map(function(c){
         const proposed=c.status==='PROPOSED';
+        const checkbox=proposed
+          ? '<input type="checkbox" data-candidate-checkbox '+
+            'data-candidate-id="'+escapeHtml(c.candidate_id)+'" />'
+          : '';
         const actions=proposed
           ? '<div class="fact-item-actions">'+
             '<button class="btn" data-action="approve-fact" data-candidate-id="'+escapeHtml(c.candidate_id)+'">Odobri</button>'+
@@ -1264,24 +1286,29 @@ async function confirmPerformanceImport(button){
             '</div>'
           : '<span class="badge '+(c.status==='APPROVED'?'ok':'danger')+'">'+escapeHtml(c.status)+'</span>';
         return '<div class="fact-item">'+
-          '<div class="fact-item-text">'+escapeHtml(c.content)+'</div>'+
+          '<div class="fact-item-main">'+checkbox+
+          '<div class="fact-item-text">'+escapeHtml(c.content)+'</div></div>'+
           actions+
           '</div>';
       }).join('');
+      const selectAll=proposedInGroup>0
+        ? '<input type="checkbox" class="fact-group-select-all" data-group-select-all />'
+        : '';
       return '<div class="fact-group'+(collapsed?' collapsed':'')+'" data-group-url="'+escapeHtml(g.url)+'">'+
-        '<div class="fact-group-header" data-action="toggle-fact-group">'+
+        '<div class="fact-group-header">'+
         '<div class="fact-group-title">'+
-        '<span class="chevron">▾</span>'+
-        '<span class="fact-group-url" title="'+escapeHtml(g.url)+'">'+escapeHtml(g.url)+'</span>'+
+        selectAll+
+        '<span class="chevron" data-action="toggle-fact-group">▾</span>'+
+        '<span class="fact-group-url" data-action="toggle-fact-group" title="'+escapeHtml(g.url)+'">'+escapeHtml(g.url)+'</span>'+
         '</div>'+
         '<span class="badge gray">'+g.items.length+' stavk'+(g.items.length===1?'a':(g.items.length<5?'e':'i'))+'</span>'+
         '</div>'+
         '<div class="fact-group-body">'+itemsHtml+'</div>'+
         '</div>';
     }).join('');
-    list.querySelectorAll('[data-action="toggle-fact-group"]').forEach(function(header){
-      header.addEventListener('click', function(){
-        const group=header.closest('[data-group-url]');
+    list.querySelectorAll('[data-action="toggle-fact-group"]').forEach(function(toggleEl){
+      toggleEl.addEventListener('click', function(){
+        const group=toggleEl.closest('[data-group-url]');
         if(!group) return;
         const url=group.dataset.groupUrl;
         const nowCollapsed=!group.classList.contains('collapsed');
@@ -1289,7 +1316,59 @@ async function confirmPerformanceImport(button){
         if(nowCollapsed) collapsedGroups[url]=true; else delete collapsedGroups[url];
       });
     });
+    list.querySelectorAll('[data-candidate-checkbox]').forEach(function(box){
+      box.addEventListener('change', function(){
+        const id=box.dataset.candidateId;
+        if(box.checked) selectedCandidates.add(id); else selectedCandidates.delete(id);
+        updateBulkBar();
+      });
+    });
+    list.querySelectorAll('[data-group-select-all]').forEach(function(box){
+      box.addEventListener('change', function(){
+        const group=box.closest('[data-group-url]');
+        if(!group) return;
+        group.querySelectorAll('[data-candidate-checkbox]').forEach(function(item){
+          item.checked=box.checked;
+          if(box.checked) selectedCandidates.add(item.dataset.candidateId);
+          else selectedCandidates.delete(item.dataset.candidateId);
+        });
+        updateBulkBar();
+      });
+    });
     bindRowButtons(list);
+  }
+
+  async function bulkReview(action){
+    const ids=Array.from(selectedCandidates);
+    if(ids.length===0) return;
+    const api=window.pywebview && window.pywebview.api;
+    if(!api || typeof api.bulk_review_fact_candidates!=='function'){
+      showToast('Interna greška: bridge nije dostupan.');
+      return;
+    }
+    let result;
+    try{
+      result=await api.bulk_review_fact_candidates({candidate_ids:ids, action:action});
+    }catch(err){
+      showToast('Interna greška pri pozivu: '+(err&&err.message?err.message:'nepoznato.'));
+      return;
+    }
+    if(!result || result.ok!==true){
+      showToast((result&&result.error_message)||'Masovna akcija nije uspjela.');
+      return;
+    }
+    const verb=action==='approve'?'odobreno':'odbijeno';
+    showToast(result.succeeded_count+' '+verb+(result.failed_count>0?(', '+result.failed_count+' nije uspjelo'):'')+'.');
+    await loadFactReview();
+  }
+
+  const bulkApproveBtn=document.querySelector('[data-action="bulk-approve"]');
+  if(bulkApproveBtn){
+    bulkApproveBtn.addEventListener('click', function(){ bulkReview('approve'); });
+  }
+  const bulkRejectBtn=document.querySelector('[data-action="bulk-reject"]');
+  if(bulkRejectBtn){
+    bulkRejectBtn.addEventListener('click', function(){ bulkReview('reject'); });
   }
 
   async function loadFactReview(){

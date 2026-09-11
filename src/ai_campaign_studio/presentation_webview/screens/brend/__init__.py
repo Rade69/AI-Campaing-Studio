@@ -260,6 +260,18 @@ def render_body(fixture: BrendFixture | None = None) -> str:
         '<span class="badge danger">Odbijeno: '
         '<b data-fact-count-rejected>0</b></span>'
         "</div>"
+        # ACS-GUI-017: bulk select/approve/reject toolbar — a single page
+        # can produce 100+ tiny candidates, one-by-one review does not
+        # scale. Hidden until at least one checkbox is selected.
+        '<div class="statusline bulk-review-bar" data-bulk-review-bar hidden>'
+        '<span data-bulk-selected-count>0 označeno</span>'
+        '<button class="btn success" data-action="bulk-approve">'
+        "Odobri označeno"
+        "</button>"
+        '<button class="btn danger" data-action="bulk-reject">'
+        "Odbij označeno"
+        "</button>"
+        "</div>"
         '<div data-fact-review-list>'
         '<div class="muted">Učitavanje kandidata…</div>'
         "</div>"

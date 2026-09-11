@@ -16,8 +16,17 @@
 .fact-group.collapsed .fact-group-body{display:none}
 .fact-item{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:10px 0;border-top:1px solid #f1f5f9}
 .fact-item:first-child{border-top:0}
+.fact-item-main{display:flex;align-items:flex-start;gap:10px;min-width:0}
+.fact-item-main input[type=checkbox]{margin-top:3px;flex:none;width:16px;height:16px;cursor:pointer}
 .fact-item-text{font-size:13px;line-height:1.45;color:var(--text)}
 .fact-item-actions{display:flex;align-items:center;gap:8px;flex:none}
+
+/* ACS-GUI-017: bulk select/approve/reject — a single page can produce
+   100+ tiny candidates (kingdomdoo.com/en/: 104 from one page alone), so
+   one-by-one review does not scale. */
+.bulk-review-bar{background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:8px 12px;margin-top:8px;position:sticky;top:0;z-index:2}
+.bulk-review-bar span{font-size:12px;font-weight:800;color:#3730a3;margin-right:auto}
+.fact-group-select-all{margin-right:2px;flex:none;width:16px;height:16px;cursor:pointer}
 
 /* ACS-GUI-014: ingestion progress bar — determinate when the job has
    reported a real total, indeterminate (sliding highlight) before that. */
