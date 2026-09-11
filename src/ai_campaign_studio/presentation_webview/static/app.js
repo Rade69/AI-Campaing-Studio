@@ -1390,6 +1390,12 @@ async function confirmPerformanceImport(button){
     }
     renderCounts(result);
     renderRows(result.candidates);
+    // ACS-S2-018: keep the snapshot history in sync with the same trigger
+    // that refreshes the candidate list — they live on the same panel and
+    // the user expects them to update together. ``listSnapshots`` is
+    // best-effort and never throws into ``loadFactReview`` (it has its own
+    // try/catch + empty state).
+    await listSnapshots();
   }
 
   async function approveFact(button){
@@ -1466,8 +1472,113 @@ async function confirmPerformanceImport(button){
     if(result && result.ok){
       showToast('Snimak brenda v'+result.version+' kreiran ('+result.approved_fact_count+' činjenica).');
       await loadFactReview();
+      await listSnapshots();
     }else if(result){
       showToast((result.error_message)||'Kreiranje snimka nije uspjelo.');
+    }
+  }
+
+  // ACS-S2-018: snapshot history. Each row shows version + fact count +
+  // created_at + active badge + an "Aktiviraj" button. The whole list
+  // re-renders after activate/assemble so the badge moves without a
+  // manual refresh. ``renderSnapshots`` is the only place that touches
+  // ``[data-snapshot-list]``; ``listSnapshots`` is the only entrypoint.
+  async function listSnapshots(){
+    const list=document.querySelector('[data-snapshot-list]');
+    if(!list) return;
+    const status=document.querySelector('[data-snapshot-status]');
+    const api=window.pywebview && window.pywebview.api;
+    if(!api || typeof api.list_brand_snapshots!=='function'){
+      list.innerHTML='<div class="muted">Bridge nije dostupan.</div>';
+      return;
+    }
+    let result;
+    try{
+      result=await api.list_brand_snapshots({});
+    }catch(err){
+      showToast('Učitavanje snimaka nije uspjelo: '+(err&&err.message?err.message:'nepoznato.'));
+      list.innerHTML='<div class="muted">Učitavanje snimaka nije uspjelo.</div>';
+      return;
+    }
+    if(!result || result.ok!==true){
+      const message=(result&&result.error_message)||'Učitavanje snimaka nije uspjelo.';
+      showToast(message);
+      list.innerHTML='<div class="muted">'+escapeHtml(message)+'</div>';
+      return;
+    }
+    const rows=Array.isArray(result.snapshots) ? result.snapshots : [];
+    if(status){
+      status.hidden=(rows.length===0);
+      status.textContent=(rows.length===1)
+        ? '1 snimak.'
+        : (rows.length+' snimaka.');
+    }
+    renderSnapshots(rows);
+  }
+
+  function renderSnapshots(rows){
+    const list=document.querySelector('[data-snapshot-list]');
+    if(!list) return;
+    if(!rows || rows.length===0){
+      list.innerHTML='<div class="muted">Još nema snimaka. Kliknite "Napravi snimak brenda" da kreirate prvi.</div>';
+      return;
+    }
+    list.innerHTML=rows.map(function(r){
+      const sid=String(r.snapshot_id||'').trim();
+      const version=r.version;
+      const count=r.approved_fact_count;
+      const createdAt=r.created_at || '';
+      const isActive=!!r.is_active;
+      const badge=isActive
+        ? '<span class="badge ok">Aktivan</span>'
+        : '<span class="badge gray">Neaktivan</span>';
+      const activateBtn=isActive
+        ? ''
+        : '<button class="btn primary" data-action="activate-snapshot"'+
+          ' data-snapshot-id="'+escapeHtml(sid)+'">Aktiviraj</button>';
+      return '<div class="snapshot-row'+(isActive?' active':'')+'">'+
+        '<div class="snapshot-row-main">'+
+        '<div class="snapshot-row-version">v'+escapeHtml(String(version))+'</div>'+
+        '<div class="snapshot-row-meta">'+escapeHtml(String(count))+
+        ' činjenica'+(count===1?'':(count<5?'e':'i'))+' · '+
+        escapeHtml(createdAt)+'</div>'+
+        '</div>'+
+        '<div class="snapshot-row-actions">'+badge+activateBtn+'</div>'+
+        '</div>';
+    }).join('');
+    list.querySelectorAll('[data-action="activate-snapshot"]').forEach(function(btn){
+      btn.addEventListener('click', function(){ activateSnapshot(btn); });
+    });
+  }
+
+  async function activateSnapshot(button){
+    const snapshotId=(button.dataset.snapshotId||'').trim();
+    if(!snapshotId){ showToast('Nedostaje snapshot_id.'); return; }
+    button.disabled=true;
+    let result;
+    try{
+      const api=window.pywebview && window.pywebview.api;
+      if(!api || typeof api.activate_brand_snapshot!=='function'){
+        showToast('Interna greška: bridge nije dostupan.');
+        result=null;
+      }else{
+        result=await api.activate_brand_snapshot({snapshot_id:snapshotId});
+      }
+    }catch(err){
+      showToast('Interna greška pri pozivu: '+(err&&err.message?err.message:'nepoznato.'));
+      result=null;
+    }finally{
+      button.disabled=false;
+    }
+    if(result && result.ok){
+      if(result.was_already_active){
+        showToast('Snimak v'+result.version+' je već aktivan.');
+      }else{
+        showToast('Aktiviran snimak v'+result.version+' ('+result.approved_fact_count+' činjenica).');
+      }
+      await listSnapshots();
+    }else if(result){
+      showToast((result.error_message)||'Aktivacija snimka nije uspjela.');
     }
   }
 
@@ -1662,10 +1773,30 @@ async function confirmPerformanceImport(button){
     assembleBtn.addEventListener('click', function(){ assembleSnapshot(assembleBtn); });
   }
 
-  const api=window.pywebview && window.pywebview.api;
-  if(api && typeof api.get_ingestion_review==='function'){
-    loadFactReview();
+  // ACS-S2-018: each call is guarded independently so a fake/partial API
+  // surface still triggers the methods that DO exist. The bootstrap
+  // re-reads ``window.pywebview.api`` on every invocation — capturing it
+  // in a const at IIFE-start would freeze ``undefined`` in the closure
+  // and throw ``Cannot read properties of undefined`` when pywebview is
+  // installed AFTER the IIFE runs (the brend review UI hydration test
+  // does exactly that).
+  function _bootstrap(){
+    const api=window.pywebview && window.pywebview.api;
+    if(api && typeof api.get_ingestion_review==='function') loadFactReview();
+    if(api && typeof api.list_brand_snapshots==='function') listSnapshots();
+  }
+  const anyBackendReady=(function(){
+    const api=window.pywebview && window.pywebview.api;
+    return api && (
+      typeof api.get_ingestion_review === 'function' ||
+      typeof api.list_brand_snapshots === 'function'
+    );
+  })();
+  if(anyBackendReady){
+    _bootstrap();
   }else{
-    window.addEventListener('pywebviewready', loadFactReview, {once:true});
+    // Exactly one listener — the brend review UI hydration test asserts
+    // ``readyListeners === 1``; a second ``addEventListener`` would break.
+    window.addEventListener('pywebviewready', _bootstrap, {once:true});
   }
 })();

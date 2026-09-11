@@ -229,6 +229,19 @@ def render_body(fixture: BrendFixture | None = None) -> str:
         "Napravi snimak brenda"
         "</button>"
         "</div>"
+        # ACS-S2-018: history of every assembled BrandSnapshot with an
+        # explicit "Aktiviraj" affordance per row. Stays visible even when
+        # no snapshot exists yet — shows "Još nema snimaka." so the user
+        # understands what to expect after "Napravi snimak brenda". The
+        # whole list re-renders on every activate / assemble so the
+        # "Aktivan" badge moves without a manual refresh.
+        '<div class="section-subtitle">'
+        "<h4>Snimci brenda</h4>"
+        "</div>"
+        '<div class="statusline" data-snapshot-status hidden></div>'
+        '<div data-snapshot-list>'
+        '<div class="muted">Učitavanje snimaka…</div>'
+        "</div>"
         # ACS-GUI-011: URL ingestion trigger — was a "kasnije" toast
         # placeholder, now wired to start_brand_ingestion.
         '<div class="field">'

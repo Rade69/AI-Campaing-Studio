@@ -565,3 +565,55 @@ class AssembleSnapshotResultUiModel:
     created_at: str | None
     error_code: str | None
     error_message: str | None
+
+
+@dataclass(frozen=True)
+class ActivateBrandSnapshotResultUiModel:
+    """Result of ``activate_brand_snapshot`` (ACS-S2-018).
+
+    ``was_already_active=True`` means the requested snapshot_id matched
+    what was already in the ``brand-seed.json`` cache — the GUI uses this
+    to skip the post-activation reload + show a calmer toast ("already
+    active" vs "activated").
+    """
+
+    ok: bool
+    snapshot_id: str | None
+    brand_id: str | None
+    version: int | None
+    approved_fact_count: int
+    created_at: str | None
+    was_already_active: bool
+    error_code: str | None
+    error_message: str | None
+
+
+@dataclass(frozen=True)
+class BrandSnapshotSummaryUiModel:
+    """One row in the snapshot history list (ACS-S2-018).
+
+    The bridge flattens a ``BrandSnapshot`` VO into this dict so the GUI
+    can render it without depending on the domain dataclass. ``is_active``
+    reflects the ``brand-seed.json`` cache at the moment of listing (NOT
+    a per-row lookup of the latest seed).
+    """
+
+    snapshot_id: str
+    version: int
+    language: str
+    locale: str
+    script: str
+    approved_fact_count: int
+    created_at: str
+    is_active: bool
+
+
+@dataclass(frozen=True)
+class ListBrandSnapshotsResultUiModel:
+    """Result of ``list_brand_snapshots`` (ACS-S2-018)."""
+
+    ok: bool
+    brand_id: str | None
+    snapshots: tuple[dict, ...]
+    error_code: str | None
+    error_message: str | None

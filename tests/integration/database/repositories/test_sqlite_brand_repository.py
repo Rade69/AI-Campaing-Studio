@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -205,4 +206,80 @@ def test_foreign_keys_are_enforced(tmp_path: Path) -> None:
             "INSERT INTO brand_snapshot_facts (snapshot_id, fact_id, position)"
             " VALUES ('missing-snap', 'missing-fact', 0)"
         )
+    connection.close()
+
+
+# ACS-S2-018: ``list_snapshots`` powers the GUI snapshot history. The
+# tests below pin the contract: empty-when-no-rows, DESC by version, and
+# a hard brand_id filter so two brands never see each other's snapshots.
+
+
+def test_list_snapshots_empty_when_brand_has_none(tmp_path: Path) -> None:
+    connection = _setup_db(tmp_path)
+    repo = SqliteBrandRepository(connection)
+    repo.save_brand(_brand())  # brand exists but no snapshots
+    assert repo.list_snapshots(BrandId("brand-1")) == ()
+    connection.close()
+
+
+def test_list_snapshots_orders_version_desc(tmp_path: Path) -> None:
+    connection = _setup_db(tmp_path)
+    brand_repo = SqliteBrandRepository(connection)
+    fact_repo = SqliteFactRepository(connection)
+    brand_repo.save_brand(_brand())
+    for fact in _facts():
+        fact_repo.save_fact(fact)
+
+    v1 = _snapshot()
+    brand_repo.save_snapshot(v1)
+    # A second snapshot — same brand, higher version, different id.
+    v2 = replace(v1, id=BrandSnapshotId("snap-2"), version=2)
+    brand_repo.save_snapshot(v2)
+    v3 = replace(v1, id=BrandSnapshotId("snap-3"), version=3)
+    brand_repo.save_snapshot(v3)
+
+    listed = brand_repo.list_snapshots(BrandId("brand-1"))
+    assert tuple(s.version for s in listed) == (3, 2, 1)
+    assert tuple(s.id for s in listed) == (
+        BrandSnapshotId("snap-3"),
+        BrandSnapshotId("snap-2"),
+        BrandSnapshotId("snap-1"),
+    )
+    connection.close()
+
+
+def test_list_snapshots_filters_strictly_by_brand_id(tmp_path: Path) -> None:
+    """Two brands, each with snapshots — must NEVER see each other's rows."""
+    connection = _setup_db(tmp_path)
+    brand_repo = SqliteBrandRepository(connection)
+    fact_repo = SqliteFactRepository(connection)
+    # Both brands' snapshots reference fact-1/fact-2 (the standard fixture),
+    # so the facts must exist once before either snapshot is inserted.
+    for fact in _facts():
+        fact_repo.save_fact(fact)
+
+    # Brand A
+    brand_a = Brand(id=BrandId("brand-A"), name="A", created_at=_CREATED_AT)
+    brand_repo.save_brand(brand_a)
+    brand_repo.save_snapshot(
+        replace(_snapshot(), brand_id=BrandId("brand-A"))
+    )
+
+    # Brand B with its own snapshot
+    brand_b = Brand(id=BrandId("brand-B"), name="B", created_at=_CREATED_AT)
+    brand_repo.save_brand(brand_b)
+    brand_repo.save_snapshot(
+        replace(
+            _snapshot(),
+            id=BrandSnapshotId("snap-B1"),
+            brand_id=BrandId("brand-B"),
+        )
+    )
+
+    a_only = brand_repo.list_snapshots(BrandId("brand-A"))
+    b_only = brand_repo.list_snapshots(BrandId("brand-B"))
+    assert all(s.brand_id == BrandId("brand-A") for s in a_only)
+    assert all(s.brand_id == BrandId("brand-B") for s in b_only)
+    assert tuple(s.id for s in a_only) == (BrandSnapshotId("snap-1"),)
+    assert tuple(s.id for s in b_only) == (BrandSnapshotId("snap-B1"),)
     connection.close()

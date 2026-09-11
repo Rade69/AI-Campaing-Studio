@@ -158,10 +158,12 @@ from ai_campaign_studio.infrastructure.web_ingestion.url_safety_policy import (
 )
 from ai_campaign_studio.jobs.cancellation import CancellationError
 from ai_campaign_studio.presentation.ui_models import (
+    ActivateBrandSnapshotResultUiModel,
     ApproveFactResultUiModel,
     AssembleSnapshotResultUiModel,
     BrandFactUiModel,
     BrandOverviewResultUiModel,
+    BrandSnapshotSummaryUiModel,
     BulkReviewResultUiModel,
     CampaignPerformanceResultUiModel,
     CampaignPlanResultUiModel,
@@ -177,6 +179,7 @@ from ai_campaign_studio.presentation.ui_models import (
     GenerateContentResultUiModel,
     IngestionReviewCandidateUiModel,
     IngestionReviewResultUiModel,
+    ListBrandSnapshotsResultUiModel,
     ListCampaignsResultUiModel,
     PerformanceCsvColumnUiModel,
     PerformanceCsvInvalidSampleUiModel,
@@ -253,6 +256,8 @@ _LIFECYCLE_ERROR_MAPPERS: dict[str, str] = {
     "start_brand_ingestion": "_start_ingestion_err",
     "clear_brand_ingestion": "_clear_ingestion_err",
     "bulk_review_fact_candidates": "_bulk_review_err",
+    "activate_brand_snapshot": "_activate_err",
+    "list_brand_snapshots": "_list_snapshots_err",
 }
 # Per-method fallback message used ONLY when the resource-lifecycle
 # fails (we never want to surface the underlying exception text;
@@ -298,6 +303,12 @@ _LIFECYCLE_ERROR_MESSAGES: dict[str, str] = {
     ),
     "bulk_review_fact_candidates": (
         "Masovna akcija nad činjenicama nije uspjela (interna greška)."
+    ),
+    "activate_brand_snapshot": (
+        "Aktivacija snimka brenda nije uspjela (interna greška)."
+    ),
+    "list_brand_snapshots": (
+        "Učitavanje liste snimaka brenda nije uspjelo (interna greška)."
     ),
 }
 
@@ -504,6 +515,14 @@ class CampaignBridgeApi:
         # exported content).
         self._visual_system_by_plan: dict[str, str] = {}
         self._visual_system_by_plan_guard = threading.Lock()
+        # ACS-S2-018: the brand-seed.json cache is a single file shared by
+        # ``_ensure_brand`` (reads from ``create_campaign_and_generate_plan``
+        # and ``get_brand_overview``) and the new ``activate_brand_snapshot``
+        # (writes). One process-wide lock is enough — the file is global,
+        # not per-brand — and it covers the activate-vs-read race that
+        # would otherwise let a campaign be created against an older
+        # snapshot than the user just activated.
+        self._active_seed_lock = threading.Lock()
 
     # --- js_api surface ---
 
@@ -2518,6 +2537,139 @@ class CampaignBridgeApi:
             )
         )
 
+    @_with_call_resources
+    @_with_call_resources
+    def activate_brand_snapshot(self, raw_payload: dict) -> dict:
+        """Make a previously-assembled ``BrandSnapshot`` the active one
+        (ACS-S2-018).
+
+        Writes ``brand-seed.json`` so the next ``get_brand_overview`` /
+        ``create_campaign_and_generate_plan`` read the activated version.
+        Does NOT mutate the immutable snapshot rows themselves.
+
+        No-op when the requested snapshot_id is already active (returns
+        ``was_already_active=True`` so the GUI can show a calmer toast).
+        Thread-safe against concurrent ``_ensure_brand`` reads via
+        ``self._active_seed_lock`` — without the lock, an activate that
+        races with a campaign creation could leave the campaign pinned
+        to the older snapshot the user just replaced.
+        """
+        if not isinstance(raw_payload, dict):
+            return self._activate_err(
+                _ERROR_VALIDATION, "Pošiljka iz GUI-ja nije objekat."
+            )
+        snapshot_id = self._resolve_review_snapshot_id(raw_payload)
+        if snapshot_id is None:
+            return self._activate_err(
+                _ERROR_VALIDATION, "snapshot_id mora biti string."
+            )
+        try:
+            snapshot = self._brand_repo.get_snapshot(snapshot_id)
+        except Exception:
+            self._bootstrap.logger.exception("activate_brand_snapshot failed")
+            return self._activate_err(
+                _ERROR_INTERNAL,
+                "Aktivacija snimka brenda nije uspjela (interna greška).",
+            )
+        if snapshot is None:
+            return self._activate_err(
+                _ERROR_VALIDATION,
+                f"Snimak brenda {snapshot_id} ne postoji.",
+            )
+        seed_path = self._user_data_dir() / _BRAND_SEED_FILE
+        try:
+            with self._active_seed_lock:
+                # ``_ensure_brand`` (which we deliberately do NOT call
+                # here — it has self-healing reseed side effects) is the
+                # only other writer of this file. Reading inside the lock
+                # is enough to detect "already active" without risking a
+                # reseed.
+                already_active = self._read_active_snapshot_id()
+                if already_active == snapshot_id:
+                    was_already_active = True
+                else:
+                    self._write_seed(
+                        seed_path,
+                        {
+                            "brand_id": str(snapshot.brand_id),
+                            "brand_snapshot_id": str(snapshot.id),
+                        },
+                    )
+                    was_already_active = False
+        except Exception:
+            self._bootstrap.logger.exception("activate_brand_snapshot failed")
+            return self._activate_err(
+                _ERROR_INTERNAL,
+                "Aktivacija snimka brenda nije uspjela (interna greška).",
+            )
+        return asdict(
+            ActivateBrandSnapshotResultUiModel(
+                ok=True,
+                snapshot_id=str(snapshot.id),
+                brand_id=str(snapshot.brand_id),
+                version=snapshot.version,
+                approved_fact_count=len(snapshot.approved_fact_ids),
+                created_at=snapshot.created_at.isoformat(),
+                was_already_active=was_already_active,
+                error_code=None,
+                error_message=None,
+            )
+        )
+
+    @_with_call_resources
+    @_with_call_resources
+    def list_brand_snapshots(self, raw_payload: dict | None = None) -> dict:
+        """Return every assembled ``BrandSnapshot`` for the brand, newest
+        first, with an ``is_active`` flag per row (ACS-S2-018).
+
+        Reads the active-id via ``_read_active_snapshot_id`` (no
+        self-healing side effects) so a brand with no activated
+        snapshot yet shows the list with no row marked active.
+        """
+        if not isinstance(raw_payload, dict):
+            return self._list_snapshots_err(
+                _ERROR_VALIDATION, "Pošiljka iz GUI-ja nije objekat."
+            )
+        brand_id = self._resolve_review_brand_id(raw_payload)
+        if brand_id is None:
+            return self._list_snapshots_err(
+                _ERROR_VALIDATION, "brand_id mora biti string."
+            )
+        try:
+            snapshots = self._brand_repo.list_snapshots(brand_id)
+            active_id = self._read_active_snapshot_id()
+        except Exception:
+            self._bootstrap.logger.exception("list_brand_snapshots failed")
+            return self._list_snapshots_err(
+                _ERROR_INTERNAL,
+                "Učitavanje liste snimaka brenda nije uspjelo (interna greška).",
+            )
+        rows: list[dict] = []
+        for snap in snapshots:
+            rows.append(
+                asdict(
+                    BrandSnapshotSummaryUiModel(
+                        snapshot_id=str(snap.id),
+                        version=snap.version,
+                        language=snap.language,
+                        locale=snap.locale,
+                        script=snap.script,
+                        approved_fact_count=len(snap.approved_fact_ids),
+                        created_at=snap.created_at.isoformat(),
+                        is_active=(active_id == snap.id),
+                    )
+                )
+            )
+        return asdict(
+            ListBrandSnapshotsResultUiModel(
+                ok=True,
+                brand_id=str(brand_id),
+                snapshots=tuple(rows),
+                error_code=None,
+                error_message=None,
+            )
+        )
+
     # --- per-call SQLite resources ---
 
     @contextmanager
@@ -2825,6 +2977,42 @@ class CampaignBridgeApi:
         if not isinstance(brand_id_raw, str) or not brand_id_raw.strip():
             return None
         return BrandId(brand_id_raw.strip())
+
+    def _resolve_review_snapshot_id(self, raw_payload: dict) -> BrandSnapshotId | None:
+        """Resolve the snapshot for an ``activate_brand_snapshot`` call
+        (ACS-S2-018).
+
+        Unlike ``_resolve_review_brand_id``, there is NO default to the
+        cached snapshot — activation is an explicit user action and
+        falling back to "whatever is currently active" would silently
+        no-op the request. A missing/non-string ``snapshot_id`` returns
+        ``None`` and the caller maps that to VALIDATION_ERROR.
+        """
+        snapshot_id_raw = raw_payload.get("snapshot_id")
+        if not isinstance(snapshot_id_raw, str) or not snapshot_id_raw.strip():
+            return None
+        return BrandSnapshotId(snapshot_id_raw.strip())
+
+    def _read_active_snapshot_id(self) -> BrandSnapshotId | None:
+        """Read the currently-active snapshot from ``brand-seed.json``,
+        WITHOUT triggering the ``_ensure_brand`` self-healing reseed
+        (ACS-S2-018).
+
+        Used by ``list_brand_snapshots`` to label each row with an
+        ``is_active`` flag. Returns ``None`` if the file is missing,
+        unparseable, or does not contain a non-empty ``brand_snapshot_id``
+        string — in all those cases the GUI shows no row as active,
+        which matches user reality (nothing is active until they click
+        "Aktiviraj").
+        """
+        seed_path = self._user_data_dir() / _BRAND_SEED_FILE
+        cached = self._read_seed(seed_path)
+        if cached is None:
+            return None
+        sid = cached.get("brand_snapshot_id")
+        if not isinstance(sid, str) or not sid.strip():
+            return None
+        return BrandSnapshotId(sid.strip())
 
     def _compensate_orphan_campaign(self, campaign: Any) -> None:
         """Best-effort delete of a DRAFT campaign that never got its plan
@@ -3156,6 +3344,36 @@ class CampaignBridgeApi:
                 version=None,
                 approved_fact_count=0,
                 created_at=None,
+                error_code=code,
+                error_message=message,
+            )
+        )
+
+    @staticmethod
+    def _activate_err(code: str, message: str) -> dict:
+        """Error result for ``activate_brand_snapshot`` only (ACS-S2-018)."""
+        return asdict(
+            ActivateBrandSnapshotResultUiModel(
+                ok=False,
+                snapshot_id=None,
+                brand_id=None,
+                version=None,
+                approved_fact_count=0,
+                created_at=None,
+                was_already_active=False,
+                error_code=code,
+                error_message=message,
+            )
+        )
+
+    @staticmethod
+    def _list_snapshots_err(code: str, message: str) -> dict:
+        """Error result for ``list_brand_snapshots`` only (ACS-S2-018)."""
+        return asdict(
+            ListBrandSnapshotsResultUiModel(
+                ok=False,
+                brand_id=None,
+                snapshots=(),
                 error_code=code,
                 error_message=message,
             )
