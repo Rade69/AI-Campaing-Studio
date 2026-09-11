@@ -11,12 +11,15 @@ pipeline registers candidates through ``IngestionRepositoryPort``).
 
 from __future__ import annotations
 
+import logging
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlsplit
 
 from ai_campaign_studio.infrastructure.web_ingestion.crawl_budget import CrawlBudget
+from ai_campaign_studio.infrastructure.web_ingestion.errors import SitemapParseError
 from ai_campaign_studio.infrastructure.web_ingestion.robots_reader import RobotsReader
 from ai_campaign_studio.infrastructure.web_ingestion.sitemap_reader import (
+    SitemapEntry,
     SitemapReader,
 )
 from ai_campaign_studio.infrastructure.web_ingestion.url_normalizer import normalize_url
@@ -24,6 +27,8 @@ from ai_campaign_studio.infrastructure.web_ingestion.url_safety_policy import (
     UrlSafetyPolicy,
 )
 from ai_campaign_studio.ports.web_ingestion import HttpFetcherPort
+
+_LOGGER = logging.getLogger(__name__)
 
 _DEFAULT_MAX_URLS = 5000  # hard security ceiling, canonical plan §6.4
 
@@ -79,12 +84,12 @@ class DomainDiscovery:
 
         # 1. sitemap URLs declared by robots.txt.
         for sitemap_url in self._robots.sitemaps(start):
-            for entry in self._sitemaps.list_entries(sitemap_url):
+            for entry in self._safe_sitemap_entries(sitemap_url):
                 self._add_candidate(entry.loc, candidates, seen)
 
         # 2. conventional /sitemap.xml on the same origin.
         origin = _origin_of(start)
-        for entry in self._sitemaps.list_entries(origin + "/sitemap.xml"):
+        for entry in self._safe_sitemap_entries(origin + "/sitemap.xml"):
             self._add_candidate(entry.loc, candidates, seen)
 
         # 3. (optional) <a> links on the start page.
@@ -94,6 +99,30 @@ class DomainDiscovery:
                 self._add_candidate(link, candidates, seen)
 
         return tuple(candidates)
+
+    def _safe_sitemap_entries(
+        self, sitemap_url: str
+    ) -> tuple[SitemapEntry, ...]:
+        """``SitemapReader.list_entries`` with malformed content downgraded.
+
+        Some sites answer a missing ``/sitemap.xml`` with a 200 HTML page
+        (their normal catch-all/SPA route) instead of a 404 — ``SitemapReader``
+        correctly raises ``SitemapParseError`` for that per its documented
+        contract (a genuinely malformed sitemap is not the same as an absent
+        one). Before this fix that exception propagated all the way out of
+        ``discover()`` unhandled, which meant a single bad ``/sitemap.xml``
+        killed discovery of the WHOLE domain — even the seed URL itself was
+        lost, though it had already been queued a few lines above. Reproduced
+        live against a real site (kingdomdoo.com/en/) whose ``/sitemap.xml``
+        returns its homepage HTML with status 200. Treated the same as an
+        absent sitemap: log and continue with whatever other signals exist
+        (robots-declared sitemaps, on-page links, the seed URL itself).
+        """
+        try:
+            return self._sitemaps.list_entries(sitemap_url)
+        except SitemapParseError as exc:
+            _LOGGER.warning("sitemap_parse_failed url=%s error=%s", sitemap_url, exc)
+            return ()
 
     def _add_candidate(
         self, url: str, candidates: list[str], seen: set[str]
