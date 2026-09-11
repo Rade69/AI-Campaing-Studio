@@ -180,6 +180,121 @@ function factReviewContext(withApi){
     }
 
 
+def test_fact_review_candidates_grouped_by_snapshot_url() -> None:
+    """ACS-GUI-012: candidates sharing a ``snapshot_url`` render under ONE
+    group header (URL shown once, item count shown), not as N flat rows each
+    repeating the URL."""
+    import json
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is unavailable; executable app.js regression skipped")
+
+    app_js_path = (
+        Path(__file__).resolve().parents[4]
+        / "src" / "ai_campaign_studio" / "presentation_webview" / "static"
+        / "app.js"
+    )
+    harness = r"""
+const fs=require('fs'),vm=require('vm');
+const src=fs.readFileSync(process.argv[1],'utf8');
+function el(initial){
+  const node={
+    _text:initial===undefined?'':String(initial),
+    _html:initial===undefined?'':String(initial),
+    dataset:{}, listeners:{}, disabled:false, hidden:false, style:{},
+    set textContent(v){this._text=v;}, get textContent(){return this._text;},
+    set innerHTML(v){this._html=v;}, get innerHTML(){return this._html;},
+    addEventListener(n,f){(this.listeners[n]??=[]).push(f);},
+    click(){(this.listeners['click']||[]).forEach(f=>f());},
+    querySelectorAll(){return [];}
+  };
+  return node;
+}
+const listeners={};
+const window={addEventListener(n,f){(listeners[n]??=[]).push(f);}};
+const reviewCard=el('card');
+const listEl=el('');
+const proposedEl=el('0'), approvedEl=el('0'), rejectedEl=el('0');
+const assembleBtn=el('');
+listEl.querySelectorAll=function(){return [];};
+const document={
+  querySelectorAll(){return [];},
+  getElementById(){return null;},
+  createElement(){return el('');},
+  querySelector(sel){
+    if(sel==='[data-fact-review]') return reviewCard;
+    if(sel==='[data-fact-review-list]') return listEl;
+    if(sel==='[data-fact-count-proposed]') return proposedEl;
+    if(sel==='[data-fact-count-approved]') return approvedEl;
+    if(sel==='[data-fact-count-rejected]') return rejectedEl;
+    if(sel==='[data-action="assemble-snapshot"]') return assembleBtn;
+    return null;
+  }
+};
+document.body={appendChild(){}};
+window.pywebview={api:{
+  async get_ingestion_review(){
+    return {ok:true, brand_id:'b-1', approved_count:0, rejected_count:0,
+      candidates:[
+        {candidate_id:'c1', snapshot_id:'s1',
+         snapshot_url:'https://example.com/page-a', content:'Prvi pasus sa A.',
+         chunk_id:null, status:'PROPOSED', created_at:'2026-01-01'},
+        {candidate_id:'c2', snapshot_id:'s1',
+         snapshot_url:'https://example.com/page-a', content:'Drugi pasus sa A.',
+         chunk_id:null, status:'PROPOSED', created_at:'2026-01-01'},
+        {candidate_id:'c3', snapshot_id:'s2',
+         snapshot_url:'https://example.com/page-b', content:'Jedini pasus sa B.',
+         chunk_id:null, status:'PROPOSED', created_at:'2026-01-01'}
+      ]};
+  }
+}};
+const context={window, document, location:{search:''}, URLSearchParams,
+  setInterval(){return 1;}, clearInterval(){}, setTimeout, clearTimeout, console};
+vm.createContext(context);
+(async()=>{
+  vm.runInContext(src, context);
+  await new Promise(r=>setTimeout(r,0));
+  const html=listEl.innerHTML;
+  const urlAOccurrences=(html.match(/page-a/g)||[]).length;
+  const urlBOccurrences=(html.match(/page-b/g)||[]).length;
+  const groupCount=(html.match(/fact-group-url/g)||[]).length;
+  console.log(JSON.stringify({
+    groupCount,
+    urlAOccurrences,
+    urlBOccurrences,
+    hasTwoStavke: html.includes('2 stavke'),
+    hasOneStavka: html.includes('1 stavka'),
+  }));
+})().catch(e=>{console.error(e);process.exitCode=1;});
+"""
+    completed = subprocess.run(
+        [node, "-e", harness, str(app_js_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    result = json.loads(completed.stdout)
+    # Each group's URL is emitted a FIXED number of times (data-group-url
+    # attribute + title attribute + visible text) regardless of how many
+    # items are inside — group A (2 items) and group B (1 item) show the
+    # SAME count, proving the URL is per-GROUP, not repeated per-item (if it
+    # were, A would show more occurrences than B).
+    assert result == {
+        "groupCount": 2,
+        "urlAOccurrences": 3,
+        "urlBOccurrences": 3,
+        "hasTwoStavke": True,
+        "hasOneStavka": True,
+    }
+
+
 def test_load_fact_review_shows_safe_toast_on_bridge_throw() -> None:
     result = _run_load_error_harness("throw")
     assert result == {
