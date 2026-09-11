@@ -1254,9 +1254,16 @@ async function confirmPerformanceImport(button){
     try{
       result=await api.get_ingestion_review({});
     }catch(err){
-      return; // offline/debug preview: keep the SSR fixture
+      showToast('Učitavanje pregleda činjenica nije uspjelo.');
+      return;
     }
-    if(!result || result.ok!==true) return;
+    if(!result || result.ok!==true){
+      const message=result && typeof result.error_message==='string' && result.error_message.trim()
+        ? result.error_message
+        : 'Učitavanje pregleda činjenica nije uspjelo.';
+      showToast(message);
+      return;
+    }
     renderCounts(result);
     renderRows(result.candidates);
   }

@@ -103,8 +103,9 @@ class SqliteFactRepository:
             " JOIN ingestion_runs"
             "   ON ingestion_runs.id = crawl_targets.run_id"
             " WHERE ingestion_runs.brand_id = ?"
+            " AND approved_facts.status = ?"
             " ORDER BY approved_facts.created_at DESC, approved_facts.id DESC",
-            (brand_id,),
+            (brand_id, FactStatus.APPROVED.value),
         ).fetchall()
         return tuple(_fact_from_row(row) for row in rows)
 

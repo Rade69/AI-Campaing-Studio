@@ -178,3 +178,87 @@ function factReviewContext(withApi){
         "countsOk": True,
         "assembleVisible": True,
     }
+
+
+def test_load_fact_review_shows_safe_toast_on_bridge_throw() -> None:
+    result = _run_load_error_harness("throw")
+    assert result == {
+        "toast": "Učitavanje pregleda činjenica nije uspjelo.",
+        "leakedInternalMessage": False,
+    }
+
+
+def test_load_fact_review_shows_error_message_on_failed_dto() -> None:
+    result = _run_load_error_harness("dto")
+    assert result == {
+        "toast": "Brend ne postoji.",
+        "leakedInternalMessage": False,
+    }
+
+
+def _run_load_error_harness(mode: str) -> dict[str, object]:
+    """Execute the real app.js and return the toast emitted on load failure."""
+    import json
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is unavailable; executable app.js regression skipped")
+
+    app_js_path = (
+        Path(__file__).resolve().parents[4]
+        / "src"
+        / "ai_campaign_studio"
+        / "presentation_webview"
+        / "static"
+        / "app.js"
+    )
+    harness = r"""
+const fs=require('fs'),vm=require('vm');
+const src=fs.readFileSync(process.argv[1],'utf8');
+const mode=process.argv[2];
+let toast=null;
+const reviewCard={};
+const document={
+  querySelectorAll(){return [];},
+  querySelector(sel){return sel==='[data-fact-review]'?reviewCard:null;},
+  getElementById(id){return id==='toast'?toast:null;},
+  createElement(){return {style:{},textContent:'',id:''};},
+  body:{appendChild(node){if(node.id==='toast') toast=node;}}
+};
+const listeners={};
+const window={
+  addEventListener(name,fn){(listeners[name]??=[]).push(fn);},
+  pywebview:{api:{
+    async get_ingestion_review(){
+      if(mode==='throw') throw new Error('sensitive SQL detail');
+      return {ok:false,error_message:'Brend ne postoji.'};
+    }
+  }}
+};
+const context={window,document,location:{search:''},URLSearchParams,
+  setInterval(){return 1;},clearInterval(){},setTimeout,clearTimeout,console};
+vm.createContext(context);
+(async()=>{
+  vm.runInContext(src,context);
+  await new Promise(resolve=>setTimeout(resolve,0));
+  const message=toast?toast.textContent:'';
+  console.log(JSON.stringify({
+    toast:message,
+    leakedInternalMessage:message.includes('sensitive SQL detail')
+  }));
+})().catch(error=>{console.error(error);process.exitCode=1;});
+"""
+    completed = subprocess.run(
+        [node, "-e", harness, str(app_js_path), mode],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=15,
+    )
+    return json.loads(completed.stdout)

@@ -446,6 +446,12 @@ class CampaignBridgeApi:
         # scope (no need for a process-global).
         self._generation_locks: dict[tuple[str, str], threading.Lock] = {}
         self._generation_locks_guard = threading.Lock()
+        # ACS-S2-016 R1-BF-1: assembling a snapshot is a read-version-write
+        # sequence. Pywebview can dispatch two calls on separate workers, so
+        # serialize that sequence per brand while allowing unrelated brands
+        # to assemble independently.
+        self._snapshot_assembly_locks: dict[str, threading.Lock] = {}
+        self._snapshot_assembly_locks_guard = threading.Lock()
         # ACS-GUI-009: in-process ``plan_id -> visual_system_id`` cache for
         # export idempotency (``VisualRepositoryPort`` has no "get by plan_id"
         # lookup). Same instance-level scope as ``_generation_locks``; a
@@ -2096,38 +2102,43 @@ class CampaignBridgeApi:
                 _ERROR_VALIDATION, "brand_id mora biti string."
             )
         try:
-            if self._brand_repo.get_brand(brand_id) is None:
-                return self._assemble_err(
-                    _ERROR_VALIDATION, f"Brend {brand_id} ne postoji."
+            with self._snapshot_assembly_lock_for(str(brand_id)):
+                if self._brand_repo.get_brand(brand_id) is None:
+                    return self._assemble_err(
+                        _ERROR_VALIDATION, f"Brend {brand_id} ne postoji."
+                    )
+                facts = self._fact_repo.list_approved_facts_by_brand(brand_id)
+                if not facts:
+                    return self._assemble_err(
+                        _ERROR_VALIDATION,
+                        "Nema odobrenih činjenica za ovaj brend.",
+                    )
+                latest = self._brand_repo.get_latest_snapshot(brand_id)
+                version = (latest.version + 1) if latest is not None else 1
+                snapshot = BrandSnapshot(
+                    id=BrandSnapshotId(new_id()),
+                    brand_id=brand_id,
+                    version=version,
+                    language=latest.language if latest is not None else "en",
+                    locale=latest.locale if latest is not None else "en_US",
+                    script=latest.script if latest is not None else "Latin",
+                    voice=(
+                        latest.voice
+                        if latest is not None
+                        else BrandVoice(formality="")
+                    ),
+                    audiences=latest.audiences if latest is not None else (),
+                    services=latest.services if latest is not None else (),
+                    visual_identity=(
+                        latest.visual_identity
+                        if latest is not None
+                        else VisualIdentity()
+                    ),
+                    restrictions=latest.restrictions if latest is not None else (),
+                    approved_fact_ids=tuple(fact.id for fact in facts),
+                    created_at=utc_now(),
                 )
-            facts = self._fact_repo.list_approved_facts_by_brand(brand_id)
-            if not facts:
-                return self._assemble_err(
-                    _ERROR_VALIDATION,
-                    "Nema odobrenih činjenica za ovaj brend.",
-                )
-            latest = self._brand_repo.get_latest_snapshot(brand_id)
-            version = (latest.version + 1) if latest is not None else 1
-            snapshot = BrandSnapshot(
-                id=BrandSnapshotId(new_id()),
-                brand_id=brand_id,
-                version=version,
-                language=latest.language if latest is not None else "en",
-                locale=latest.locale if latest is not None else "en_US",
-                script=latest.script if latest is not None else "Latin",
-                voice=latest.voice if latest is not None else BrandVoice(formality=""),
-                audiences=latest.audiences if latest is not None else (),
-                services=latest.services if latest is not None else (),
-                visual_identity=(
-                    latest.visual_identity
-                    if latest is not None
-                    else VisualIdentity()
-                ),
-                restrictions=latest.restrictions if latest is not None else (),
-                approved_fact_ids=tuple(fact.id for fact in facts),
-                created_at=utc_now(),
-            )
-            self._brand_repo.save_snapshot(snapshot)
+                self._brand_repo.save_snapshot(snapshot)
         except Exception:
             self._bootstrap.logger.exception("assemble_brand_snapshot failed")
             return self._assemble_err(
@@ -2256,6 +2267,15 @@ class CampaignBridgeApi:
             if lock is None:
                 lock = threading.Lock()
                 self._generation_locks[key] = lock
+            return lock
+
+    def _snapshot_assembly_lock_for(self, brand_id: str) -> threading.Lock:
+        """Return the lock guarding one brand's snapshot version sequence."""
+        with self._snapshot_assembly_locks_guard:
+            lock = self._snapshot_assembly_locks.get(brand_id)
+            if lock is None:
+                lock = threading.Lock()
+                self._snapshot_assembly_locks[brand_id] = lock
             return lock
 
     def _resolve_ai_adapter(self) -> tuple[Any, dict | None]:
