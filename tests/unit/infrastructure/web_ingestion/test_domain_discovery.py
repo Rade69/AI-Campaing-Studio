@@ -84,6 +84,38 @@ def test_discover_filters_unsafe_candidates_before_adding(fake_fetcher) -> None:
     assert all("127.0.0.1" not in u and "10.0.0.1" not in u for u in result)
 
 
+def test_discover_survives_sitemap_xml_that_is_actually_html(fake_fetcher) -> None:
+    """ACS-GUI-016: some sites answer a missing ``/sitemap.xml`` with their
+    normal HTML page (status 200, catch-all/SPA route) instead of a 404 —
+    reproduced live against kingdomdoo.com/en/, whose ``/sitemap.xml`` is the
+    site's own homepage HTML. ``SitemapReader`` correctly raises
+    ``SitemapParseError`` for that (it is not valid XML), but before this fix
+    the exception propagated out of ``discover()`` unhandled and killed
+    discovery of the WHOLE domain — even the seed URL, already queued a few
+    lines earlier, was lost because the function never reached its
+    ``return``. Now a malformed sitemap is treated like an absent one: the
+    seed URL and on-page links still come through."""
+    start_html = b'<html><body><a href="/about">About</a></body></html>'
+    _set(fake_fetcher, "http://example.com/", start_html, content_type="text/html")
+    _set(
+        fake_fetcher,
+        "http://example.com/robots.txt",
+        b"User-agent: *\nDisallow:\n",
+        content_type="text/plain",
+    )
+    _set(
+        fake_fetcher,
+        "http://example.com/sitemap.xml",
+        b"<!doctype html><html><body>Not a sitemap</body></html>",
+        content_type="text/html",
+    )
+
+    discovery = _build_discovery(fake_fetcher)
+    result = discovery.discover("http://example.com/")
+
+    assert result == ("http://example.com/", "http://example.com/about")
+
+
 def test_discover_deduplicates_and_respects_budget(fake_fetcher) -> None:
     sitemap_xml = (
         b'<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
