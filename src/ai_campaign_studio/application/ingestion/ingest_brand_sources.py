@@ -320,6 +320,19 @@ class IngestBrandSources:
             )
         # Idempotent (ON CONFLICT DO NOTHING) — safe for restart/recrawl.
         self._repository.register_crawl_targets(targets)
+        if not targets:
+            # ACS-GUI-015: DomainDiscovery.discover() returns () silently
+            # (no exception, nothing logged) for a source that fails
+            # normalization or the safety policy — e.g. a bare domain
+            # typed without a scheme ("example.com" instead of
+            # "https://example.com/"), or a literal private/loopback
+            # target. Without this line a "successful" 0-target run was
+            # indistinguishable in the logs from a genuinely empty site.
+            _LOGGER.warning(
+                "zero_targets_discovered run=%s source_scope=%s",
+                run_id,
+                source_scope,
+            )
         return len(targets)
 
     def _fetch(
@@ -372,6 +385,15 @@ class IngestBrandSources:
             if result.error is not None:
                 failed += 1
                 if result.error.startswith("unsafe:"):
+                    # ACS-GUI-015: previously silent — nothing logged when a
+                    # discovered link was rejected by the SSRF policy, only
+                    # a DB state change nobody was watching.
+                    _LOGGER.warning(
+                        "fetch_skipped_unsafe run=%s url=%s reason=%s",
+                        run_id,
+                        target.normalized_url,
+                        result.error,
+                    )
                     self._repository.update_crawl_target_state(
                         target.id,
                         CrawlTargetState.SKIPPED_UNSAFE,

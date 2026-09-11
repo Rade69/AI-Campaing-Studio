@@ -1432,8 +1432,17 @@ async function confirmPerformanceImport(button){
 
   async function startIngestion(button){
     const input=document.querySelector('[data-ingest-url]');
-    const url=(input && input.value || '').trim();
+    let url=(input && input.value || '').trim();
     if(!url){ showToast('Unesi URL prije pokretanja.'); return; }
+    // ACS-GUI-015: a bare domain ("example.com") has no scheme, so the
+    // backend's DomainDiscovery silently discovers ZERO targets for it (no
+    // error — the run reports SUCCEEDED with fetched=0) — the single most
+    // likely cause of "finished in seconds, nothing loaded". Assume https,
+    // same as typing a bare domain into a browser address bar.
+    if(!/^https?:\/\//i.test(url)){
+      url='https://'+url;
+      if(input) input.value=url;
+    }
     button.disabled=true;
     setIngestionStatus('Pokrećem preuzimanje…');
     setIngestionProgress(0, 0);
@@ -1466,38 +1475,58 @@ async function confirmPerformanceImport(button){
     }
     const jobId=submitResult.job_id;
     const poll=setInterval(async function(){
-      let state;
+      // ACS-GUI-015: the ENTIRE tick body is now inside try/catch — a
+      // previous bug (ACS-GUI-014, POLL_INTERVAL_MS out-of-scope reference)
+      // threw OUTSIDE any try/catch here and silently froze the button
+      // forever with no visible error. Any future bug in this callback now
+      // surfaces as a toast instead of failing invisibly.
       try{
-        state=await api.get_job_status({job_id:jobId});
+        const state=await api.get_job_status({job_id:jobId});
+        if(!state) return;
+        if(state.status==='RUNNING'||state.status==='PENDING'){
+          const total=state.progress_total||0;
+          const current=state.progress_current||0;
+          const count=total>0?(' ('+current+'/'+total+')'):'';
+          const phase=state.phase?(' — '+state.phase+count):'';
+          setIngestionStatus('U toku'+phase+'…');
+          setIngestionProgress(current, total);
+          return;
+        }
+        clearInterval(poll);
+        button.disabled=false;
+        setIngestionProgress(null, null);
+        if(state.status==='SUCCEEDED'){
+          const total=state.progress_total||0;
+          const fetched=state.progress_current||0;
+          if(input) input.value='';
+          if(total===0){
+            // ACS-GUI-015: previously silent — 0 discovered targets (bad
+            // scheme, blocked/unreachable domain, ...) reported SUCCEEDED
+            // with no explanation. See ingest_brand_sources.py
+            // "zero_targets_discovered" log for the backend-side detail.
+            setIngestionStatus('');
+            showToast('Nijedna stranica nije pronađena za taj URL — '+
+              'provjeri da li je adresa ispravna i dostupna (ne lokalna/'+
+              'privatna mreža).');
+          }else if(fetched===0){
+            setIngestionStatus('');
+            showToast('Stranice pronađene, ali nijedna nije uspješno '+
+              'preuzeta (možda su blokirane ili nedostupne).');
+          }else{
+            setIngestionStatus(state.message||'Završeno.');
+            showToast('Preuzimanje završeno.');
+          }
+          await loadFactReview();
+        }else{
+          setIngestionStatus('');
+          showToast(state.error_message||('Posao je završio sa statusom '+state.status+'.'));
+        }
       }catch(err){
         clearInterval(poll);
         button.disabled=false;
         setIngestionStatus('');
         setIngestionProgress(null, null);
         showToast('Greška pri praćenju posla: '+(err&&err.message?err.message:'nepoznato.'));
-        return;
-      }
-      if(!state) return;
-      if(state.status==='RUNNING'||state.status==='PENDING'){
-        const total=state.progress_total||0;
-        const current=state.progress_current||0;
-        const count=total>0?(' ('+current+'/'+total+')'):'';
-        const phase=state.phase?(' — '+state.phase+count):'';
-        setIngestionStatus('U toku'+phase+'…');
-        setIngestionProgress(current, total);
-        return;
-      }
-      clearInterval(poll);
-      button.disabled=false;
-      setIngestionProgress(null, null);
-      if(state.status==='SUCCEEDED'){
-        setIngestionStatus(state.message||'Završeno.');
-        showToast('Preuzimanje završeno.');
-        if(input) input.value='';
-        await loadFactReview();
-      }else{
-        setIngestionStatus('');
-        showToast(state.error_message||('Posao je završio sa statusom '+state.status+'.'));
       }
     }, INGEST_POLL_INTERVAL_MS);
   }
