@@ -18,3 +18,10 @@
 .fact-item:first-child{border-top:0}
 .fact-item-text{font-size:13px;line-height:1.45;color:var(--text)}
 .fact-item-actions{display:flex;align-items:center;gap:8px;flex:none}
+
+/* ACS-GUI-014: ingestion progress bar — determinate when the job has
+   reported a real total, indeterminate (sliding highlight) before that. */
+.ingest-progress{height:8px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin-top:8px;position:relative}
+.ingest-progress-bar{height:100%;background:var(--primary);border-radius:999px;transition:width .3s ease}
+.ingest-progress.indeterminate .ingest-progress-bar{position:absolute;top:0;width:35%;animation:ingest-indeterminate 1.1s ease-in-out infinite}
+@keyframes ingest-indeterminate{0%{left:-35%}100%{left:100%}}

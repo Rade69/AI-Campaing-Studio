@@ -295,6 +295,150 @@ vm.createContext(context);
     }
 
 
+def test_ingestion_progress_bar_determinate_then_hidden_on_terminal() -> None:
+    """ACS-GUI-014: the progress bar goes indeterminate (no total yet) ->
+    determinate width once JobState reports progress -> hidden again on a
+    terminal status. ``setInterval``/``clearInterval`` are faked so the poll
+    callback can be invoked manually instead of waiting on a real timer."""
+    import json
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is unavailable; executable app.js regression skipped")
+
+    app_js_path = (
+        Path(__file__).resolve().parents[4]
+        / "src" / "ai_campaign_studio" / "presentation_webview" / "static"
+        / "app.js"
+    )
+    harness = r"""
+const fs=require('fs'),vm=require('vm');
+const src=fs.readFileSync(process.argv[1],'utf8');
+function el(){
+  const classes=new Set();
+  return {
+    dataset:{}, listeners:{}, disabled:false, hidden:false, value:'',
+    style:{width:''},
+    classList:{
+      add(c){classes.add(c);}, remove(c){classes.delete(c);},
+      contains(c){return classes.has(c);}
+    },
+    _text:'', set textContent(v){this._text=v;}, get textContent(){return this._text;},
+    addEventListener(n,f){(this.listeners[n]??=[]).push(f);},
+    click(){(this.listeners['click']||[]).forEach(f=>f());},
+    querySelectorAll(){return [];}
+  };
+}
+const reviewCard=el();
+const listEl=el();
+listEl.querySelectorAll=function(){return [];};
+const proposedEl=el(), approvedEl=el(), rejectedEl=el();
+const urlInput=el(); urlInput.value='https://example.com/';
+const startBtn=el();
+const statusEl=el(); statusEl.hidden=true;
+const progressWrap=el(); progressWrap.hidden=true;
+const progressBar=el();
+const document={
+  querySelectorAll(){return [];},
+  getElementById(){return null;},
+  createElement(){return el();},
+  querySelector(sel){
+    if(sel==='[data-fact-review]') return reviewCard;
+    if(sel==='[data-fact-review-list]') return listEl;
+    if(sel==='[data-fact-count-proposed]') return proposedEl;
+    if(sel==='[data-fact-count-approved]') return approvedEl;
+    if(sel==='[data-fact-count-rejected]') return rejectedEl;
+    if(sel==='[data-action="assemble-snapshot"]') return el();
+    if(sel==='[data-action="start-ingestion"]') return startBtn;
+    if(sel==='[data-action="clear-ingestion"]') return null;
+    if(sel==='[data-ingest-url]') return urlInput;
+    if(sel==='[data-ingestion-status]') return statusEl;
+    if(sel==='[data-ingestion-progress]') return progressWrap;
+    if(sel==='[data-ingestion-progress-bar]') return progressBar;
+    return null;
+  }
+};
+document.body={appendChild(){}};
+let pollFn=null;
+let jobStatusCall=0;
+const window={
+  addEventListener(){},
+  confirm(){return true;},
+  pywebview:{api:{
+    async get_ingestion_review(){return {ok:true, brand_id:'b-1',
+      approved_count:0, rejected_count:0, candidates:[]};},
+    async start_brand_ingestion(){return {ok:true, brand_id:'b-1', job_id:'job-1',
+      error_code:null, error_message:null};},
+    async get_job_status(){
+      jobStatusCall+=1;
+      if(jobStatusCall===1){
+        return {status:'RUNNING', phase:'FETCH', progress_current:0,
+          progress_total:0, message:''};
+      }
+      if(jobStatusCall===2){
+        return {status:'RUNNING', phase:'FETCH', progress_current:1,
+          progress_total:4, message:''};
+      }
+      return {status:'SUCCEEDED', phase:'DONE', progress_current:4,
+        progress_total:4, message:'fetched=4 extracted=6 candidates=6 failed=0'};
+    }
+  }}
+};
+const context={window, document, location:{search:''}, URLSearchParams,
+  setInterval(fn){pollFn=fn; return 1;}, clearInterval(){},
+  setTimeout, clearTimeout, console};
+vm.createContext(context);
+(async()=>{
+  vm.runInContext(src, context);
+  await new Promise(r=>setTimeout(r,0));
+  startBtn.click();
+  // Let the async startIngestion() body run up to the setInterval() call.
+  await new Promise(r=>setTimeout(r,0));
+  await new Promise(r=>setTimeout(r,0));
+
+  // Tick 1: RUNNING, no total yet -> indeterminate, bar visible.
+  await pollFn();
+  const afterTick1={
+    hidden: progressWrap.hidden,
+    indeterminate: progressWrap.classList.contains('indeterminate'),
+    width: progressBar.style.width,
+  };
+
+  // Tick 2: RUNNING with a real total -> determinate 25%.
+  await pollFn();
+  const afterTick2={
+    hidden: progressWrap.hidden,
+    indeterminate: progressWrap.classList.contains('indeterminate'),
+    width: progressBar.style.width,
+  };
+
+  // Tick 3: SUCCEEDED -> bar hidden again.
+  await pollFn();
+  const afterTick3={hidden: progressWrap.hidden};
+
+  console.log(JSON.stringify({afterTick1, afterTick2, afterTick3}));
+})().catch(e=>{console.error(e);process.exitCode=1;});
+"""
+    completed = subprocess.run(
+        [node, "-e", harness, str(app_js_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    result = json.loads(completed.stdout)
+    assert result == {
+        "afterTick1": {"hidden": False, "indeterminate": True, "width": ""},
+        "afterTick2": {"hidden": False, "indeterminate": False, "width": "25%"},
+        "afterTick3": {"hidden": True},
+    }
+
+
 def test_load_fact_review_shows_safe_toast_on_bridge_throw() -> None:
     result = _run_load_error_harness("throw")
     assert result == {
