@@ -131,6 +131,28 @@ class GenerateContentResultUiModel:
 
 
 @dataclass(frozen=True)
+class StartIngestionResultUiModel:
+    """Result of a "Pokreni ingestion" click on the Brend screen
+    (ACS-GUI-011 bridge).
+
+    Returned by ``CampaignBridgeApi.start_brand_ingestion`` and converted
+    to a plain ``dict`` before crossing the pywebview ``js_api`` boundary.
+    Same STARTED-shape convention as ``GenerateContentResultUiModel``
+    (ACS-F1-047): ``ok=True`` only means the job was accepted, not that any
+    page was actually fetched — the per-run outcome (``fetched_pages``,
+    ``extracted_chunks``, ``built_candidates``, ``failed_pages``) lives on
+    the background job's terminal ``JobState``, reachable via
+    ``CampaignBridgeApi.get_job_status(job_id)``.
+    """
+
+    ok: bool
+    brand_id: str | None
+    job_id: str | None
+    error_code: str | None
+    error_message: str | None
+
+
+@dataclass(frozen=True)
 class ExportCampaignResultUiModel:
     """Result of an "Izvezi ZIP paket" click (ACS-GUI-009 bridge).
 

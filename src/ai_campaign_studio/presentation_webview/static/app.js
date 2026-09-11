@@ -1347,6 +1347,85 @@ async function confirmPerformanceImport(button){
     }
   }
 
+  // ACS-GUI-011: "Pokreni ingestion" — submits start_brand_ingestion,
+  // polls get_job_status (same POLL_INTERVAL_MS as the Studio sadržaja
+  // job poller, no cancel affordance here — v1 scope, task contract
+  // §"Šta NE SMIJE"), then reloads the review list on success so the
+  // new candidates appear without a manual refresh.
+  function setIngestionStatus(text){
+    const el=document.querySelector('[data-ingestion-status]');
+    if(!el) return;
+    el.textContent=text;
+    el.hidden=!text;
+  }
+
+  async function startIngestion(button){
+    const input=document.querySelector('[data-ingest-url]');
+    const url=(input && input.value || '').trim();
+    if(!url){ showToast('Unesi URL prije pokretanja.'); return; }
+    button.disabled=true;
+    setIngestionStatus('Pokrećem preuzimanje…');
+    const api=window.pywebview && window.pywebview.api;
+    if(!api || typeof api.start_brand_ingestion!=='function' ||
+       typeof api.get_job_status!=='function'){
+      showToast('Interna greška: bridge nije dostupan.');
+      button.disabled=false;
+      setIngestionStatus('');
+      return;
+    }
+    let submitResult;
+    try{
+      submitResult=await api.start_brand_ingestion({urls:[url]});
+    }catch(err){
+      showToast('Interna greška pri pozivu: '+(err&&err.message?err.message:'nepoznato.'));
+      button.disabled=false;
+      setIngestionStatus('');
+      return;
+    }
+    if(!submitResult || submitResult.ok!==true){
+      const message=(submitResult&&submitResult.error_message)||'Pokretanje nije uspjelo.';
+      showToast(message);
+      button.disabled=false;
+      setIngestionStatus('');
+      return;
+    }
+    const jobId=submitResult.job_id;
+    const poll=setInterval(async function(){
+      let state;
+      try{
+        state=await api.get_job_status({job_id:jobId});
+      }catch(err){
+        clearInterval(poll);
+        button.disabled=false;
+        setIngestionStatus('');
+        showToast('Greška pri praćenju posla: '+(err&&err.message?err.message:'nepoznato.'));
+        return;
+      }
+      if(!state) return;
+      if(state.status==='RUNNING'||state.status==='PENDING'){
+        const phase=state.phase?(' — '+state.phase):'';
+        setIngestionStatus('U toku'+phase+'…');
+        return;
+      }
+      clearInterval(poll);
+      button.disabled=false;
+      if(state.status==='SUCCEEDED'){
+        setIngestionStatus(state.message||'Završeno.');
+        showToast('Preuzimanje završeno.');
+        if(input) input.value='';
+        await loadFactReview();
+      }else{
+        setIngestionStatus('');
+        showToast(state.error_message||('Posao je završio sa statusom '+state.status+'.'));
+      }
+    }, POLL_INTERVAL_MS);
+  }
+
+  const startIngestBtn=document.querySelector('[data-action="start-ingestion"]');
+  if(startIngestBtn){
+    startIngestBtn.addEventListener('click', function(){ startIngestion(startIngestBtn); });
+  }
+
   // Static "Napravi snimak brenda" button: bind directly (the global
   // [data-action] delegate binds a no-op for this action).
   const assembleBtn=document.querySelector('[data-action="assemble-snapshot"]');
