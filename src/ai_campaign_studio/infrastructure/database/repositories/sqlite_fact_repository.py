@@ -10,8 +10,19 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime
 
-from ai_campaign_studio.domain.common.ids import BrandSnapshotId, FactId
-from ai_campaign_studio.domain.facts.entities import ApprovedFact, SourceReference
+from ai_campaign_studio.domain.common.ids import (
+    BrandId,
+    BrandSnapshotId,
+    FactCandidateId,
+    FactId,
+    SourceChunkId,
+    SourceSnapshotId,
+)
+from ai_campaign_studio.domain.facts.entities import (
+    ApprovedFact,
+    FactCandidate,
+    SourceReference,
+)
 from ai_campaign_studio.domain.facts.enums import FactStatus
 
 
@@ -72,6 +83,61 @@ class SqliteFactRepository:
         ).fetchall()
         return tuple(_fact_from_row(row) for row in rows)
 
+    def list_approved_facts_by_brand(
+        self, brand_id: BrandId
+    ) -> tuple[ApprovedFact, ...]:
+        """Return all APPROVED facts for a brand, newest first.
+
+        A web-ingestion ``ApprovedFact`` is linked to its brand through the
+        provenance chain ``approved_facts.source_snapshot_id → source_snapshots
+        → crawl_targets → ingestion_runs.brand_id``. Facts with a NULL
+        ``source_snapshot_id`` (manual fixtures) are deliberately NOT returned
+        here — this read model exists for the ingestion review flow.
+        """
+        rows = self._connection.execute(
+            "SELECT approved_facts.* FROM approved_facts"
+            " JOIN source_snapshots"
+            "   ON source_snapshots.id = approved_facts.source_snapshot_id"
+            " JOIN crawl_targets"
+            "   ON crawl_targets.snapshot_id = source_snapshots.id"
+            " JOIN ingestion_runs"
+            "   ON ingestion_runs.id = crawl_targets.run_id"
+            " WHERE ingestion_runs.brand_id = ?"
+            " AND approved_facts.status = ?"
+            " ORDER BY approved_facts.created_at DESC, approved_facts.id DESC",
+            (brand_id, FactStatus.APPROVED.value),
+        ).fetchall()
+        return tuple(_fact_from_row(row) for row in rows)
+
+    def list_fact_candidates_by_brand(
+        self, brand_id: BrandId, statuses: tuple[FactStatus, ...] | None = None
+    ) -> tuple[FactCandidate, ...]:
+        """Return FactCandidate rows for a brand, optionally filtered by
+        statuses. The brand link is the same provenance chain as
+        ``list_approved_facts_by_brand`` (candidate → snapshot → crawl target
+        → ingestion run).
+        """
+        clauses = ["ingestion_runs.brand_id = ?"]
+        params: list[object] = [brand_id]
+        if statuses is not None:
+            placeholders = ", ".join("?" for _ in statuses)
+            clauses.append(f"fact_candidates.status IN ({placeholders})")
+            params.extend(status.value for status in statuses)
+        where = " AND ".join(clauses)
+        rows = self._connection.execute(
+            "SELECT fact_candidates.* FROM fact_candidates"
+            " JOIN source_snapshots"
+            "   ON source_snapshots.id = fact_candidates.snapshot_id"
+            " JOIN crawl_targets"
+            "   ON crawl_targets.snapshot_id = source_snapshots.id"
+            " JOIN ingestion_runs"
+            "   ON ingestion_runs.id = crawl_targets.run_id"
+            f" WHERE {where}"
+            " ORDER BY fact_candidates.created_at DESC, fact_candidates.id DESC",
+            params,
+        ).fetchall()
+        return tuple(_fact_candidate_from_row(row) for row in rows)
+
 
 def _fact_from_row(row: sqlite3.Row) -> ApprovedFact:
     return ApprovedFact(
@@ -90,5 +156,18 @@ def _fact_from_row(row: sqlite3.Row) -> ApprovedFact:
         superseded_by=FactId(row["superseded_by"]) if row["superseded_by"] else None,
         deleted_at=(
             datetime.fromisoformat(row["deleted_at"]) if row["deleted_at"] else None
+        ),
+    )
+
+
+def _fact_candidate_from_row(row: sqlite3.Row) -> FactCandidate:
+    return FactCandidate(
+        id=FactCandidateId(row["id"]),
+        snapshot_id=SourceSnapshotId(row["snapshot_id"]),
+        content=row["content"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        status=FactStatus(row["status"]),
+        chunk_id=(
+            SourceChunkId(row["chunk_id"]) if row["chunk_id"] is not None else None
         ),
     )

@@ -49,6 +49,10 @@ from ai_campaign_studio.application.campaigns.generate_campaign_plan import (
     GenerateCampaignPlan,
 )
 from ai_campaign_studio.application.export import ExportCampaign
+from ai_campaign_studio.application.ingestion.approve_fact_candidates import (
+    ApproveFactCandidate,
+    RejectFactCandidate,
+)
 from ai_campaign_studio.application.performance import materialize_performance_snapshots
 from ai_campaign_studio.application.performance.build_performance_summaries import (
     build_campaign_performance_summary,
@@ -74,6 +78,8 @@ from ai_campaign_studio.application.visual.plan_post_layout import PlanPostLayou
 from ai_campaign_studio.bootstrap import create_bootstrap
 from ai_campaign_studio.config.paths import AppPaths
 from ai_campaign_studio.config.settings import AppSettings
+from ai_campaign_studio.domain.brand.entities import BrandSnapshot
+from ai_campaign_studio.domain.brand.value_objects import BrandVoice, VisualIdentity
 from ai_campaign_studio.domain.campaign.entities import CampaignBrief
 from ai_campaign_studio.domain.campaign.enums import (
     CampaignPlanStatus,
@@ -86,12 +92,18 @@ from ai_campaign_studio.domain.common.errors import (
     RegistryError,
 )
 from ai_campaign_studio.domain.common.ids import (
+    BrandId,
+    BrandSnapshotId,
     CampaignId,
     CampaignPlanId,
+    FactCandidateId,
     VisualSystemId,
+    new_id,
 )
+from ai_campaign_studio.domain.common.timestamps import utc_now
 from ai_campaign_studio.domain.content.entities import CampaignTarget, ContentPiece
 from ai_campaign_studio.domain.content.enums import ContentStatus
+from ai_campaign_studio.domain.facts.enums import FactStatus
 from ai_campaign_studio.domain.facts.policies import is_fact_usable
 from ai_campaign_studio.infrastructure.ai.provider_adapter_factory import (
     _PROVIDER_PRIORITY,
@@ -103,6 +115,7 @@ from ai_campaign_studio.infrastructure.database.repositories import (
     SqliteCampaignRepository,
     SqliteContentRepository,
     SqliteFactRepository,
+    SqliteIngestionRepository,
     SqlitePerformanceRepository,
     SqliteProviderConfigRepository,
     SqliteRevisionRepository,
@@ -116,6 +129,8 @@ from ai_campaign_studio.infrastructure.prompts.yaml_prompt_repository import (
 from ai_campaign_studio.infrastructure.rendering import PillowRenderer
 from ai_campaign_studio.jobs.cancellation import CancellationError
 from ai_campaign_studio.presentation.ui_models import (
+    ApproveFactResultUiModel,
+    AssembleSnapshotResultUiModel,
     BrandFactUiModel,
     BrandOverviewResultUiModel,
     CampaignPerformanceResultUiModel,
@@ -129,12 +144,15 @@ from ai_campaign_studio.presentation.ui_models import (
     DerivedMetricSetUiModel,
     ExportCampaignResultUiModel,
     GenerateContentResultUiModel,
+    IngestionReviewCandidateUiModel,
+    IngestionReviewResultUiModel,
     ListCampaignsResultUiModel,
     PerformanceCsvColumnUiModel,
     PerformanceCsvInvalidSampleUiModel,
     PerformanceCsvPreviewResultUiModel,
     ProviderConfigResultUiModel,
     RawMetricSetUiModel,
+    RejectFactResultUiModel,
 )
 
 _BRAND_SEED_FILE = "brand-seed.json"
@@ -155,6 +173,7 @@ class _CallResources:
 
     brand_repo: SqliteBrandRepository
     fact_repo: SqliteFactRepository
+    ingestion_repo: SqliteIngestionRepository
     campaign_repo: SqliteCampaignRepository
     provider_config_repo: SqliteProviderConfigRepository
     # ACS-GUI-008: ``generate_campaign_content`` reads pieces and writes
@@ -195,6 +214,10 @@ _LIFECYCLE_ERROR_MAPPERS: dict[str, str] = {
     "get_campaign_content_performance": "_content_performance_err",
     "pick_and_preview_performance_csv": "_preview_err",
     "confirm_performance_import": "_confirm_err",
+    "get_ingestion_review": "_ingestion_review_err",
+    "approve_fact_candidate": "_approve_err",
+    "reject_fact_candidate": "_reject_err",
+    "assemble_brand_snapshot": "_assemble_err",
 }
 # Per-method fallback message used ONLY when the resource-lifecycle
 # fails (we never want to surface the underlying exception text;
@@ -220,6 +243,18 @@ _LIFECYCLE_ERROR_MESSAGES: dict[str, str] = {
         "(interna greška)."
     ),
     "confirm_performance_import": "Uvoz performansi nije uspio (interna greška).",
+    "get_ingestion_review": (
+        "Učitavanje pregleda činjenica nije uspjelo (interna greška)."
+    ),
+    "approve_fact_candidate": (
+        "Odobravanje činjenice nije uspjelo (interna greška)."
+    ),
+    "reject_fact_candidate": (
+        "Odbijanje činjenice nije uspjelo (interna greška)."
+    ),
+    "assemble_brand_snapshot": (
+        "Kreiranje snimka brenda nije uspjelo (interna greška)."
+    ),
 }
 
 
@@ -411,6 +446,12 @@ class CampaignBridgeApi:
         # scope (no need for a process-global).
         self._generation_locks: dict[tuple[str, str], threading.Lock] = {}
         self._generation_locks_guard = threading.Lock()
+        # ACS-S2-016 R1-BF-1: assembling a snapshot is a read-version-write
+        # sequence. Pywebview can dispatch two calls on separate workers, so
+        # serialize that sequence per brand while allowing unrelated brands
+        # to assemble independently.
+        self._snapshot_assembly_locks: dict[str, threading.Lock] = {}
+        self._snapshot_assembly_locks_guard = threading.Lock()
         # ACS-GUI-009: in-process ``plan_id -> visual_system_id`` cache for
         # export idempotency (``VisualRepositoryPort`` has no "get by plan_id"
         # lookup). Same instance-level scope as ``_generation_locks``; a
@@ -1873,6 +1914,250 @@ class CampaignBridgeApi:
                 "Uvoz performansi nije uspio (interna greška).",
             )
 
+    @_with_call_resources
+    def get_ingestion_review(self, raw_payload: dict) -> dict:
+        """Return every ``FactCandidate`` for a brand (S2-G7b read path).
+
+        First ingestion-review bridge method. Reads the brand's candidates
+        through ``FactRepositoryPort.list_fact_candidates_by_brand`` and
+        attaches each candidate's ``SourceSnapshot.url`` for provenance
+        display. ``approved_count``/``rejected_count`` are separate counters
+        (never folded into the candidate list). Never raises into JS; never
+        leaks secret/path/exception text.
+        """
+        if not isinstance(raw_payload, dict):
+            return self._ingestion_review_err(
+                _ERROR_VALIDATION, "Pošiljka iz GUI-ja nije objekat."
+            )
+        brand_id = self._resolve_review_brand_id(raw_payload)
+        if brand_id is None:
+            return self._ingestion_review_err(
+                _ERROR_VALIDATION, "brand_id mora biti string."
+            )
+        try:
+            if self._brand_repo.get_brand(brand_id) is None:
+                return self._ingestion_review_err(
+                    _ERROR_VALIDATION, f"Brend {brand_id} ne postoji."
+                )
+            candidates = self._fact_repo.list_fact_candidates_by_brand(brand_id)
+            approved_count = 0
+            rejected_count = 0
+            rows: list[IngestionReviewCandidateUiModel] = []
+            for candidate in candidates:
+                if candidate.status is FactStatus.APPROVED:
+                    approved_count += 1
+                elif candidate.status is FactStatus.REJECTED:
+                    rejected_count += 1
+                snapshot = self._ingestion_repo.get_source_snapshot(
+                    candidate.snapshot_id
+                )
+                rows.append(
+                    IngestionReviewCandidateUiModel(
+                        candidate_id=str(candidate.id),
+                        snapshot_id=str(candidate.snapshot_id),
+                        snapshot_url=snapshot.url if snapshot is not None else "",
+                        content=candidate.content,
+                        chunk_id=(
+                            str(candidate.chunk_id)
+                            if candidate.chunk_id is not None
+                            else None
+                        ),
+                        status=candidate.status.value,
+                        created_at=candidate.created_at.isoformat(),
+                    )
+                )
+            return asdict(
+                IngestionReviewResultUiModel(
+                    ok=True,
+                    brand_id=str(brand_id),
+                    candidates=tuple(rows),
+                    approved_count=approved_count,
+                    rejected_count=rejected_count,
+                    error_code=None,
+                    error_message=None,
+                )
+            )
+        except Exception:
+            self._bootstrap.logger.exception("get_ingestion_review failed")
+            return self._ingestion_review_err(
+                _ERROR_INTERNAL,
+                "Učitavanje pregleda činjenica nije uspjelo (interna greška).",
+            )
+
+    @_with_call_resources
+    def approve_fact_candidate(self, raw_payload: dict) -> dict:
+        """Approve a PROPOSED candidate by delegating to G7a (S2-G7b).
+
+        NO candidate mutation here and NO duplicate invariant check — the
+        bridge only translates the payload and forwards to
+        ``ApproveFactCandidate.execute``, which owns idempotency/atomicity.
+        """
+        if not isinstance(raw_payload, dict):
+            return self._approve_err(
+                _ERROR_VALIDATION, "Pošiljka iz GUI-ja nije objekat."
+            )
+        candidate_id_raw = raw_payload.get("candidate_id")
+        if not isinstance(candidate_id_raw, str) or not candidate_id_raw.strip():
+            return self._approve_err(
+                _ERROR_VALIDATION, "candidate_id je obavezan (string)."
+            )
+        candidate_id = FactCandidateId(candidate_id_raw.strip())
+        try:
+            fact = ApproveFactCandidate(
+                ingestion_repo=self._ingestion_repo,
+                fact_repo=self._fact_repo,
+                unit_of_work=self._uow,
+            ).execute(candidate_id)
+        except EntityNotFound:
+            return self._approve_err(
+                _ERROR_VALIDATION, f"Kandidat {candidate_id} ne postoji."
+            )
+        except InvariantViolation as exc:
+            return self._approve_err(_ERROR_VALIDATION, str(exc))
+        except Exception:
+            self._bootstrap.logger.exception("approve_fact_candidate failed")
+            return self._approve_err(
+                _ERROR_INTERNAL,
+                "Odobravanje činjenice nije uspjelo (interna greška).",
+            )
+        return asdict(
+            ApproveFactResultUiModel(
+                ok=True,
+                approved_fact_id=str(fact.id),
+                candidate_id=str(candidate_id),
+                snapshot_url=fact.source_ref.uri,
+                version=fact.version,
+                error_code=None,
+                error_message=None,
+            )
+        )
+
+    @_with_call_resources
+    def reject_fact_candidate(self, raw_payload: dict) -> dict:
+        """Reject a PROPOSED candidate by delegating to G7a (S2-G7b).
+
+        ``reason`` is accepted for API stability but is NOT persisted (the
+        G7a ``RejectFactCandidate`` documents this as an OUT_OF_SCOPE_FINDING).
+        """
+        if not isinstance(raw_payload, dict):
+            return self._reject_err(
+                _ERROR_VALIDATION, "Pošiljka iz GUI-ja nije objekat."
+            )
+        candidate_id_raw = raw_payload.get("candidate_id")
+        if not isinstance(candidate_id_raw, str) or not candidate_id_raw.strip():
+            return self._reject_err(
+                _ERROR_VALIDATION, "candidate_id je obavezan (string)."
+            )
+        reason = raw_payload.get("reason")
+        if reason is not None and not isinstance(reason, str):
+            return self._reject_err(
+                _ERROR_VALIDATION, "reason mora biti string ili izostavljen."
+            )
+        candidate_id = FactCandidateId(candidate_id_raw.strip())
+        try:
+            RejectFactCandidate(
+                ingestion_repo=self._ingestion_repo,
+                unit_of_work=self._uow,
+            ).execute(candidate_id, reason)
+        except EntityNotFound:
+            return self._reject_err(
+                _ERROR_VALIDATION, f"Kandidat {candidate_id} ne postoji."
+            )
+        except InvariantViolation as exc:
+            return self._reject_err(_ERROR_VALIDATION, str(exc))
+        except Exception:
+            self._bootstrap.logger.exception("reject_fact_candidate failed")
+            return self._reject_err(
+                _ERROR_INTERNAL,
+                "Odbijanje činjenice nije uspjelo (interna greška).",
+            )
+        return asdict(
+            RejectFactResultUiModel(
+                ok=True,
+                candidate_id=str(candidate_id),
+                status="REJECTED",
+                error_code=None,
+                error_message=None,
+            )
+        )
+
+    @_with_call_resources
+    def assemble_brand_snapshot(self, raw_payload: dict) -> dict:
+        """Assemble a new immutable ``BrandSnapshot`` from approved facts.
+
+        Does NOT create ``ApprovedFact`` rows (that is G7a's job) — it only
+        gathers the already-APPROVED facts for the brand, copies the voice/
+        audience/service/visual/restriction value objects from the latest
+        snapshot (or defaults for the first), increments the version, and
+        persists via ``save_snapshot``. A brand with zero approved facts is
+        a validation error (never an empty snapshot).
+        """
+        if not isinstance(raw_payload, dict):
+            return self._assemble_err(
+                _ERROR_VALIDATION, "Pošiljka iz GUI-ja nije objekat."
+            )
+        brand_id = self._resolve_review_brand_id(raw_payload)
+        if brand_id is None:
+            return self._assemble_err(
+                _ERROR_VALIDATION, "brand_id mora biti string."
+            )
+        try:
+            with self._snapshot_assembly_lock_for(str(brand_id)):
+                if self._brand_repo.get_brand(brand_id) is None:
+                    return self._assemble_err(
+                        _ERROR_VALIDATION, f"Brend {brand_id} ne postoji."
+                    )
+                facts = self._fact_repo.list_approved_facts_by_brand(brand_id)
+                if not facts:
+                    return self._assemble_err(
+                        _ERROR_VALIDATION,
+                        "Nema odobrenih činjenica za ovaj brend.",
+                    )
+                latest = self._brand_repo.get_latest_snapshot(brand_id)
+                version = (latest.version + 1) if latest is not None else 1
+                snapshot = BrandSnapshot(
+                    id=BrandSnapshotId(new_id()),
+                    brand_id=brand_id,
+                    version=version,
+                    language=latest.language if latest is not None else "en",
+                    locale=latest.locale if latest is not None else "en_US",
+                    script=latest.script if latest is not None else "Latin",
+                    voice=(
+                        latest.voice
+                        if latest is not None
+                        else BrandVoice(formality="")
+                    ),
+                    audiences=latest.audiences if latest is not None else (),
+                    services=latest.services if latest is not None else (),
+                    visual_identity=(
+                        latest.visual_identity
+                        if latest is not None
+                        else VisualIdentity()
+                    ),
+                    restrictions=latest.restrictions if latest is not None else (),
+                    approved_fact_ids=tuple(fact.id for fact in facts),
+                    created_at=utc_now(),
+                )
+                self._brand_repo.save_snapshot(snapshot)
+        except Exception:
+            self._bootstrap.logger.exception("assemble_brand_snapshot failed")
+            return self._assemble_err(
+                _ERROR_INTERNAL,
+                "Kreiranje snimka brenda nije uspjelo (interna greška).",
+            )
+        return asdict(
+            AssembleSnapshotResultUiModel(
+                ok=True,
+                snapshot_id=str(snapshot.id),
+                brand_id=str(brand_id),
+                version=snapshot.version,
+                approved_fact_count=len(snapshot.approved_fact_ids),
+                created_at=snapshot.created_at.isoformat(),
+                error_code=None,
+                error_message=None,
+            )
+        )
+
     # --- per-call SQLite resources ---
 
     @contextmanager
@@ -1888,6 +2173,7 @@ class CampaignBridgeApi:
         resources = _CallResources(
             brand_repo=SqliteBrandRepository(connection),
             fact_repo=SqliteFactRepository(connection),
+            ingestion_repo=SqliteIngestionRepository(connection),
             campaign_repo=SqliteCampaignRepository(connection),
             provider_config_repo=SqliteProviderConfigRepository(connection),
             content_repo=SqliteContentRepository(connection),
@@ -1916,6 +2202,10 @@ class CampaignBridgeApi:
     @property
     def _fact_repo(self) -> SqliteFactRepository:
         return self._resources().fact_repo
+
+    @property
+    def _ingestion_repo(self) -> SqliteIngestionRepository:
+        return self._resources().ingestion_repo
 
     @property
     def _campaign_repo(self) -> SqliteCampaignRepository:
@@ -1977,6 +2267,15 @@ class CampaignBridgeApi:
             if lock is None:
                 lock = threading.Lock()
                 self._generation_locks[key] = lock
+            return lock
+
+    def _snapshot_assembly_lock_for(self, brand_id: str) -> threading.Lock:
+        """Return the lock guarding one brand's snapshot version sequence."""
+        with self._snapshot_assembly_locks_guard:
+            lock = self._snapshot_assembly_locks.get(brand_id)
+            if lock is None:
+                lock = threading.Lock()
+                self._snapshot_assembly_locks[brand_id] = lock
             return lock
 
     def _resolve_ai_adapter(self) -> tuple[Any, dict | None]:
@@ -2151,6 +2450,21 @@ class CampaignBridgeApi:
         ``AppPaths.data_dir`` which already does the right thing.
         """
         return self._bootstrap.paths.data_dir
+
+    def _resolve_review_brand_id(self, raw_payload: dict) -> BrandId | None:
+        """Resolve the brand for a fact-review/assemble call (S2-G7b).
+
+        A non-empty ``brand_id`` payload wins; otherwise the single seeded
+        demo brand is resolved via ``_ensure_brand()`` — the same pattern as
+        ``get_brand_overview``. Returns ``None`` when ``brand_id`` is present
+        but not a non-empty string (caller maps that to VALIDATION_ERROR).
+        """
+        brand_id_raw = raw_payload.get("brand_id")
+        if brand_id_raw is None:
+            return self._ensure_brand()[0]
+        if not isinstance(brand_id_raw, str) or not brand_id_raw.strip():
+            return None
+        return BrandId(brand_id_raw.strip())
 
     def _compensate_orphan_campaign(self, campaign: Any) -> None:
         """Best-effort delete of a DRAFT campaign that never got its plan
@@ -2422,6 +2736,66 @@ class CampaignBridgeApi:
                 skipped_count=0,
                 materialized_count=0,
                 skipped_invalid_count=0,
+                error_code=code,
+                error_message=message,
+            )
+        )
+
+
+    @staticmethod
+    def _ingestion_review_err(code: str, message: str) -> dict:
+        """Error result for ``get_ingestion_review`` only (S2-G7b)."""
+        return asdict(
+            IngestionReviewResultUiModel(
+                ok=False,
+                brand_id=None,
+                candidates=(),
+                approved_count=0,
+                rejected_count=0,
+                error_code=code,
+                error_message=message,
+            )
+        )
+
+    @staticmethod
+    def _approve_err(code: str, message: str) -> dict:
+        """Error result for ``approve_fact_candidate`` only (S2-G7b)."""
+        return asdict(
+            ApproveFactResultUiModel(
+                ok=False,
+                approved_fact_id=None,
+                candidate_id=None,
+                snapshot_url=None,
+                version=None,
+                error_code=code,
+                error_message=message,
+            )
+        )
+
+    @staticmethod
+    def _reject_err(code: str, message: str) -> dict:
+        """Error result for ``reject_fact_candidate`` only (S2-G7b)."""
+        return asdict(
+            RejectFactResultUiModel(
+                ok=False,
+                candidate_id=None,
+                status=None,
+                error_code=code,
+                error_message=message,
+            )
+        )
+
+    @staticmethod
+    def _assemble_err(code: str, message: str) -> dict:
+        """Error result for ``assemble_brand_snapshot`` only (S2-G7b)."""
+        return asdict(
+            AssembleSnapshotResultUiModel(
+                ok=False,
+                snapshot_id=None,
+                brand_id=None,
+                version=None,
+                approved_fact_count=0,
+                created_at=None,
                 error_code=code,
                 error_message=message,
             )

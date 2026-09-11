@@ -1155,3 +1155,209 @@ async function confirmPerformanceImport(button){
     window.addEventListener('pywebviewready', loadContentPerformance, {once:true});
   }
 })();
+
+// --- S2-G7b: Brend — Pregled činjenica (fact review) ---
+//
+// Hydration pattern is the same as Kampanje/Brend: SSR renders the fixture
+// ("Učitavanje kandidata…"), and at runtime we replace the list with REAL
+// data from ``get_ingestion_review``. Approve/Reject/Assemble buttons call
+// the bridge and then RELOAD the list so the counts and row statuses stay
+// consistent with the DB. Approve/Reject rows are built DYNAMICALLY, so
+// their click handlers are bound after each render (the parse-time
+// ``[data-action]`` delegate at the top of this file only sees static
+// elements). Every interpolated value goes through ``escapeHtml`` (XSS).
+(function(){
+  const reviewCard=document.querySelector('[data-fact-review]');
+  if(!reviewCard) return;
+
+  function escapeHtml(value){
+    return String(value).replace(/[&<>"']/g, function(ch){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+    });
+  }
+
+  function showToast(msg){
+    let t=document.getElementById('toast');
+    if(!t){
+      t=document.createElement('div');
+      t.id='toast';
+      Object.assign(t.style,{position:'fixed',right:'24px',bottom:'24px',
+        background:'#0f172a',color:'white',padding:'12px 16px',
+        borderRadius:'10px',fontSize:'13px',zIndex:99,
+        boxShadow:'0 10px 30px rgba(0,0,0,.18)'});
+      document.body.appendChild(t);
+    }
+    t.textContent=msg;
+    t.style.display='block';
+    clearTimeout(window.__tt);
+    window.__tt=setTimeout(function(){t.style.display='none';},2200);
+  }
+
+  function renderCounts(result){
+    const candidates=(result && result.candidates) || [];
+    let proposed=0, approved=0, rejected=0;
+    candidates.forEach(function(c){
+      if(c.status==='APPROVED') approved++;
+      else if(c.status==='REJECTED') rejected++;
+      else proposed++;
+    });
+    const setText=function(sel,v){
+      const el=document.querySelector(sel);
+      if(el) el.textContent=String(v);
+    };
+    setText('[data-fact-count-proposed]', proposed);
+    setText('[data-fact-count-approved]', approved);
+    setText('[data-fact-count-rejected]', rejected);
+    const assembleBtn=document.querySelector('[data-action="assemble-snapshot"]');
+    if(assembleBtn) assembleBtn.hidden=(approved===0);
+  }
+
+  function bindRowButtons(list){
+    list.querySelectorAll('[data-action="approve-fact"]').forEach(function(btn){
+      btn.addEventListener('click', function(){ approveFact(btn); });
+    });
+    list.querySelectorAll('[data-action="reject-fact"]').forEach(function(btn){
+      btn.addEventListener('click', function(){ rejectFact(btn); });
+    });
+  }
+
+  function renderRows(candidates){
+    const list=document.querySelector('[data-fact-review-list]');
+    if(!list) return;
+    if(!candidates || candidates.length===0){
+      list.innerHTML='<div class="muted">Nema kandidata za pregled.</div>';
+      return;
+    }
+    list.innerHTML=candidates.map(function(c){
+      const proposed=c.status==='PROPOSED';
+      const actions=proposed
+        ? '<div class="actions">'+
+          '<button class="btn" data-action="approve-fact" data-candidate-id="'+escapeHtml(c.candidate_id)+'">Odobri</button>'+
+          '<button class="btn" data-action="reject-fact" data-candidate-id="'+escapeHtml(c.candidate_id)+'">Odbij</button>'+
+          '</div>'
+        : '';
+      const badge=c.status==='APPROVED'?'ok':(c.status==='REJECTED'?'danger':'info');
+      return '<div class="fact-review-row">'+
+        '<div class="small muted">'+escapeHtml(c.snapshot_url)+'</div>'+
+        '<div>'+escapeHtml(c.content)+'</div>'+
+        '<div class="statusline"><span class="badge '+badge+'">'+escapeHtml(c.status)+'</span></div>'+
+        actions+
+        '</div>';
+    }).join('');
+    bindRowButtons(list);
+  }
+
+  async function loadFactReview(){
+    const api=window.pywebview && window.pywebview.api;
+    if(!api || typeof api.get_ingestion_review!=='function') return;
+    let result;
+    try{
+      result=await api.get_ingestion_review({});
+    }catch(err){
+      showToast('Učitavanje pregleda činjenica nije uspjelo.');
+      return;
+    }
+    if(!result || result.ok!==true){
+      const message=result && typeof result.error_message==='string' && result.error_message.trim()
+        ? result.error_message
+        : 'Učitavanje pregleda činjenica nije uspjelo.';
+      showToast(message);
+      return;
+    }
+    renderCounts(result);
+    renderRows(result.candidates);
+  }
+
+  async function approveFact(button){
+    const candidateId=(button.dataset.candidateId||'').trim();
+    if(!candidateId){ showToast('Nedostaje candidate_id.'); return; }
+    button.disabled=true;
+    let result;
+    try{
+      const api=window.pywebview && window.pywebview.api;
+      if(!api || typeof api.approve_fact_candidate!=='function'){
+        showToast('Interna greška: bridge nije dostupan.');
+        result=null;
+      }else{
+        result=await api.approve_fact_candidate({candidate_id:candidateId});
+      }
+    }catch(err){
+      showToast('Interna greška pri pozivu: '+(err&&err.message?err.message:'nepoznato.'));
+      result=null;
+    }finally{
+      button.disabled=false;
+    }
+    if(result && result.ok){
+      showToast('Činjenica odobrena.');
+      await loadFactReview();
+    }else if(result){
+      showToast((result.error_message)||'Odobravanje nije uspjelo.');
+    }
+  }
+
+  async function rejectFact(button){
+    const candidateId=(button.dataset.candidateId||'').trim();
+    if(!candidateId){ showToast('Nedostaje candidate_id.'); return; }
+    button.disabled=true;
+    let result;
+    try{
+      const api=window.pywebview && window.pywebview.api;
+      if(!api || typeof api.reject_fact_candidate!=='function'){
+        showToast('Interna greška: bridge nije dostupan.');
+        result=null;
+      }else{
+        result=await api.reject_fact_candidate({candidate_id:candidateId});
+      }
+    }catch(err){
+      showToast('Interna greška pri pozivu: '+(err&&err.message?err.message:'nepoznato.'));
+      result=null;
+    }finally{
+      button.disabled=false;
+    }
+    if(result && result.ok){
+      showToast('Činjenica odbijena.');
+      await loadFactReview();
+    }else if(result){
+      showToast((result.error_message)||'Odbijanje nije uspjelo.');
+    }
+  }
+
+  async function assembleSnapshot(button){
+    button.disabled=true;
+    let result;
+    try{
+      const api=window.pywebview && window.pywebview.api;
+      if(!api || typeof api.assemble_brand_snapshot!=='function'){
+        showToast('Interna greška: bridge nije dostupan.');
+        result=null;
+      }else{
+        result=await api.assemble_brand_snapshot({});
+      }
+    }catch(err){
+      showToast('Interna greška pri pozivu: '+(err&&err.message?err.message:'nepoznato.'));
+      result=null;
+    }finally{
+      button.disabled=false;
+    }
+    if(result && result.ok){
+      showToast('Snimak brenda v'+result.version+' kreiran ('+result.approved_fact_count+' činjenica).');
+      await loadFactReview();
+    }else if(result){
+      showToast((result.error_message)||'Kreiranje snimka nije uspjelo.');
+    }
+  }
+
+  // Static "Napravi snimak brenda" button: bind directly (the global
+  // [data-action] delegate binds a no-op for this action).
+  const assembleBtn=document.querySelector('[data-action="assemble-snapshot"]');
+  if(assembleBtn){
+    assembleBtn.addEventListener('click', function(){ assembleSnapshot(assembleBtn); });
+  }
+
+  const api=window.pywebview && window.pywebview.api;
+  if(api && typeof api.get_ingestion_review==='function'){
+    loadFactReview();
+  }else{
+    window.addEventListener('pywebviewready', loadFactReview, {once:true});
+  }
+})();

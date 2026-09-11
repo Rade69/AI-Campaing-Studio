@@ -130,3 +130,17 @@ class SqliteBrandRepository:
             approved_fact_ids=tuple(FactId(row["fact_id"]) for row in fact_rows),
             created_at=datetime.fromisoformat(row["created_at"]),
         )
+
+    def get_latest_snapshot(self, brand_id: BrandId) -> BrandSnapshot | None:
+        """Return the highest-version snapshot for a brand, or None.
+
+        Used by ``assemble_brand_snapshot`` to compute the next version.
+        """
+        row = self._connection.execute(
+            "SELECT * FROM brand_snapshots WHERE brand_id = ?"
+            " ORDER BY version DESC LIMIT 1",
+            (brand_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return self.get_snapshot(BrandSnapshotId(row["id"]))
