@@ -239,6 +239,11 @@ def render_body(fixture: BrendFixture | None = None) -> str:
         '<button class="btn primary" data-action="start-ingestion">'
         "Pokreni ingestion"
         "</button>"
+        # ACS-GUI-013: reset button — clears previously-ingested data for
+        # this brand so a new test URL starts from an empty list.
+        '<button class="btn danger" data-action="clear-ingestion">'
+        "Obriši sve"
+        "</button>"
         "</div>"
         '<div class="muted small" data-ingestion-status hidden></div>'
         "</div>"
