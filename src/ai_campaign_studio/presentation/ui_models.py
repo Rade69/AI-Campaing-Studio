@@ -533,6 +533,27 @@ class RejectFactResultUiModel:
 
 
 @dataclass(frozen=True)
+class BulkReviewResultUiModel:
+    """Result of ``bulk_review_fact_candidates`` (ACS-GUI-017).
+
+    A single page can produce 100+ tiny PROPOSED candidates (deterministic
+    1:1 paragraph->candidate, no LLM synthesis — see BUILD_FACTS), so
+    one-by-one approve/reject does not scale. This loops the existing
+    ``ApproveFactCandidate``/``RejectFactCandidate`` use-cases per id and
+    reports counts — partial success (some ids already decided by a
+    concurrent action, or missing) is a normal outcome for a large batch,
+    not an all-or-nothing failure.
+    """
+
+    ok: bool
+    action: str | None
+    succeeded_count: int | None
+    failed_count: int | None
+    error_code: str | None
+    error_message: str | None
+
+
+@dataclass(frozen=True)
 class AssembleSnapshotResultUiModel:
     """Result of ``assemble_brand_snapshot`` (S2-G7b)."""
 
