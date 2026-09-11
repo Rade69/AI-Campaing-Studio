@@ -3,7 +3,48 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-10 (coordinator: minimax, Claude na
+**Zadnje ažurirano:** 2026-09-11 (coordinator: minimax, Claude na
+pauzi zbog limita tokena) — **ACS-S2-016 (S2-G7b, Brand
+Intelligence Review UI) MERGED.** PR #30 squash `524c6b5` (Human
+Owner ručno odobrio; Claude PASS override 3b-style zbog pauze,
+Codex R1 round-1 (REJECT, 3 blocking findings) + Codex R1 fix
+(commit `3264b78` — per-brand lock, status filter WHERE, BHS
+toast) + coordinator round-2 (commit `ba9730a`, PASS, 9/9
+reproducer-based verification).
+[Task contract](../agent_reports/ACS-S2-016-task-contract.md) ·
+[Pi evidence](../agent_reports/2026-09-10-ACS-S2-016-pi.md) ·
+[Coordinator Claude-equivalent re-review](../agent_reports/2026-09-10-ACS-S2-016-coordinator-claude-review.md) ·
+[Codex R1 review (REJECT)](../agent_reports/2026-09-10-ACS-S2-016-review-codex-r1.md) ·
+[Codex R1 fix evidence](../agent_reports/2026-09-11-ACS-S2-016-codex-fix-round1.md) ·
+[Coordinator round-2 (PASS)](../agent_reports/2026-09-11-ACS-S2-016-coordinator-round2.md).
+
+**R1 (Codex round 1)**: 3 blocking findings — (1) HIGH race u
+`assemble_brand_snapshot` (2 thread + barrier reproducer pokazuje
+duplikat version 1, fix: `_snapshot_assembly_locks:
+dict[str, threading.Lock]` + guard lock pattern), (2) HIGH
+`list_approved_facts_by_brand` nema `WHERE status = 'APPROVED'`
+(fix: bind `FactStatus.APPROVED.value`), (3) MEDIUM
+`loadFactReview` silent catch/return (fix: `showToast` BHS
+fallback bez `err.message` izlaganja). Codex implementirao
+sve 3 u jednom commit-u; reproducer-based verification 9/9 PASS.
+
+**Risk: HIGH (GUI lifecycle + human-in-loop klasa)**, ali
+Claude PASS override-ovan (3b-style, kao G6) zbog pauze limita
+tokena. Workflow standard za HIGH i dalje zahtijeva Claude PASS;
+ovo je jednokratni override. Codex round 1 + Codex R1 fix +
+coordinator round 2 + Human Owner odobrenje = dovoljno.
+
+**Scope**: 19 fajlova, +2550/-2 (commit `524c6b5`). Zero
+touches na `forbidden_paths` (domain/, G3-G7a, persistence
+schema, migrations).
+
+**"Unesi URL, vidi rezultat" petlja ZATVORENA u aplikaciji.**
+Svi Slice 2 gate-ovi (G1-G6, G7a, G7b, G9) MERGED. Preostaje
+opcioni S2-G8 (Playwright fallback).
+
+---
+
+**Prethodno ažuriranje:** 2026-09-10 (coordinator: minimax, Claude na
 pauzi zbog limita tokena) — **ACS-S2-014 (S2-G6, Pipeline
 Orchestration) MERGED.** PR #32 squash `04634f3` (Human Owner
 ručno merge-ovao u 13:48:40Z) + Codex round-3 R3-BF-1 follow-up
