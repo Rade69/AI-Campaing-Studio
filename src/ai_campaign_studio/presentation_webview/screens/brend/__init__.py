@@ -229,6 +229,19 @@ def render_body(fixture: BrendFixture | None = None) -> str:
         "Napravi snimak brenda"
         "</button>"
         "</div>"
+        # ACS-GUI-011: URL ingestion trigger — was a "kasnije" toast
+        # placeholder, now wired to start_brand_ingestion.
+        '<div class="field">'
+        "<label>URL za preuzimanje sadržaja</label>"
+        '<div class="statusline">'
+        '<input type="text" data-ingest-url '
+        'placeholder="https://primjer-brenda.com/" />'
+        '<button class="btn primary" data-action="start-ingestion">'
+        "Pokreni ingestion"
+        "</button>"
+        "</div>"
+        '<div class="muted small" data-ingestion-status hidden></div>'
+        "</div>"
         '<div class="statusline" data-fact-review-counts>'
         '<span class="badge info">Predloženo: '
         '<b data-fact-count-proposed>0</b></span>'

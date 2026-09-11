@@ -53,6 +53,9 @@ from ai_campaign_studio.application.ingestion.approve_fact_candidates import (
     ApproveFactCandidate,
     RejectFactCandidate,
 )
+from ai_campaign_studio.application.ingestion.ingest_brand_sources import (
+    IngestBrandSources,
+)
 from ai_campaign_studio.application.performance import materialize_performance_snapshots
 from ai_campaign_studio.application.performance.build_performance_summaries import (
     build_campaign_performance_summary,
@@ -123,10 +126,36 @@ from ai_campaign_studio.infrastructure.database.repositories import (
 )
 from ai_campaign_studio.infrastructure.database.unit_of_work import SqliteUnitOfWork
 from ai_campaign_studio.infrastructure.export import ZipExportWriter
+from ai_campaign_studio.infrastructure.extraction import (
+    BoilerplateFilter,
+    Deduplicator,
+    MainContentExtractor,
+)
 from ai_campaign_studio.infrastructure.prompts.yaml_prompt_repository import (
     YamlPromptRepository,
 )
 from ai_campaign_studio.infrastructure.rendering import PillowRenderer
+from ai_campaign_studio.infrastructure.visual_extraction.adapter import (
+    VisualIdentityAdapter,
+)
+from ai_campaign_studio.infrastructure.web_ingestion.crawl_budget import CrawlBudget
+from ai_campaign_studio.infrastructure.web_ingestion.domain_discovery import (
+    DomainDiscovery,
+)
+from ai_campaign_studio.infrastructure.web_ingestion.http_fetcher import HttpFetcher
+from ai_campaign_studio.infrastructure.web_ingestion.robots_reader import RobotsReader
+from ai_campaign_studio.infrastructure.web_ingestion.sitemap_reader import (
+    SitemapReader,
+)
+from ai_campaign_studio.infrastructure.web_ingestion.url_classifier import (
+    UrlClassifier,
+)
+from ai_campaign_studio.infrastructure.web_ingestion.url_normalizer import (
+    normalize_url,
+)
+from ai_campaign_studio.infrastructure.web_ingestion.url_safety_policy import (
+    UrlSafetyPolicy,
+)
 from ai_campaign_studio.jobs.cancellation import CancellationError
 from ai_campaign_studio.presentation.ui_models import (
     ApproveFactResultUiModel,
@@ -153,6 +182,7 @@ from ai_campaign_studio.presentation.ui_models import (
     ProviderConfigResultUiModel,
     RawMetricSetUiModel,
     RejectFactResultUiModel,
+    StartIngestionResultUiModel,
 )
 
 _BRAND_SEED_FILE = "brand-seed.json"
@@ -218,6 +248,7 @@ _LIFECYCLE_ERROR_MAPPERS: dict[str, str] = {
     "approve_fact_candidate": "_approve_err",
     "reject_fact_candidate": "_reject_err",
     "assemble_brand_snapshot": "_assemble_err",
+    "start_brand_ingestion": "_start_ingestion_err",
 }
 # Per-method fallback message used ONLY when the resource-lifecycle
 # fails (we never want to surface the underlying exception text;
@@ -254,6 +285,9 @@ _LIFECYCLE_ERROR_MESSAGES: dict[str, str] = {
     ),
     "assemble_brand_snapshot": (
         "Kreiranje snimka brenda nije uspjelo (interna greška)."
+    ),
+    "start_brand_ingestion": (
+        "Pokretanje preuzimanja sadržaja nije uspjelo (interna greška)."
     ),
 }
 
@@ -1913,6 +1947,169 @@ class CampaignBridgeApi:
                 _ERROR_INTERNAL,
                 "Uvoz performansi nije uspio (interna greška).",
             )
+
+    @_with_call_resources
+    def start_brand_ingestion(self, raw_payload: dict) -> dict:
+        """Submit a website ingestion job for one brand (ACS-GUI-011).
+
+        First bridge method that triggers ``IngestBrandSources`` (S2-G6) —
+        every prior ingestion bridge method (``get_ingestion_review``,
+        ``approve_fact_candidate``, ``reject_fact_candidate``) only reads or
+        reviews candidates that already exist; nothing in production code
+        called ``IngestBrandSources`` before this (confirmed by grep before
+        writing this method — it only had test callers).
+
+        ``raw_payload = {"brand_id": str | None, "urls": list[str]}``.
+        ``brand_id=None`` resolves the seeded demo brand, same as
+        ``get_ingestion_review``/``assemble_brand_snapshot``
+        (``_resolve_review_brand_id``). Same STARTED-shape / JobManager
+        pattern as ``generate_campaign_content`` (ACS-F1-047): this method
+        only validates and submits; the actual DISCOVER->FETCH->EXTRACT->
+        BUILD_FACTS run happens on a ``JobManager`` worker thread and is
+        polled via the EXISTING ``get_job_status(job_id)`` — no new polling
+        endpoint needed. Once the job reaches ``SUCCEEDED``, the JS caller
+        calls the EXISTING ``get_ingestion_review`` to see what was built;
+        this method does not return candidate data itself.
+        """
+        if not isinstance(raw_payload, dict):
+            return self._start_ingestion_err(
+                _ERROR_VALIDATION, "Pošiljka iz GUI-ja nije objekat."
+            )
+        brand_id = self._resolve_review_brand_id(raw_payload)
+        if brand_id is None:
+            return self._start_ingestion_err(
+                _ERROR_VALIDATION, "brand_id mora biti string."
+            )
+        urls_raw = raw_payload.get("urls")
+        if not isinstance(urls_raw, list) or not urls_raw:
+            return self._start_ingestion_err(
+                _ERROR_VALIDATION, "urls je obavezna neprazna lista."
+            )
+        urls: list[str] = []
+        for item in urls_raw:
+            if not isinstance(item, str) or not item.strip():
+                return self._start_ingestion_err(
+                    _ERROR_VALIDATION, "Svaki URL mora biti neprazan string."
+                )
+            urls.append(item.strip())
+        try:
+            if self._brand_repo.get_brand(brand_id) is None:
+                return self._start_ingestion_err(
+                    _ERROR_VALIDATION, f"Brend {brand_id} ne postoji."
+                )
+        except (EntityNotFound, ValueError, TypeError) as exc:
+            return self._start_ingestion_err(_ERROR_VALIDATION, str(exc))
+
+        source_scope = tuple(urls)
+        try:
+            job_id = self._bootstrap.job_manager.submit(
+                "ingest_brand_sources",
+                self._build_ingest_brand_sources_closure(brand_id, source_scope),
+            )
+        except RuntimeError as exc:
+            self._bootstrap.logger.error(
+                "start_brand_ingestion: JobManager.submit failed: %s", exc
+            )
+            return self._start_ingestion_err(
+                _ERROR_INTERNAL,
+                "Sistem je zauzet. Pokušaj ponovo za par sekundi.",
+            )
+
+        return asdict(
+            StartIngestionResultUiModel(
+                ok=True,
+                brand_id=str(brand_id),
+                job_id=job_id,
+                error_code=None,
+                error_message=None,
+            )
+        )
+
+    def _build_ingest_brand_sources_closure(
+        self, brand_id: BrandId, source_scope: tuple[str, ...]
+    ):
+        """Return the ``JobManager``-submitted closure for one ingestion run.
+
+        Runs on a ``JobManager`` worker thread (NOT the pywebview thread that
+        called ``start_brand_ingestion``), so it opens its OWN
+        ``_resource_scope()`` — the bridge's per-call connection is closed
+        before this closure ever starts (HOTFIX-002 pattern, same reason
+        ``_build_generate_content_closure`` does this for content
+        generation).
+        """
+        job_manager = self._bootstrap.job_manager
+
+        def _run(token) -> None:  # type: ignore[no-untyped-def]
+            with self._resource_scope():
+                use_case = self._build_ingest_use_case(job_manager)
+                run = use_case.execute(brand_id, source_scope, token=token)
+                stats = run.stats
+                if stats is not None:
+                    job_manager.update_progress(
+                        token.job_id,
+                        stats.fetched_pages,
+                        stats.discovered_urls,
+                        phase="DONE",
+                        message=(
+                            f"fetched={stats.fetched_pages} "
+                            f"extracted={stats.extracted_chunks} "
+                            f"candidates={stats.built_candidates} "
+                            f"failed={stats.failed_pages}"
+                        ),
+                    )
+
+        return _run
+
+    def _build_ingest_use_case(self, job_manager: Any) -> IngestBrandSources:
+        """Wire a fresh ``IngestBrandSources`` with REAL G3/G4/G5 adapters.
+
+        Mirrors exactly the wiring independently verified against a live
+        external URL earlier in this session (see
+        agent_reports/2026-09-11-ACS-GUI-011-claude.md) — same fetcher,
+        discovery, classifier, extractor, filter, deduplicator, visual
+        identity adapter. ``document_extractors={}`` is a deliberate v1
+        scope boundary (task contract §"Šta NE SMIJE") — PDF/DOCX/XLSX (G9)
+        URLs will simply produce zero chunks, not fail the run.
+        """
+        policy = UrlSafetyPolicy()
+        fetcher = HttpFetcher(policy=policy)
+        robots = RobotsReader(fetcher)
+        sitemaps = SitemapReader(fetcher)
+        budget = CrawlBudget()
+        discovery = DomainDiscovery(
+            fetcher=fetcher,
+            robots=robots,
+            sitemaps=sitemaps,
+            policy=policy,
+            budget=budget,
+        )
+        return IngestBrandSources(
+            repository=self._ingestion_repo,
+            fetcher=fetcher,
+            classifier=UrlClassifier(),
+            discovery=discovery,
+            budget=budget,
+            normalizer=normalize_url,
+            visual_identity_extractor=VisualIdentityAdapter(),
+            content_extractor=MainContentExtractor().extract,
+            boilerplate_filter=BoilerplateFilter().filter,
+            deduplicator=Deduplicator().deduplicate,
+            document_extractors={},
+            job_manager=job_manager,
+        )
+
+    @staticmethod
+    def _start_ingestion_err(code: str, message: str) -> dict:
+        """Error result for ``start_brand_ingestion`` only (ACS-GUI-011)."""
+        return asdict(
+            StartIngestionResultUiModel(
+                ok=False,
+                brand_id=None,
+                job_id=None,
+                error_code=code,
+                error_message=message,
+            )
+        )
 
     @_with_call_resources
     def get_ingestion_review(self, raw_payload: dict) -> dict:
