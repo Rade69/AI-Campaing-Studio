@@ -17,6 +17,7 @@ from ai_campaign_studio.domain.brand_knowledge.enums import (
     KnowledgeCategory,
     KnowledgeStatus,
 )
+from ai_campaign_studio.domain.common.errors import InvariantViolation
 from ai_campaign_studio.domain.common.ids import (
     BrandKnowledgeSnapshotId,
     BrandSnapshotId,
@@ -293,4 +294,108 @@ def test_knowledge_snapshot_unique_brand_snapshot_version(tmp_path: Path) -> Non
     repo.save_knowledge_snapshot(_knowledge_snapshot(id="bks-1", version=1))
     with pytest.raises(sqlite3.IntegrityError):
         repo.save_knowledge_snapshot(_knowledge_snapshot(id="bks-2", version=1))
+    connection.close()
+
+
+# --- Adversarial review fixes (OpenCode, 2026-09-12): F1 atomicity,
+# --- F4 brand_snapshot_id immutability, F5 duplicate provenance ids.
+
+
+def test_save_entry_failed_resave_does_not_corrupt_prior_state(
+    tmp_path: Path,
+) -> None:
+    """F1: a re-save that fails partway through (FK violation on the
+    second fact_id) must roll back entirely -- the entry's PREVIOUS valid
+    state (from the first successful save) must survive untouched, not
+    be left with an empty join table."""
+    connection = _setup_db(tmp_path)
+    _seed_parents(connection)
+    repo = brand_knowledge_repo.SqliteBrandKnowledgeRepository(connection)
+
+    repo.save_entry(_entry(source_fact_ids=("fact-1",)))
+    with pytest.raises(sqlite3.IntegrityError):
+        repo.save_entry(_entry(source_fact_ids=("missing-fact",)))
+
+    # Old state must still be intact -- not wiped by the failed re-save's
+    # DELETE-then-re-INSERT.
+    loaded = repo.get_entry(KnowledgeEntryId("entry-1"))
+    assert loaded is not None
+    assert loaded.source_fact_ids == (FactId("fact-1"),)
+    connection.close()
+
+
+def test_save_entry_rejects_brand_snapshot_id_reassignment(
+    tmp_path: Path,
+) -> None:
+    """F4: an existing KnowledgeEntry id's brand_snapshot_id is fixed at
+    creation -- silently repointing it via upsert would let a
+    BrandKnowledgeSnapshot end up (unknowingly) referencing an entry that
+    now belongs to a DIFFERENT BrandSnapshot version."""
+    connection = _setup_db(tmp_path)
+    _seed_parents(connection)
+    connection.execute(
+        "INSERT INTO brand_snapshots (id, brand_id, version, language,"
+        " locale, script, voice_json, audiences_json, services_json,"
+        " visual_identity_json, restrictions_json, created_at)"
+        " VALUES ('snap-2', 'brand-1', 2, 'BHS', 'BHS_LATIN', 'LATIN',"
+        " '{}', '[]', '[]', '{}', '[]', '2026-01-01T00:00:00+00:00')"
+    )
+    repo = brand_knowledge_repo.SqliteBrandKnowledgeRepository(connection)
+
+    repo.save_entry(_entry())  # brand_snapshot_id="snap-1" (default)
+    reassigned = KnowledgeEntry(
+        id=KnowledgeEntryId("entry-1"),
+        brand_snapshot_id=BrandSnapshotId("snap-2"),
+        category=KnowledgeCategory.COMPANY,
+        field="name",
+        value="BrightSmile",
+        evidence_type=EvidenceType.EXPLICIT,
+        status=KnowledgeStatus.PROPOSED,
+        source_fact_ids=(FactId("fact-1"),),
+        confidence=None,
+        conflict_group_id=None,
+        created_at=_CREATED_AT,
+    )
+    with pytest.raises(InvariantViolation):
+        repo.save_entry(reassigned)
+
+    # Unchanged -- still under the original brand_snapshot_id.
+    loaded = repo.get_entry(KnowledgeEntryId("entry-1"))
+    assert loaded is not None
+    assert loaded.brand_snapshot_id == BrandSnapshotId("snap-1")
+    connection.close()
+
+
+def test_save_entry_rejects_duplicate_source_fact_ids(tmp_path: Path) -> None:
+    """F5: duplicates in source_fact_ids would otherwise hit the
+    brand_knowledge_entry_facts PRIMARY KEY on the second insert, leaving
+    a partial write behind a cryptic sqlite3.IntegrityError. Reject them
+    up front with a clear domain error instead."""
+    connection = _setup_db(tmp_path)
+    _seed_parents(connection)
+    repo = brand_knowledge_repo.SqliteBrandKnowledgeRepository(connection)
+
+    with pytest.raises(InvariantViolation):
+        repo.save_entry(_entry(source_fact_ids=("fact-1", "fact-1")))
+
+    # No partial write -- the whole call must be rejected before any SQL.
+    assert repo.get_entry(KnowledgeEntryId("entry-1")) is None
+    connection.close()
+
+
+def test_save_knowledge_snapshot_rejects_duplicate_entry_ids(
+    tmp_path: Path,
+) -> None:
+    """Same class of bug as F5, mirrored on the snapshot side:
+    brand_knowledge_snapshot_entries has the identical
+    (knowledge_snapshot_id, entry_id) PRIMARY KEY shape."""
+    connection = _setup_db(tmp_path)
+    _seed_parents(connection)
+    repo = brand_knowledge_repo.SqliteBrandKnowledgeRepository(connection)
+    repo.save_entry(_entry(id="entry-1"))
+
+    with pytest.raises(InvariantViolation):
+        repo.save_knowledge_snapshot(
+            _knowledge_snapshot(approved_entry_ids=("entry-1", "entry-1"))
+        )
     connection.close()
