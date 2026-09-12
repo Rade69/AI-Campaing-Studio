@@ -42,6 +42,10 @@ def test_ports_are_runtime_checkable() -> None:
             del brand_id
             return None
 
+        def list_snapshots(self, brand_id):
+            del brand_id
+            return ()
+
     # structural isinstance check works because the Protocol is runtime_checkable
     assert isinstance(_FakeBrandRepository(), repositories.BrandRepositoryPort)
 
