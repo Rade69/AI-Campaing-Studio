@@ -2538,7 +2538,6 @@ class CampaignBridgeApi:
         )
 
     @_with_call_resources
-    @_with_call_resources
     def activate_brand_snapshot(self, raw_payload: dict) -> dict:
         """Make a previously-assembled ``BrandSnapshot`` the active one
         (ACS-S2-018).
@@ -2616,7 +2615,6 @@ class CampaignBridgeApi:
             )
         )
 
-    @_with_call_resources
     @_with_call_resources
     def list_brand_snapshots(self, raw_payload: dict | None = None) -> dict:
         """Return every assembled ``BrandSnapshot`` for the brand, newest
