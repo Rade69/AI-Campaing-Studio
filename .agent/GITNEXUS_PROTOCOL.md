@@ -1,6 +1,19 @@
 # AI Campaign Studio — GitNexus Protocol
 
-**Status:** NON-NEGOTIABLE za MEDIUM/HIGH i shared-contract/refactor taskove.
+**Status (ažurirano 2026-09-12):** GitNexus je SEKUNDARAN, probacion
+alat — **Graft je sad primarni** code intelligence alat za MEDIUM/HIGH
+i shared-contract/refactor taskove, vidi `.agent/GRAFT_PROTOCOL.md`
+§Status/§0 za razlog i lokalno verifikovane dokaze (Human Owner
+odluka, 2026-09-12). Ovaj fajl ostaje na snazi kao SEKUNDARNA
+unakrsna provjera dok se ne skupi dovoljno review-slučajeva da se
+GitNexus formalno penzioniše iz workflow-a — koristiti ga dodatno
+(ne umjesto Graft-a), posebno na HIGH taskovima, dok probacioni
+period traje.
+
+Sve niže u ovom fajlu ostaje TAČNO kao opis GitNexus mehanike i
+poznatih ograničenja (§13 caller-graph rupa i dalje važi identično i
+za Graft — vidi `GRAFT_PROTOCOL.md` §3), samo se "NON-NEGOTIABLE
+primarni gate" čita kao "sekundarna provjera" dok probacija traje.
 
 GitNexus se koristi za:
 

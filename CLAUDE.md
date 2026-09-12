@@ -94,7 +94,9 @@ Ne oslanjaj se na starije Faza 0/Faza 1 verzije ako CURRENT_STATE kaže da su su
 - Netrivijalan task = worktree.
 - Scope se ne širi bez redefinisanja kontrakta.
 - Execution evidence prije reviewa.
-- GitNexus je obavezan za MEDIUM/HIGH i shared-contract/refactor izmjene.
+- **Graft je obavezan za MEDIUM/HIGH i shared-contract/refactor izmjene**
+  (od 2026-09-12 — Graft je primarni code intelligence alat, GitNexus
+  sekundaran/probacion, vidi `.agent/GRAFT_PROTOCOL.md` §Status/§0).
 - Review prije Human Owner approval-a.
 - Merge tek nakon eksplicitnog odobrenja — **osim** LOW/MEDIUM taskova pod
   smanjenim review troškom (workflow §29, od 2026-09-01): tamo je Claude
@@ -109,18 +111,23 @@ Ne oslanjaj se na starije Faza 0/Faza 1 verzije ako CURRENT_STATE kaže da su su
 
 ## GitNexus i Graft
 
-GitNexus nije opciona pomoć. Graft je dodatni, preporučen code
-intelligence alat (CLI + MCP; identična odluka kao na FlowOS-u,
-2026-09-09) — ne zamjenjuje GitNexus §5-§9 pre/post-change protokol,
-koristi se kao dodatni, brži prvi prolaz.
+**Graft je od 2026-09-12 primarni code intelligence alat** (Human
+Owner odluka, nakon lokalne verifikacije na ovom repou — vidi
+`.agent/GRAFT_PROTOCOL.md` §0). GitNexus prelazi u sekundarnu,
+probacionu ulogu (`.agent/GITNEXUS_PROTOCOL.md`) — koristiti ga kao
+dodatnu unakrsnu provjeru dok probacioni period traje, posebno na HIGH
+taskovima.
 
-Nakon foundation skeletona repo mora biti indeksiran i održavan svježim.
+Nakon foundation skeletona repo mora biti indeksiran (Graft: `graft
+build`) i održavan svježim.
 
 **"Zero callers" nije dokaz bezbjednosti** — potvrđena rupa za pozive kroz
 kompozitni/atributni objekat (`self._api.X()`), čak i na svježem, ne
-stale indeksu, na OBA alata (cross-project dokaz, ne još lokalno
-potvrđeno na ovom kodu). Uvijek grep provjera prije zaključka o niskom
-riziku.
+stale indeksu, na OBA alata — cross-project dokaz (FlowOS) I lokalno
+potvrđeno na ovom kodu (`IngestionRepositoryPort` kao parametar-
+anotacija: `graft callers` vratio nula, `graft grep` odmah našao 20
+stvarnih upotreba u 14 fajlova). Uvijek grep provjera prije zaključka o
+niskom riziku.
 
 Detaljni protokoli:
 
@@ -132,7 +139,7 @@ Detaljni protokoli:
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **AI-Campaing-Studio** (16288 symbols, 24139 relationships, 178 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **AI-Campaing-Studio** (17673 symbols, 26641 relationships, 256 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

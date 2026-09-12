@@ -108,9 +108,11 @@ Svaki Slice 1.5 Task Contract mora dodatno čitati:
 4. Channel/Platform/Format registry;
 5. SQLite migration/UoW/repository foundation;
 6. relevantne testove;
-7. `.agent/GITNEXUS_PROTOCOL.md`.
+7. `.agent/GRAFT_PROTOCOL.md` (primarni od 2026-09-12) i
+   `.agent/GITNEXUS_PROTOCOL.md` (sekundarna probaciona provjera).
 
-GitNexus je **obavezan za svaki Slice 1.5 task**:
+Graft je **obavezan za svaki Slice 1.5-stila task** (GitNexus sekundarna
+provjera dok probacija traje):
 
 ```text
 pre-change context
@@ -197,6 +199,6 @@ Prije nego što se dva taska pokrenu paralelno, provjeriti (workflow §10):
 
 1. `allowed_paths(A) ∩ allowed_paths(B) = ∅` (iz njihovih Task Contracata);
 2. da nema skrivene semantic zavisnosti (npr. oba mijenjaju stanje koje isti integration test očekuje);
-3. GitNexus shared-caller provjeru kada lista fajlova nije dovoljna (nije primjenjivo dok GitNexus nije indeksiran).
+3. Graft shared-caller provjeru (`graft callers`/`graft grep`) kada lista fajlova nije dovoljna.
 
 Trenutno je jedino ACS-P0-001 unblocked — nema kandidata za paralelan rad dok se 001 ne merguje.

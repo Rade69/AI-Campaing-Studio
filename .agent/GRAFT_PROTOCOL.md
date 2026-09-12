@@ -1,17 +1,82 @@
 # AI Campaign Studio — Graft Protocol
 
-**Status:** Graft CLI + MCP dostupan i preporučen kao primarni retrieval
-alat za code intelligence, uz GitNexus koji ostaje obavezan za
-MEDIUM/HIGH prema `.agent/GITNEXUS_PROTOCOL.md`.
+**Status (2026-09-12, Human Owner odluka):** Graft je sad **primarni**
+code intelligence alat za sve agente na ovom repou. GitNexus prelazi u
+**sekundarnu, probacionu ulogu** — koristiti ga kao dodatnu unakrsnu
+provjeru na sljedećih nekoliko MEDIUM/HIGH taskova (ne obavezno za
+svaki), dok se ne skupi dovoljno stvarnih task-review slučajeva da se
+GitNexus formalno penzioniše iz `.agent/GITNEXUS_PROTOCOL.md`. Ovo je
+promjena iz prethodnog stanja ("Graft dodatni, GitNexus obavezan") —
+vidi §0 ispod za razlog i lokalne dokaze koji su tu promjenu opravdali.
 
-Ova odluka je identična FlowOS-ovoj (isti korisnik, isti razvojni obrazac,
-2026-09-09). Benchmarci su izvedeni na FlowOS kodu, ne na AI Campaign
-Studio kodu — dokazi niže su cross-project, tretirati caller-graph i
-FTS nalaze kao alat-specifične (vrijede ovdje), a bilo koju specifičnu
-task-level tačnost kao neprovjerenu za ovaj repo dok se lokalno ne
-potvrdi.
+**Non-negotiable pravila (`CLAUDE.md`/`AGENTS.md`) koja pominju
+"GitNexus obavezan za MEDIUM/HIGH" sad čitati kao "Graft obavezan za
+MEDIUM/HIGH"** — oba fajla su ažurirana da to eksplicitno kažu, ovaj
+fajl je izvor detalja/upute za KAKO to raditi.
 
-Dokazi:
+---
+
+# 0. Lokalna verifikacija na OVOM repou (2026-09-12, Claude)
+
+Prethodna verzija ovog protokola je govorila da su dokazi ispod
+cross-project (FlowOS), "neprovjereno za ovaj repo dok se lokalno ne
+potvrdi". Lokalna potvrda je urađena — `graft build` na 437 fajlova
+ovog repoa, pa `callers`/`grep`/`ask`/`map`/`blast` testirani na
+stvarnim simbolima iz ove kodne baze. Rezultati:
+
+- **Worktree scenario (glavni razlog promjene)**: pozvan `graft
+  callers`/`graft grep` iz aktivnog task worktree-a
+  (`ACS-S2-018-activate-snapshot`) koji NIJE imao svoj `graft/` index.
+  Graft je SAM otkrio da je worktree, kopirao/osvježio graf iz glavnog
+  checkout-a ("refreshed the graph (N files changed)"), i tačno
+  prepoznao necommit-ovane, worktree-specifične izmjene (nova
+  `list_snapshots` metoda, bridge kod, testovi) — bez ijedne ručne
+  komande. GitNexus `detect_changes` iz worktree-a je bio nepouzdan
+  kroz cijelu prethodnu sesiju (poznato "binding ograničenje",
+  ponavljano kompenzovano ručnim `git diff` pregledom u svakom review-u
+  ove sesije) — ovo je taj isti scenario, riješen.
+- **§3 (zero-callers rupa) potvrđena i ovdje, ne samo na FlowOS-u**:
+  `graft callers IngestionRepositoryPort` (Protocol tip korišten kao
+  parametar-anotacija, ne pozvan direktno) vratio je "no indexed
+  callers", dok `graft grep "IngestionRepositoryPort"` odmah našao 20
+  stvarnih upotreba u 14 fajlova. Isto ograničenje kao GitNexus, ALI
+  Graft-ov OWN output eksplicitno predlaže `graft grep` fallback
+  svaki put kad vrati nula callera — dobra ugrađena zaštita, ne
+  oslanjati se na nju umjesto na §3 disciplinu ispod, ali je koristan
+  podsjetnik.
+- **Ambiguitet po imenu**: `graft callers save_fact_candidate` (5
+  definicija istog imena u repou) je sam razriješio na stvarnu
+  implementaciju (`SqliteIngestionRepository.save_fact_candidate`) i
+  dao tačne direktne + tranzitivne (depth 2) pozivaoce sa file:line, a
+  za ostale istoimene simbole transparentno rekao da je ime ambiguous
+  umjesto da nagađa.
+- **Brzina/stabilnost**: `build` (437 fajlova) i svaki pojedinačan
+  `callers`/`grep`/`ask`/`map`/`blast` poziv — 1-5 sekundi, nula
+  grešaka. GitNexus je imao više tranzijentnih segfault/exit-127
+  padova tokom prethodne sesije.
+- **`graft map`**: token-budžetirana orijentacija po cijelom repou
+  (direktorijum-klasteri + hotspot simboli) za ~1s — mogućnost koju
+  GitNexus nema u ovako kompaktnom CLI obliku, korisna za brzo
+  uhodavanje nove sesije.
+- **`graft blast`**: testiran na STVARNOJ necommit-ovanoj izmjeni
+  (`ports/repositories.py`, S2-018 u toku) u glavnom checkout-u — radio
+  je ispravno, ispravno prijavio 3 fajla van grafa (`.gitignore`,
+  `AGENTS.md`, `CLAUDE.md` — nema parsera za njih, očekivano).
+
+**Šta OSTAJE nepromijenjeno** (§3-§8 ispod, i dalje važe bukvalno):
+zero-callers disciplina, ne-vjerovati-self-reported-tokens (§4 — VAŽNO:
+prethodna sesija je JEDNOM prekršila ovo pravilo prije nego je pravilo
+pronađeno/pročitano u ovom fajlu — ispravljeno istog momenta, ali
+podsjetnik svim agentima da PROČITAJU §4 PRIJE prvog `graft` poziva),
+graft init/hooks se i dalje NE instaliraju bez posebnog testa (§5),
+worktree MCP silent-fallback rizik (§6), telemetrija (§7).
+
+---
+
+Prethodna odluka (2026-09-09, sad zamijenjena §0/status iznad) je bila
+identična FlowOS-ovoj (isti korisnik, isti razvojni obrazac). Benchmarci
+ispod su izvedeni na FlowOS kodu — cross-project dokazi, sad dopunjeni
+lokalnom verifikacijom iz §0:
 
 ```text
 H:\FolowOS\docs\graft-vs-gitnexus-benchmark-2026-09-09.md
@@ -30,8 +95,12 @@ H:\FolowOS\docs\graft-hooks-skill-statusline-benchmark-2026-09-09.md
   `.mcp.json` — isto stanje kao FlowOS. Koristiti CLI direktno dok se
   trajna MCP integracija posebno ne odluči i testira.
 
-Graft NE zamjenjuje GitNexus §5-§9 pre/post-change protokol. Koristi se
-kao dodatni, brži prvi prolaz.
+**Graft SAD JESTE primarni pre/post-change protokol** (§0 iznad) —
+`graft callers`/`graft blast`/`graft grep` prije izmjene simbola,
+`graft blast` (working-tree diff) prije commit-a, isti disciplinski
+mjesta gdje je ranije stajao GitNexus (`GITNEXUS_PROTOCOL.md` §5-§9).
+GitNexus ostaje dostupan kao sekundarna unakrsna provjera tokom
+probacionog perioda (§Status iznad).
 
 ---
 

@@ -6,7 +6,21 @@ stvarno stiže do implementera), §6 (split-kontrakta obrazac), §7 (GitNexus wo
 ograničenje), §9 (`coordination.py` ne postoji), §13 (`.pth` zamka), §19 (`gitnexus check
 --cycles` ne postoji), §22 (P0 odjeljak je istorijski), **§31 (Task-ID šema promijenjena:
 `ACS-<FAZA>-NNN` → `FLOW-NNNN` + obavezan naslov, počevši od sljedećeg novog taska — postojećih
-14 taskova SE NE preimenuje)**  
+14 taskova SE NE preimenuje)**
+
+**Dopuna 2026-09-12 (koordinator: claude, Human Owner odluka):** **Graft
+je zamijenio GitNexus kao primarni code intelligence alat** (lokalno
+verifikovano na ovom repou, ne samo cross-project FlowOS benchmark —
+vidi `.agent/GRAFT_PROTOCOL.md` §Status/§0 za dokaze, uključujući
+rješenje baš §7-ovog worktree-binding ograničenja pomenutog gore).
+**Svako "GitNexus" spominjanje u ovom dokumentu ispod (§7 hard gate,
+checklist-e, dijagrami, §24 P0 odjeljak) čitati kao "Graft" dok se
+dokument ne prepravi u cjelini** — GitNexus ostaje dostupan kao
+sekundarna, probaciona unakrsna provjera (`.agent/GITNEXUS_PROTOCOL.md`),
+ne kao primarni hard gate. Alatni pozivi se razlikuju (`graft
+callers`/`graft blast`/`graft grep`/`graft ask`/`graft map` umjesto
+`gitnexus_impact`/`gitnexus_detect_changes`/itd.) — vidi
+`.agent/GRAFT_PROTOCOL.md` za CLI referencu.  
 **Namjena:** jedini kanonski procesni dokument za Claude, Codex, Pi, Crush i buduće coding agente  
 **Project architecture source of truth:** `AI_Campaign_Studio_Faza_0_6_Channel_Model_LLM_Registry.md`  
 **Foundation execution source:** aktivni Implementation Phase 0 dokument iz `.agent/CURRENT_STATE.md`  
@@ -390,6 +404,14 @@ HIGH ciklus samo zato što je otkrivena usput.
 ---
 
 # 7. GitNexus — hard gate
+
+> **Ažurirano 2026-09-12: čitati "GitNexus" ispod kao "Graft"** —
+> `.agent/GRAFT_PROTOCOL.md` je primarni alat, GitNexus je sekundarna
+> probaciona provjera. Mehanika/disciplina ovog odjeljka (pre-change
+> impact, post-change detect-changes, hard gate princip) ostaje
+> identična, samo se `graft callers`/`graft blast` koriste umjesto
+> `gitnexus_impact`/`gitnexus_detect_changes`. Vidi dopunu na vrhu
+> dokumenta.
 
 GitNexus je obavezan dio procesa.
 

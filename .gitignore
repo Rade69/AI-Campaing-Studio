@@ -37,3 +37,6 @@ artifacts/*
 # subdirs get Windows ACLs that block deletion from a normal session).
 .tmp_*/
 .tmp_*
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/

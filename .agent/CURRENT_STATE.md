@@ -3,7 +3,59 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-11 (coordinator: minimax, Claude na
+**Zadnje ažurirano:** 2026-09-12 (coordinator: claude) — **Graft je
+sad primarni code intelligence alat, GitNexus sekundaran/probacion**
+(Human Owner odluka). [Puni razlog + lokalno verifikovani dokazi:
+`.agent/GRAFT_PROTOCOL.md` §Status/§0](../.agent/GRAFT_PROTOCOL.md).
+
+Kontekst: novi eksterni plan dokument (`docs/AI Campaign Studio —
+Brand Knowledge Implementation Plan.md`) je tvrdio da je Human Owner
+već ranije donio ovu odluku negdje van repoa; koordinator je to
+provjerio naspram tada-važećih `.agent/GRAFT_PROTOCOL.md`/
+`.agent/GITNEXUS_PROTOCOL.md` (koji su govorili suprotno) i eksplicitno
+tražio potvrdu prije nego što je bilo šta promijenio. Human Owner je
+potvrdio i tražio da se prvo LOKALNO isproba na ovoj sesiji.
+
+Test urađen na stvaran kod ovog repoa (ne samo FlowOS benchmark):
+`graft build` (437 fajlova), pa `callers`/`grep`/`ask`/`map`/`blast` na
+stvarnim simbolima. **Ključan rezultat**: `graft` pozvan iz aktivnog
+task worktree-a (`ACS-S2-018-activate-snapshot`) BEZ sopstvenog
+`graft/` indeksa — alat je SAM otkrio worktree, kopirao/osvježio graf
+iz glavnog checkout-a, i tačno vidio worktree-specifične necommit-ovane
+izmjene. Ovo rješava GitNexus-ovo poznato "detect_changes iz
+worktree-a nepouzdan" ograničenje koje se ponavljalo kroz cijelu
+prethodnu sesiju (svaki review ga je morao kompenzovati ručnim
+`git diff`). Brzina/stabilnost: svaki poziv 1-5s, nula padova (GitNexus
+je imao više tranzijentnih segfault/exit-127 incidenata).
+
+Isto ograničenje kao GitNexus i dalje važi na Graft-u: "zero callers
+nije dokaz" (`graft callers IngestionRepositoryPort` vratio nula,
+`graft grep` odmah našao 20 stvarnih upotreba) — Graft-ov OWN output
+bar eksplicitno predlaže grep fallback svaki put.
+
+**Greška napravljena i ispravljena u istoj sesiji**: koordinator je
+prvo prijavio korisniku Graft-ov self-reported "tokens saved" broj kao
+stvarnu metriku, PRIJE nego što je pročitao `.agent/GRAFT_PROTOCOL.md`
+§4 koji eksplicitno zabranjuje upravo to (FlowOS test pokazao da je taj
+broj nekonzistentan sa `graft stats --json`). Ispravljeno odmah po
+otkriću — **svaki agent MORA pročitati `GRAFT_PROTOCOL.md` PRIJE prvog
+`graft` poziva**, ne osloniti se na generičko poznavanje alata.
+
+Ažurirani fajlovi: `CLAUDE.md`, `AGENTS.md`, `.agent/GRAFT_PROTOCOL.md`,
+`.agent/GITNEXUS_PROTOCOL.md`, `.agent/TASK_ROUTING.md`,
+`docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md` (dopuna na vrhu + §7
+redirect note, cijeli dokument NIJE prepravljen simbol-po-simbol —
+prevelik i rizičan zahvat za jednu sesiju, dopuna-pokazivač je
+dovoljna po istom obrascu koji dokument već koristi za prošle
+promjene prakse).
+
+**Probacioni period**: GitNexus ostaje sekundarna provjera na
+sljedećih nekoliko MEDIUM/HIGH taskova prije nego se formalno ukloni
+iz `.agent/GITNEXUS_PROTOCOL.md`/workflow-a.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-11 (coordinator: minimax, Claude na
 pauzi zbog limita tokena) — **ACS-S2-016 (S2-G7b, Brand
 Intelligence Review UI) MERGED.** PR #30 squash `524c6b5` (Human
 Owner ručno odobrio; Claude PASS override 3b-style zbog pauze,

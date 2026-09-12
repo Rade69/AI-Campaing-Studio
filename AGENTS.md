@@ -18,7 +18,7 @@ Prije bilo kakvog rada, nakon ovog fajla:
 4. Pročitaj `.agent/PROJECT_MAP.md`.
 5. Pročitaj konkretan `agent_reports/<TASK-ID>-task-contract.md`.
 6. Koristi `.agent/TASK_ROUTING.md` da odrediš dodatni read-set.
-7. Ako task dira postojeći kod, koristi GitNexus prema `.agent/GITNEXUS_PROTOCOL.md` PRIJE izmjene.
+7. Ako task dira postojeći kod, koristi Graft prema `.agent/GRAFT_PROTOCOL.md` PRIJE izmjene (primarni alat od 2026-09-12; GitNexus/`.agent/GITNEXUS_PROTOCOL.md` je sekundarna, probaciona provjera).
 8. Tek tada čitaj relevantne source/test fajlove i radi implementaciju.
 
 Nikad ne počinji od `CLAUDE.md`, `CURRENT_STATE.md`, projektnog plana ili Task Contracta bez prethodnog čitanja ovog fajla.
@@ -44,8 +44,8 @@ Ako postoji konflikt, NE nagađaj. Prijavi ga koordinatoru.
 - Svaki netrivijalan task dobija svoj git worktree i branch.
 - Prije paralelnog rada koristi `scripts/coordination.py claim`.
 - Agent ne širi scope sam; koristi `OUT_OF_SCOPE_FINDING`.
-- MEDIUM/HIGH i svaki shared-contract/refactor task mora imati GitNexus impact analizu prije izmjene.
-- GitNexus `detect-changes` je obavezan prije reviewa za MEDIUM/HIGH.
+- MEDIUM/HIGH i svaki shared-contract/refactor task mora imati Graft impact analizu (`graft callers`/`graft blast`) prije izmjene (od 2026-09-12; GitNexus sekundarna probaciona provjera, vidi `.agent/GRAFT_PROTOCOL.md`).
+- Graft `blast` (working-tree diff) je obavezan prije reviewa za MEDIUM/HIGH.
 - Ne vjeruj implementer izvještaju bez stvarnog diff-a i execution evidence.
 - Nema merge-a bez eksplicitnog odobrenja Human Ownera — **osim** LOW/MEDIUM
   taskova pod smanjenim review troškom (workflow §29, od 2026-09-01), gdje
@@ -68,25 +68,32 @@ navigaciona pomoć (progressive disclosure), ne source of truth — stvaran kod
 je autoritet. Puno pravilo, format po jeziku i touched-file politika:
 `docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md` §30.
 
-## GitNexus i Graft — obavezno
+## Graft i GitNexus — obavezno
 
-Ako repo još nije indeksiran, nakon početnog foundation skeletona:
+**Od 2026-09-12, Graft je primarni code intelligence alat** (Human
+Owner odluka nakon lokalne verifikacije na ovom repou — worktree
+auto-refresh riješio GitNexus-ovo poznato "binding ograničenje", brže,
+nula padova; detalji i dokazi u `.agent/GRAFT_PROTOCOL.md` §Status/§0).
+
+Ako repo još nije indeksiran za Graft:
 
 ```bash
-npx gitnexus analyze --skip-agents-md
+graft build
 ```
 
-Za svakodnevni rad koristi `.agent/GITNEXUS_PROTOCOL.md`. Graft (CLI +
-MCP) je dodatni preporučen alat, isti obrazac kao FlowOS — vidi
-`.agent/GRAFT_PROTOCOL.md`. Graft ne zamjenjuje GitNexus obavezan
-pre/post-change protokol za MEDIUM/HIGH.
+Za svakodnevni rad koristi `.agent/GRAFT_PROTOCOL.md`. GitNexus
+(`.agent/GITNEXUS_PROTOCOL.md`) je sekundarna, probaciona unakrsna
+provjera — koristiti je uz Graft, posebno na HIGH taskovima, dok se ne
+skupi dovoljno review-slučajeva da se GitNexus formalno ukloni iz
+workflow-a.
 
 Nula callera ≠ bezbjedno, na oba alata — potvrđena rupa za kompozitne/
-atributne pozive, čak i na svježem indeksu; grep provjera obavezna prije
-zaključka o niskom riziku.
+atributne pozive, čak i na svježem indeksu, cross-project I lokalno na
+ovom repou; grep provjera (`graft grep`) obavezna prije zaključka o
+niskom riziku.
 
-Ne dozvoli GitNexusu ni Graftu da zamijene ovaj fajl kao projektni source
-of truth.
+Ne dozvoli Graftu ni GitNexusu da zamijene ovaj fajl kao projektni
+source of truth.
 
 ## Uloge
 
@@ -105,7 +112,7 @@ Tačna uloga za konkretan task mora stajati u Task Contractu.
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **AI-Campaing-Studio** (16288 symbols, 24139 relationships, 178 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **AI-Campaing-Studio** (17673 symbols, 26641 relationships, 256 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
