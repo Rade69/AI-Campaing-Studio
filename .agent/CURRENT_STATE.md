@@ -3,7 +3,58 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-12 (coordinator: claude) — **ACS-S2-018
+**Zadnje ažurirano:** 2026-09-12 (coordinator: claude) — **ACS-BK-002
+(BK-G2, Brand Knowledge Persistence) MERGED (PR #35, squash `0a1a5bc`).**
+[Task contract](../agent_reports/ACS-BK-002-task-contract.md) ·
+[Implementer evidence (Pi)](../agent_reports/2026-09-12-ACS-BK-002-pi.md).
+HIGH (migracija) — puni ciklus: Claude → OpenCode (DeepSeek Flash,
+zamjena za privremeno nedostupan Codex) adversarial → eksplicitno
+odobrenje Human Ownera.
+
+Nova migracija `0010_brand_knowledge_foundation.sql` (4 tabele:
+`brand_knowledge_entries`/`brand_knowledge_entry_facts`/
+`brand_knowledge_snapshots`/`brand_knowledge_snapshot_entries`),
+`BrandKnowledgeRepositoryPort` + `SqliteBrandKnowledgeRepository`.
+Provenance je stvarna FK relacija, ne JSON. Repo NIJE wire-ovan u
+`CampaignBridgeApi` — nijedan use-case ga još ne konzumira (BK-G3+).
+
+**Adversarial round (OpenCode) našao 5 nalaza, verdikt PASS** (nijedan
+merge-blokirajući): F2 (FK cascade, konzistentno)/F3 (malformed enum,
+konzistentno) nisu tražili izmjenu. **Human Owner je eksplicitno
+tražio da se ne ostavlja tehnički dug** pa su F1/F4/F5 popravljeni
+prije merge-a (svaki nezavisno reprodukovan od strane koordinatora
+PRIJE i POSLIJE fixa, plus mutation test):
+- F1 — `save_entry`/`save_knowledge_snapshot` nisu bili atomični
+  (autocommit-per-statement); FK greška na drugom/trećem statement-u
+  ostavljala je parcijalan upis. Popravljeno internom nested-safe
+  transakcijom (`connection.in_transaction` provjera, da se izbjegne
+  duplo `BEGIN` kad pozivalac već drži `SqliteUnitOfWork`).
+- F4 — upsert je tiho dozvoljavao promjenu `brand_snapshot_id` na
+  postojećem entry `id`, čime bi već committovan
+  `BrandKnowledgeSnapshot` završio referencirajući entry ispod DRUGE
+  `BrandSnapshot` verzije. Sada eksplicitno odbijeno
+  (`InvariantViolation`).
+- F5 — duplikati u `source_fact_ids`/`approved_entry_ids` su izazivali
+  kriptičan `sqlite3.IntegrityError` sa parcijalnim upisom. Sada čist
+  `InvariantViolation` prije bilo kakvog pisanja.
+
+Napomena: `SqliteBrandRepository.save_snapshot` (postojeći kod, već u
+produkciji) ima ISTI F1 problem (nema internu transakciju) — nije
+popravljen ovim taskom (van scope-a/allowed_paths), ali vrijedi
+zabilježiti kao potencijalni budući follow-up ako se pokaže da je
+stvarno potreban (trenutno nema poznatog produkcionog puta koji bi ga
+pogodio).
+
+Worktree `ACS-BK-002-persistence` uklonjen (merge-ovan, grane
+obrisane lokalno i na remote-u).
+
+**Sljedeći korak Brand Knowledge inicijative**: BK-G3 (deterministička
+ekstrakcija) — sada ima i persistence sloj i domain sloj zaključane;
+treba novi Task Contract prije koda.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-12 (coordinator: claude) — **ACS-S2-018
 (explicit BrandSnapshot activation, "Opcija 2") MERGED (PR #34, squash
 `e1ceba5`).** [Task contract](../agent_reports/ACS-S2-018-task-contract.md)
 · [Implementer evidence (MiniMax)](../agent_reports/2026-09-11-ACS-S2-018-minimax.md).
