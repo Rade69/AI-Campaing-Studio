@@ -4,6 +4,40 @@
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
 **Zadnje ažurirano:** 2026-09-12 (coordinator: claude) — **ACS-BK-001
+(BK-G1) MERGED (PR #33, squash `88df6da`).** [Task contract](../agent_reports/ACS-BK-001-task-contract.md)
+· [Implementer evidence (OpenCode, kod autor Human Owner)](../agent_reports/2026-09-12-ACS-BK-001-opencode.md).
+MEDIUM/§29.
+
+**Brand Knowledge domain temelj zaključan**: `domain/brand_knowledge/`
+(`KnowledgeCategory`/`KnowledgeStatus`/`EvidenceType` enum-i,
+kontrolisani field registry po sve 8 kategorija -- doslovno prepisan iz
+plana, `KnowledgeEntry`/`BrandKnowledgeSnapshot` frozen entiteti sa
+provenance invarijantom (`source_fact_ids` nikad prazan, `confidence`
+`[0,1]`/`None`, nepoznat field odbačen)). Nula SQLite/migracije/LLM/GUI.
+
+**Trostruko nezavisno potvrđeno** (rijedak slučaj ove sesije): kod je
+commit-ovan direktno od Human Owner-a; i implementer-evidence "pi"
+(necommit-ovan u glavnom repou) i implementer-evidence "opencode"
+(commit-ovan u worktree-u) su NEZAVISNO opisali/verifikovali ISTU
+implementaciju, oba se slažu; koordinator (Claude) je treći nezavisan
+prolaz -- pročitao kod liniju-po-liniju, mutation-testirao empty-
+`source_fact_ids` invarijantu (uklonio check preko Edit alata, test
+pao sa očekivanim simptomom, restauracija čista), reprodukovao pun
+suite (1579 passed, 0 regresija). Sva tri nalaza se slažu.
+
+Ovo je **prvi task pregledan pod novom Graft-primarni politikom** (od
+jučer) -- `graft blast`/`graft grep`/`graft callers` korišćeni kao
+primarni pre/post-change dokaz (0 impacted simbola van izmijenjenih
+fajlova), GitNexus sekundarno tokom probacije.
+
+**Sljedeći korak Brand Knowledge inicijative**: BK-G2 (persistence --
+migracija + `BrandKnowledgeRepositoryPort` + SQLite adapter, HIGH zbog
+migracije) zavisi od ovog zaključanog domain contracta -- sada može biti
+kontraktovan.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-12 (coordinator: claude) — **ACS-BK-001
 (BK-G1, Brand Knowledge Domain Foundation) OTVOREN -- prvi task nove
 Brand Knowledge inicijative.**
 [Task contract](../agent_reports/ACS-BK-001-task-contract.md) ·
