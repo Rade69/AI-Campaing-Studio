@@ -32,6 +32,9 @@ IngestionCheckpointId = NewType("IngestionCheckpointId", str)
 FactCandidateId = NewType("FactCandidateId", str)
 # Slice 2 (Website/Brand Ingestion) — S2-G2 lease queue.
 CrawlTargetId = NewType("CrawlTargetId", str)
+# Brand Knowledge (BK-G1).
+KnowledgeEntryId = NewType("KnowledgeEntryId", str)
+BrandKnowledgeSnapshotId = NewType("BrandKnowledgeSnapshotId", str)
 
 
 def new_id() -> str:
