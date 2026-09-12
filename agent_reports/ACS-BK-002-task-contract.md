@@ -4,7 +4,7 @@ phase: "BK-G2 — Brand Knowledge Persistence"
 title: "resources/migrations/0010_* + BrandKnowledgeRepositoryPort + SqliteBrandKnowledgeRepository"
 coordinator: claude
 implementer: TBD
-reviewers: [claude, minimax]  # Codex privremeno nedostupan (2026-09-12) -- MiniMax preuzima adversarial rundu, isti status/sposobnosti (AGENTS.md "Uloge")
+reviewers: [claude, opencode]  # Codex privremeno nedostupan (2026-09-12) -- OpenCode (DeepSeek Flash) preuzima adversarial rundu
 status: "OPEN -- contract written before code, čeka implementera"
 created_at: 2026-09-12
 dependencies: [ACS-BK-001]
@@ -53,10 +53,11 @@ izmjena koja utiče na svaku buduću instalaciju baze, nepovratna nakon
 `docs/AI_CAMPAIGN_STUDIO_AGENT_WORKFLOW.md` §29 migracije ostaju na
 punom review ciklusu (Claude → adversarial reviewer → eksplicitno
 odobrenje Human Ownera), bez izuzetka. Adversarial rundu normalno
-radi Codex; Codex je privremeno nedostupan (2026-09-12), pa je
-zamjenjen MiniMax-om, koji ima isti status/sposobnosti za tu ulogu
-(`AGENTS.md` "Uloge") — ako Codex postane dostupan prije nego što se
-ovaj task otvori, Human Owner javlja i vraćamo se na Codex.
+radi Codex; Codex je privremeno nedostupan (2026-09-12), pa Human Owner
+za ovaj task bira OpenCode (DeepSeek Flash model) — ista uloga
+(nezavisan adversarial reviewer), drugi konkretan agent — ako Codex
+postane dostupan prije nego što se ovaj task zatvori, Human Owner
+javlja i vraćamo se na Codex.
 
 **Nezavisno verifikovano prije pisanja kontrakta** (ne pretpostavljeno
 iz plana):
@@ -315,7 +316,7 @@ Minimalno (isti stil/fixture obrazac kao
 - [ ] Mutation test na bar jednu constraint (npr. privremeno ukloniti
       `UNIQUE(brand_snapshot_id, version)`, potvrditi da odgovarajući
       test padne, vratiti).
-- [ ] **MiniMax adversarial round** (Codex privremeno nedostupan, vidi
+- [ ] **OpenCode adversarial round** (Codex privremeno nedostupan, vidi
       napomena ispod frontmatter-a; HIGH risk, `adversarial_required:
       true`) — posebno: race na `save_entry` upsert (dva paralelna
       poziva istim `id`), FK cascade/orphan scenariji, prazan
@@ -343,7 +344,7 @@ Minimalno (isti stil/fixture obrazac kao
     commit-a (`.agent/GRAFT_PROTOCOL.md`) — potvrditi da apend ne
     mijenja postojeće simbole.
 
-# Review focus — Claude prvo, zatim MiniMax (Codex zamjena, HIGH, puni ciklus)
+# Review focus — Claude prvo, zatim OpenCode (Codex zamjena, HIGH, puni ciklus)
 
 - Migracija: FK reference tačne, `UNIQUE` constraint prisutan, nijedna
   stara `.sql` datoteka nije dirana, novi fajl se stvarno pokupi
@@ -359,7 +360,7 @@ Minimalno (isti stil/fixture obrazac kao
   enforcement.
 - Graft `blast` na `ports/repositories.py` potvrđuje da su pogođeni
   SAMO novi simboli.
-- MiniMax adversarial: concurrent upsert, orphan/cascade edge cases,
+- OpenCode adversarial: concurrent upsert, orphan/cascade edge cases,
   malformed row rekonstrukcija (npr. `category` vrijednost u bazi koja
   više ne postoji u enumu — da li repo baca jasnu grešku ili silently
   puca).
@@ -368,9 +369,9 @@ Minimalno (isti stil/fixture obrazac kao
 
 HIGH risk (prava SQL migracija, shared-contract fajl
 `ports/repositories.py`). Puni ciklus bez izuzetka: Claude PASS →
-MiniMax adversarial round (Codex privremeno nedostupan, 2026-09-12 —
-ako se vrati u toku ovog taska, Human Owner javlja i MiniMax se može
-zamijeniti/dopuniti sa Codex rundom) → eksplicitno odobrenje Human
+OpenCode adversarial round (Codex privremeno nedostupan, 2026-09-12 —
+ako se vrati u toku ovog taska, Human Owner javlja i OpenCode runda se
+može zamijeniti/dopuniti sa Codex rundom) → eksplicitno odobrenje Human
 Ownera prije merge-a. Ako se nađe blokirajući nalaz, fix-round pa
 ponovna nezavisna verifikacija (isti obrazac kao ACS-S2-002 BF-1).
 
