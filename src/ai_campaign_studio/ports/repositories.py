@@ -12,6 +12,11 @@ from collections.abc import Sequence
 from typing import Any, Protocol, runtime_checkable
 
 from ai_campaign_studio.domain.brand.entities import Brand, BrandSnapshot
+from ai_campaign_studio.domain.brand_knowledge.entities import (
+    BrandKnowledgeSnapshot,
+    KnowledgeEntry,
+)
+from ai_campaign_studio.domain.brand_knowledge.enums import KnowledgeStatus
 from ai_campaign_studio.domain.campaign.entities import (
     Campaign,
     CampaignBrief,
@@ -19,6 +24,7 @@ from ai_campaign_studio.domain.campaign.entities import (
 )
 from ai_campaign_studio.domain.common.ids import (
     BrandId,
+    BrandKnowledgeSnapshotId,
     BrandSnapshotId,
     CampaignId,
     CampaignPlanId,
@@ -27,6 +33,7 @@ from ai_campaign_studio.domain.common.ids import (
     FactCandidateId,
     FactId,
     IngestionRunId,
+    KnowledgeEntryId,
     LayoutSpecId,
     PerformanceImportBatchId,
     PerformanceImportRowId,
@@ -415,3 +422,35 @@ class TelemetryRepositoryPort(Protocol):
     """
 
     def record_event(self, event: dict[str, Any]) -> None: ...
+
+
+@runtime_checkable
+class BrandKnowledgeRepositoryPort(Protocol):
+    """Persistence for ``KnowledgeEntry`` and ``BrandKnowledgeSnapshot``."""
+
+    def save_entry(self, entry: KnowledgeEntry) -> None: ...
+
+    def get_entry(self, entry_id: KnowledgeEntryId) -> KnowledgeEntry | None: ...
+
+    def list_entries_for_brand_snapshot(
+        self, brand_snapshot_id: BrandSnapshotId
+    ) -> tuple[KnowledgeEntry, ...]: ...
+
+    def list_entries_by_status(
+        self, brand_snapshot_id: BrandSnapshotId, status: KnowledgeStatus
+    ) -> tuple[KnowledgeEntry, ...]: ...
+
+    def save_knowledge_snapshot(
+        self, snapshot: BrandKnowledgeSnapshot
+    ) -> None: ...
+
+    def get_knowledge_snapshot(
+        self, snapshot_id: BrandKnowledgeSnapshotId
+    ) -> BrandKnowledgeSnapshot | None: ...
+
+    def get_latest_knowledge_snapshot(
+        self, brand_snapshot_id: BrandSnapshotId
+    ) -> BrandKnowledgeSnapshot | None:
+        """Highest-version BrandKnowledgeSnapshot for a BrandSnapshot, or
+        None. Isti obrazac kao ``BrandRepositoryPort.get_latest_snapshot``
+        — buduća builder logika (BK-G7) ga koristi za sljedeći version."""
