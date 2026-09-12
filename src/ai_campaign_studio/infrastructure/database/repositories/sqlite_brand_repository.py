@@ -144,3 +144,27 @@ class SqliteBrandRepository:
         if row is None:
             return None
         return self.get_snapshot(BrandSnapshotId(row["id"]))
+
+    def list_snapshots(self, brand_id: BrandId) -> tuple[BrandSnapshot, ...]:
+        """Return every BrandSnapshot for ``brand_id``, version DESC.
+
+        Used by ``list_brand_snapshots`` (ACS-S2-018). Empty tuple if
+        the brand has no snapshots.
+        """
+        rows = self._connection.execute(
+            "SELECT id FROM brand_snapshots WHERE brand_id = ?"
+            " ORDER BY version DESC",
+            (brand_id,),
+        ).fetchall()
+        # Re-use ``get_snapshot`` so JSON parsing and fact join rows go
+        # through the exact same path as single-snapshot reads — keeps
+        # ``list_snapshots`` consistent with ``get_snapshot`` /
+        # ``get_latest_snapshot`` if either ever changes how a row is
+        # reconstructed. Loop (not a generator) so mypy can narrow the
+        # Optional to BrandSnapshot exactly once.
+        result: list[BrandSnapshot] = []
+        for row in rows:
+            snapshot = self.get_snapshot(BrandSnapshotId(row["id"]))
+            if snapshot is not None:
+                result.append(snapshot)
+        return tuple(result)
