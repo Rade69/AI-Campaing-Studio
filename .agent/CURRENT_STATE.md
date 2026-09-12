@@ -3,7 +3,34 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-12 (coordinator: claude) — **Graft je
+**Zadnje ažurirano:** 2026-09-12 (coordinator: claude) — **ACS-BK-001
+(BK-G1, Brand Knowledge Domain Foundation) OTVOREN -- prvi task nove
+Brand Knowledge inicijative.**
+[Task contract](../agent_reports/ACS-BK-001-task-contract.md) ·
+[Puni plan](../docs/AI%20Campaign%20Studio%20%E2%80%94%20Brand%20Knowledge%20Implementation%20Plan.md).
+MEDIUM, §29.
+
+Čist domain paket (`domain/brand_knowledge/` — `KnowledgeCategory`/
+`KnowledgeStatus`/`EvidenceType` enum-i, kontrolisani field registry
+po kategoriji, `KnowledgeEntry`/`BrandKnowledgeSnapshot` frozen
+entiteti, 2 nova ID tipa). NULA SQLite/migracije/LLM/GUI -- plan
+eksplicitno traži da se prvo zaključa domain contract prije bilo čega
+drugog (BK-G2..G9 slijede tek nakon ovog review-a).
+
+Pipeline koji ovo modelira: `ApprovedFact` (već postoji) → Brand
+Knowledge Builder (budući BK-G3/G4) → `KnowledgeEntry` PROPOSALS →
+HUMAN REVIEW (budući BK-G6) → `BrandKnowledgeSnapshot` (budući BK-G7)
+→ Campaign Engine (budući BK-G8). Fact-first princip identičan
+postojećem: LLM ne odlučuje šta je istina, samo klasifikuje/normalizuje
+već-odobrene činjenice.
+
+Prvi task koji koristi Graft kao primarni obavezan alat (od jučerašnje
+odluke) -- dobra prilika da se probaciona disciplina odmah primijeni
+u praksi.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-12 (coordinator: claude) — **Graft je
 sad primarni code intelligence alat, GitNexus sekundaran/probacion**
 (Human Owner odluka). [Puni razlog + lokalno verifikovani dokazi:
 `.agent/GRAFT_PROTOCOL.md` §Status/§0](../.agent/GRAFT_PROTOCOL.md).
