@@ -3,7 +3,47 @@
 Živi status. Ne istorijski arhiv — istorija je u Git-u i `agent_reports/`.
 Ažurira koordinator (default Claude) poslije svakog merge-a i svake promjene gate/task stanja.
 
-**Zadnje ažurirano:** 2026-09-12 (coordinator: claude) — **ACS-BK-001
+**Zadnje ažurirano:** 2026-09-12 (coordinator: claude) — **ACS-S2-018
+(explicit BrandSnapshot activation, "Opcija 2") MERGED (PR #34, squash
+`e1ceba5`).** [Task contract](../agent_reports/ACS-S2-018-task-contract.md)
+· [Implementer evidence (MiniMax)](../agent_reports/2026-09-11-ACS-S2-018-minimax.md).
+
+Kontrakt je klasifikovao HIGH, ali je koordinator (Claude) nakon
+nezavisnog line-by-line reviewa procijenio da je stvarni scope uzak
+(bez migracije, bez security-osjetljivih podataka, temeljno testirano)
+i primijenio **MEDIUM/§29** review putanju (Claude PASS + odmah merge,
+bez posebnog Human Owner odobrenja po tasku).
+
+**Nalaz nezavisnog reviewa** (nije bio flag-ovan u implementer
+evidence-u): obje nove bridge metode
+(`activate_brand_snapshot`/`list_brand_snapshots`) imale su
+`@_with_call_resources` dekorator primijenjen DVA PUTA -- potvrđeno
+empirijski (instrumentisan `create_connection`, 2 SQLite konekcije po
+pozivu umjesto 1 na svakoj drugoj bridge metodi). Bezopasno za
+korektnost (unutrašnji resource scope pobjeđuje, spoljašnja konekcija
+se čisto zatvara), ali nepotrebno rasipanje. Koordinator popravio
+direktno (uklonio duplikat), mutation-testirao "already active"
+no-op invarijantu (privremeno slomljena provjera → test stvarno
+pao sa očekivanim simptomom → vraćeno), pun suite 1563 passed/1
+skipped/0 regresija, ruff/mypy čisti, rebase na main čist.
+
+Usput otkriven i popravljen mali propust: `SqliteBrandRepository.
+list_snapshots` (stigao sa ovim taskom) nikad nije bio deklarisan na
+`BrandRepositoryPort` Protocol-u (structural typing je to prećutno
+dozvolio) -- docs-only gap-fill, zaseban commit `511b667`.
+
+Worktree-ovi za `ACS-S2-018-activate-snapshot` i `ACS-BK-001-domain-
+foundation` uklonjeni (oba merge-ovana, grane obrisane lokalno i na
+remote-u).
+
+**Sljedeći korak Brand Knowledge inicijative**: BK-G2 (persistence --
+migracija `0010_*` + `BrandKnowledgeRepositoryPort` + SQLite adapter,
+HIGH zbog migracije) je kontraktovan -- [ACS-BK-002 task contract]
+(../agent_reports/ACS-BK-002-task-contract.md), čeka implementera.
+
+---
+
+**Prethodno ažuriranje:** 2026-09-12 (coordinator: claude) — **ACS-BK-001
 (BK-G1) MERGED (PR #33, squash `88df6da`).** [Task contract](../agent_reports/ACS-BK-001-task-contract.md)
 · [Implementer evidence (OpenCode, kod autor Human Owner)](../agent_reports/2026-09-12-ACS-BK-001-opencode.md).
 MEDIUM/§29.
