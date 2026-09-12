@@ -77,6 +77,15 @@ class BrandRepositoryPort(Protocol):
         ``assemble_brand_snapshot`` to compute the next version.
         """
 
+    def list_snapshots(self, brand_id: BrandId) -> tuple[BrandSnapshot, ...]:
+        """Return every BrandSnapshot for ``brand_id``, ordered by version DESC.
+
+        Used by the GUI history view (ACS-S2-018) to show every assembled
+        snapshot — the highest first — so the user can see what they have
+        and explicitly activate an older one if desired. Empty tuple if
+        the brand has never had a snapshot assembled (fresh state).
+        """
+
 
 @runtime_checkable
 class FactRepositoryPort(Protocol):
