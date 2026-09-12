@@ -225,10 +225,27 @@ def test_entry_foreign_keys_are_enforced(tmp_path: Path) -> None:
             " VALUES ('e-x', 'missing-snap', 'COMPANY', 'name', 'x',"
             " 'EXPLICIT', 'PROPOSED', '2026-01-01T00:00:00+00:00')"
         )
+    # entry_id must reference a REAL brand_knowledge_entries row here --
+    # otherwise this insert would raise on the entry_id FK alone and never
+    # actually exercise the fact_id FK (caught via mutation test: removing
+    # ``fact_id REFERENCES approved_facts(id)`` from the migration left
+    # this assertion passing unchanged when it used a nonexistent
+    # entry_id).
+    connection.execute(
+        "INSERT INTO brand_knowledge_entries (id, brand_snapshot_id,"
+        " category, field_name, value, evidence_type, status, created_at)"
+        " VALUES ('entry-real', 'snap-1', 'COMPANY', 'name', 'x',"
+        " 'EXPLICIT', 'PROPOSED', '2026-01-01T00:00:00+00:00')"
+    )
     with pytest.raises(sqlite3.IntegrityError):
         connection.execute(
             "INSERT INTO brand_knowledge_entry_facts (entry_id, fact_id,"
-            " position) VALUES ('missing-entry', 'missing-fact', 0)"
+            " position) VALUES ('entry-real', 'missing-fact', 0)"
+        )
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            "INSERT INTO brand_knowledge_entry_facts (entry_id, fact_id,"
+            " position) VALUES ('missing-entry', 'fact-1', 0)"
         )
     connection.close()
 
